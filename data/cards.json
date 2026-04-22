@@ -1,0 +1,152 @@
+[
+  {
+    "id": 1,
+    "code": "CDK-PLUS-A7XNXCBKJ8",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:10:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "12b86765"
+  },
+  {
+    "id": 2,
+    "code": "CDK-PLUS-25RBCYHBD8",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:10:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "12b86765"
+  },
+  {
+    "id": 3,
+    "code": "CDK-PLUS-6AYH9K8JUN",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:10:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "12b86765"
+  },
+  {
+    "id": 4,
+    "code": "CDK-PLUS-GA2TX74E2P",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:10:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "12b86765"
+  },
+  {
+    "id": 5,
+    "code": "CDK-PLUS-Z9VM2YMAKL",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:10:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "12b86765"
+  },
+  {
+    "id": 6,
+    "code": "CDK-PLUS-VSR7D3AKK4",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 7,
+    "code": "CDK-PLUS-4PN36CBPXH",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 8,
+    "code": "CDK-PLUS-652A28M3VN",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 9,
+    "code": "CDK-PLUS-2LG8C383QL",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 10,
+    "code": "CDK-PLUS-JUFT4NDAVT",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 11,
+    "code": "CDK-PLUS-SRG6USBAM5",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 12,
+    "code": "CDK-PLUS-CNJZ3P7SZD",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 13,
+    "code": "CDK-PLUS-MLEMD5BH9Q",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 14,
+    "code": "CDK-PLUS-SNRBSX3ME5",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "05f5a022"
+  },
+  {
+    "id": 15,
+    "code": "CDK-PLUS-V3FYAF42NS",
+    "type": "plus",
+    "status": "used",
+    "created_at": "2026/4/22 23:23:56",
+    "used_at": "2026/4/23 00:02:19",
+    "used_by": "bed7b66c364265af",
+    "batch_id": "05f5a022"
+  }
+]

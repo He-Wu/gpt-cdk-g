@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卡密管理后台</title>
+    <meta name="description" content="ChatGPT 卡密兑换系统管理后台">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-body: #07080d;
+            --bg-sidebar: #0c0d14;
+            --bg-card: rgba(255, 255, 255, 0.025);
+            --bg-card-solid: #12131c;
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --bg-hover: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.06);
+            --border-hover: rgba(255, 255, 255, 0.12);
+            --text-primary: #eef2ff;
+            --text-secondary: #94a3b8;
+            --text-muted: #525b6b;
+            --accent: #818cf8;
+            --accent-dark: #6366f1;
+            --emerald: #34d399;
+            --amber: #fbbf24;
+            --rose: #fb7185;
+            --cyan: #22d3ee;
+            --purple: #a78bfa;
+            --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+            --gradient-cyan: linear-gradient(135deg, #06b6d4, #3b82f6);
+            --gradient-emerald: linear-gradient(135deg, #10b981, #34d399);
+            --gradient-amber: linear-gradient(135deg, #f59e0b, #fbbf24);
+            --gradient-rose: linear-gradient(135deg, #e11d48, #fb7185);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-body);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* ========== 登录页面 ========== */
+        .login-page {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.12), transparent),
+                radial-gradient(ellipse 50% 30% at 80% 80%, rgba(139, 92, 246, 0.06), transparent);
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            background: var(--bg-card);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            margin: 20px;
+        }
+
+        .login-card .logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .login-card .logo-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: var(--gradient);
+            border-radius: 16px;
+            font-size: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.2);
+        }
+
+        .login-card h1 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .login-card p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .login-card .form-group {
+            margin-bottom: 20px;
+        }
+
+        .login-card label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .login-card input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .login-card input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .login-error {
+            display: none;
+            padding: 10px 14px;
+            background: rgba(251,113,133,0.1);
+            border: 1px solid rgba(251,113,133,0.2);
+            border-radius: 8px;
+            color: var(--rose);
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        /* ========== 主布局 ========== */
+        .app-layout {
+            display: none;
+            min-height: 100vh;
+        }
+
+        .app-layout.active { display: flex; }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 240px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            padding: 24px 0;
+            flex-shrink: 0;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 20px;
+            margin-bottom: 32px;
+        }
+
+        .sidebar-logo .icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--gradient);
+            border-radius: 10px;
+            font-size: 18px;
+        }
+
+        .sidebar-logo span {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .sidebar-nav { flex: 1; }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            color: var(--text-secondary);
+            background: var(--bg-hover);
+        }
+
+        .nav-item.active {
+            color: var(--accent);
+            background: rgba(99, 102, 241, 0.06);
+            border-left-color: var(--accent);
+        }
+
+        .nav-item .nav-icon { font-size: 18px; width: 24px; text-align: center; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 13px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .logout-btn:hover {
+            background: rgba(251,113,133,0.06);
+            border-color: rgba(251,113,133,0.2);
+            color: var(--rose);
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            margin-left: 240px;
+            padding: 32px;
+            min-height: 100vh;
+        }
+
+        .page-header {
+            margin-bottom: 28px;
+        }
+
+        .page-header h2 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .page-header p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ========== 通用组件 ========== */
+
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--gradient);
+            color: white;
+            box-shadow: 0 4px 12px rgba(99,102,241,0.25);
+        }
+
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,0.35); }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .btn-ghost:hover { background: var(--bg-hover); border-color: var(--border-hover); }
+
+        .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 8px; }
+
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .stat-card.indigo::before { background: var(--gradient); }
+        .stat-card.emerald::before { background: var(--gradient-emerald); }
+        .stat-card.amber::before { background: var(--gradient-amber); }
+        .stat-card.rose::before { background: var(--gradient-rose); }
+        .stat-card.cyan::before { background: var(--gradient-cyan); }
+
+        .stat-card .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .stat-card .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            margin-top: 8px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-card.indigo .stat-value { color: var(--accent); }
+        .stat-card.emerald .stat-value { color: var(--emerald); }
+        .stat-card.amber .stat-value { color: var(--amber); }
+        .stat-card.rose .stat-value { color: var(--rose); }
+        .stat-card.cyan .stat-value { color: var(--cyan); }
+
+        .stat-card .stat-detail {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* 面板 */
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        /* 表格 */
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 14px;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: rgba(255,255,255,0.015);
+        }
+
+        .code-cell {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--accent);
+            user-select: all;
+        }
+
+        /* 状态标签 */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-unused { background: rgba(52,211,153,0.12); color: var(--emerald); }
+        .badge-used { background: rgba(100,116,139,0.12); color: var(--text-muted); }
+        .badge-disabled { background: rgba(251,113,133,0.12); color: var(--rose); }
+        .badge-plus { background: rgba(99,102,241,0.12); color: var(--accent); }
+        .badge-pro { background: rgba(167,139,250,0.12); color: var(--purple); }
+        .badge-pending { background: rgba(251,191,36,0.12); color: var(--amber); }
+        .badge-processing { background: rgba(99,102,241,0.12); color: var(--accent); }
+        .badge-done { background: rgba(52,211,153,0.12); color: var(--emerald); }
+        .badge-failed { background: rgba(251,113,133,0.12); color: var(--rose); }
+
+        /* 表单行 */
+        .form-row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .form-group {
+            flex: 1;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+        }
+
+        .form-group select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+
+        .form-group select option {
+            background: #1a1b2e;
+            color: var(--text-primary);
+        }
+
+        /* 分页 */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .pagination-btns {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* 生成结果 */
+        .generated-codes {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(52,211,153,0.04);
+            border: 1px solid rgba(52,211,153,0.15);
+            border-radius: 12px;
+        }
+
+        .generated-codes.visible { display: block; }
+
+        .generated-codes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .generated-codes-header h4 {
+            color: var(--emerald);
+            font-size: 14px;
+        }
+
+        .codes-list {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--accent);
+            line-height: 1.8;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            user-select: all;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* 筛选条 */
+        .filter-bar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar .form-group {
+            flex: 0 0 auto;
+            min-width: 130px;
+        }
+
+        .filter-bar .search-input {
+            min-width: 200px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: var(--bg-card-solid);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 13px;
+            z-index: 9999;
+            animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+
+        .toast.success { border-color: rgba(52,211,153,0.3); }
+        .toast.error { border-color: rgba(251,113,133,0.3); }
+
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes fadeOut {
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+
+        /* 页面切换 */
+        .page { display: none; animation: fadeIn 0.3s ease; }
+        .page.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .hidden { display: none !important; }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main-content { margin-left: 0; padding: 20px 16px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .form-row { flex-direction: column; }
+            .filter-bar { flex-direction: column; }
+            .filter-bar .form-group { width: 100%; }
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+        .empty-state p { font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<!-- ========== 登录页面 ========== -->
+<div class="login-page" id="loginPage">
+    <div class="login-card">
+        <div class="logo">
+            <div class="logo-icon">🔐</div>
+            <h1>管理后台</h1>
+            <p>请输入管理员密码登录</p>
+        </div>
+        <div class="login-error" id="loginError"></div>
+        <div class="form-group">
+            <label for="loginPassword">密码</label>
+            <input type="password" id="loginPassword" placeholder="请输入管理员密码"
+                onkeydown="if(event.key==='Enter') adminLogin()">
+        </div>
+        <br>
+        <button class="btn btn-primary" style="width:100%; padding: 12px;" onclick="adminLogin()" id="loginBtn">
+            登录
+        </button>
+    </div>
+</div>
+
+<!-- ========== 主布局 ========== -->
+<div class="app-layout" id="appLayout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="icon">⚡</div>
+            <span>CDK 管理</span>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-item active" onclick="switchPage('dashboard')" data-page="dashboard">
+                <span class="nav-icon">📊</span> 仪表盘
+            </div>
+            <div class="nav-item" onclick="switchPage('generate')" data-page="generate">
+                <span class="nav-icon">🔑</span> 生成卡密
+            </div>
+            <div class="nav-item" onclick="switchPage('cards')" data-page="cards">
+                <span class="nav-icon">🗂️</span> 卡密管理
+            </div>
+            <div class="nav-item" onclick="switchPage('records')" data-page="records">
+                <span class="nav-icon">📋</span> 兑换记录
+            </div>
+            <div class="nav-item" onclick="switchPage('settings')" data-page="settings">
+                <span class="nav-icon">⚙️</span> 系统设置
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="logout-btn" onclick="adminLogout()">
+                <span>🚪</span> 退出登录
+            </button>
+        </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+
+        <!-- ===== 仪表盘页 ===== -->
+        <div class="page active" id="page-dashboard">
+            <div class="page-header">
+                <h2>仪表盘</h2>
+                <p>系统数据总览</p>
+            </div>
+            <div class="stats-grid" id="statsGrid">
+                <!-- 动态填充 -->
+            </div>
+        </div>
+
+        <!-- ===== 生成卡密页 ===== -->
+        <div class="page" id="page-generate">
+            <div class="page-header">
+                <h2>生成卡密</h2>
+                <p>批量生成 CDK 兑换码</p>
+            </div>
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom: 20px;">批量生成</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>数量 (1-500)</label>
+                        <input type="number" id="genCount" min="1" max="500" value="10" placeholder="输入数量">
+                    </div>
+                    <div class="form-group">
+                        <label>类型</label>
+                        <select id="genType">
+                            <option value="plus">Plus</option>
+                            <option value="pro">Pro</option>
+                        </select>
+                    </div>
+                    <div style="flex: 0 0 auto;">
+                        <button class="btn btn-primary" id="genBtn" onclick="generateCards()" style="height: 42px;">
+                            🔑 生成卡密
+                        </button>
+                    </div>
+                </div>
+                <div class="generated-codes" id="genResult">
+                    <div class="generated-codes-header">
+                        <h4 id="genResultTitle">✅ 生成成功</h4>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-ghost btn-sm" onclick="copyGeneratedCodes()">📋 复制</button>
+                            <button class="btn btn-ghost btn-sm" onclick="exportGeneratedCodes()">📥 导出</button>
+                        </div>
+                    </div>
+                    <div class="codes-list" id="genCodesList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 卡密管理页 ===== -->
+        <div class="page" id="page-cards">
+            <div class="page-header">
+                <h2>卡密管理</h2>
+                <p>查看和管理所有卡密</p>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="filter-bar">
+                        <div class="form-group">
+                            <select id="cardsFilterStatus" onchange="loadCards()">
+                                <option value="all">全部状态</option>
+                                <option value="unused">未使用</option>
+                                <option value="used">已使用</option>
+                                <option value="disabled">已禁用</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <select id="cardsFilterType" onchange="loadCards()">
+                                <option value="all">全部类型</option>
+                                <option value="plus">Plus</option>
+                                <option value="pro">Pro</option>
+                            </select>
+                        </div>
+                        <div class="form-group search-input">
+                            <input type="text" id="cardsSearch" placeholder="搜索卡密..."
+                                oninput="debounceSearch()">
+                        </div>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>卡密</th>
+                                <th>类型</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>使用时间</th>
+                                <th>批次</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cardsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination">
+                    <span id="cardsPagInfo">-</span>
+                    <div class="pagination-btns">
+                        <button class="btn btn-ghost btn-sm" id="cardsPrev" onclick="cardsPagePrev()">← 上一页</button>
+                        <button class="btn btn-ghost btn-sm" id="cardsNext" onclick="cardsPageNext()">下一页 →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 兑换记录页 ===== -->
+        <div class="page" id="page-records">
+            <div class="page-header">
+                <h2>兑换记录</h2>
+                <p>查看所有兑换历史</p>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="filter-bar">
+                        <div class="form-group">
+                            <select id="recordsFilterStatus" onchange="loadRecords()">
+                                <option value="all">全部状态</option>
+                                <option value="pending">排队中</option>
+                                <option value="processing">处理中</option>
+                                <option value="done">成功</option>
+                                <option value="failed">失败</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <select id="recordsFilterType" onchange="loadRecords()">
+                                <option value="all">全部类型</option>
+                                <option value="plus">Plus</option>
+                                <option value="pro">Pro</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>卡密</th>
+                                <th>类型</th>
+                                <th>状态</th>
+                                <th>Job ID</th>
+                                <th>IP 地址</th>
+                                <th>时间</th>
+                                <th>错误信息</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination">
+                    <span id="recordsPagInfo">-</span>
+                    <div class="pagination-btns">
+                        <button class="btn btn-ghost btn-sm" id="recordsPrev" onclick="recordsPagePrev()">← 上一页</button>
+                        <button class="btn btn-ghost btn-sm" id="recordsNext" onclick="recordsPageNext()">下一页 →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ===== 系统设置页 ===== -->
+        <div class="page" id="page-settings">
+            <div class="page-header">
+                <h2>系统设置</h2>
+                <p>配置上游 API 连接信息</p>
+            </div>
+
+            <!-- 配置状态提示 -->
+            <div id="settingsStatusBanner" style="display:none; margin-bottom:20px; padding:14px 18px; border-radius:12px; font-size:13px;"></div>
+
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom: 20px;">🔌 API 连接配置</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
+                    配置上游 ChatGPT 订阅兑换服务的连接信息。设置保存后立即生效，无需重启服务器。
+                </p>
+                <div style="display:flex; flex-direction:column; gap:16px; max-width:560px;">
+                    <div class="form-group">
+                        <label>Base URL <span style="color:var(--rose)">*</span></label>
+                        <input type="text" id="settingsBaseUrl" placeholder="https://your-domain.com" autocomplete="off">
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">上游 API 的根地址，不含结尾斜杠</p>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key <span style="color:var(--rose)">*</span></label>
+                        <div style="position:relative;">
+                            <input type="password" id="settingsApiKey" placeholder="输入 API Key（留空则不修改已有值）" autocomplete="new-password">
+                            <button onclick="toggleApiKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;" id="apiKeyToggleBtn">👁</button>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">留空表示保留当前已配置的 API Key 不变</p>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">
+                            💾 保存设置
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom:16px;">📌 使用说明</div>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">
+                    <p>1. <strong style="color:var(--text-primary)">Base URL</strong>：填写上游服务的根地址，例如 <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;font-family:monospace;">https://api.example.com</code></p>
+                    <p style="margin-top:8px;">2. <strong style="color:var(--text-primary)">API Key</strong>：填写分配给你的 X-API-Key，用于上游服务鉴权</p>
+                    <p style="margin-top:8px;">3. 配置保存到 <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;font-family:monospace;">data/settings.json</code>，重启服务后同样有效</p>
+                    <p style="margin-top:8px;">4. 仪表盘会显示当前配置是否已就绪</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script>
+    // ========== 状态 ==========
+    let adminToken = localStorage.getItem('admin_token') || '';
+    let cardsPage = 1;
+    let recordsPage = 1;
+    let generatedCodes = [];
+    let searchTimer = null;
+
+    // ========== 初始化 ==========
+    window.onload = () => {
+        if (adminToken) {
+            checkAuth();
+        }
+    };
+
+    async function checkAuth() {
+        try {
+            const res = await adminFetch('/api/admin/stats');
+            if (res.ok) {
+                showApp();
+            } else {
+                adminToken = '';
+                localStorage.removeItem('admin_token');
+            }
+        } catch {
+            adminToken = '';
+            localStorage.removeItem('admin_token');
+        }
+    }
+
+    // ========== API 请求 ==========
+    async function adminFetch(url, options = {}) {
+        return fetch(url, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Token': adminToken,
+                ...options.headers
+            }
+        });
+    }
+
+    // ========== 登录 ==========
+    async function adminLogin() {
+        const password = document.getElementById('loginPassword').value;
+        const btn = document.getElementById('loginBtn');
+        const errorDiv = document.getElementById('loginError');
+
+        if (!password) {
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = '请输入密码';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 登录中...';
+
+        try {
+            const res = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = data.error || '登录失败';
+                return;
+            }
+
+            adminToken = data.token;
+            localStorage.setItem('admin_token', adminToken);
+            errorDiv.style.display = 'none';
+            showApp();
+        } catch (err) {
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = '网络错误: ' + err.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '登录';
+        }
+    }
+
+    function adminLogout() {
+        adminFetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
+        adminToken = '';
+        localStorage.removeItem('admin_token');
+        document.getElementById('appLayout').classList.remove('active');
+        document.getElementById('loginPage').style.display = 'flex';
+        document.getElementById('loginPassword').value = '';
+    }
+
+    function showApp() {
+        document.getElementById('loginPage').style.display = 'none';
+        document.getElementById('appLayout').classList.add('active');
+        loadStats();
+    }
+
+    // ========== 页面切换 ==========
+    function switchPage(page) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById(`page-${page}`).classList.add('active');
+        document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+
+        if (page === 'dashboard') loadStats();
+        if (page === 'cards') loadCards();
+        if (page === 'records') loadRecords();
+        if (page === 'settings') loadSettingsPage();
+    }
+
+    // ========== 仪表盘 ==========
+    async function loadStats() {
+        try {
+            const [statsRes, settingsRes] = await Promise.all([
+                adminFetch('/api/admin/stats'),
+                adminFetch('/api/admin/settings')
+            ]);
+            if (!statsRes.ok) return;
+            const stats = await statsRes.json();
+            const cfg = settingsRes.ok ? await settingsRes.json() : { configured: false };
+
+            const grid = document.getElementById('statsGrid');
+            const configCard = cfg.configured
+                ? `<div class="stat-card emerald">
+                    <div class="stat-label">接口状态</div>
+                    <div class="stat-value" style="font-size:18px;padding-top:4px">✅ 已就绪</div>
+                    <div class="stat-detail">${cfg.baseUrl || ''}</div>
+                   </div>`
+                : `<div class="stat-card rose" style="cursor:pointer" onclick="switchPage('settings')">
+                    <div class="stat-label">接口状态</div>
+                    <div class="stat-value" style="font-size:18px;padding-top:4px">⚠️ 未配置</div>
+                    <div class="stat-detail">点击前往设置页面配置</div>
+                   </div>`;
+
+            grid.innerHTML = configCard + `
+                <div class="stat-card indigo">
+                    <div class="stat-label">Plus 总数</div>
+                    <div class="stat-value">${stats.plus.total}</div>
+                    <div class="stat-detail">可用 ${stats.plus.unused} · 已用 ${stats.plus.used} · 禁用 ${stats.plus.disabled}</div>
+                </div>
+                <div class="stat-card cyan">
+                    <div class="stat-label">Plus 可用</div>
+                    <div class="stat-value">${stats.plus.unused}</div>
+                    <div class="stat-detail">剩余可兑换</div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-label">Pro 总数</div>
+                    <div class="stat-value">${stats.pro.total}</div>
+                    <div class="stat-detail">可用 ${stats.pro.unused} · 已用 ${stats.pro.used} · 禁用 ${stats.pro.disabled}</div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-label">Pro 可用</div>
+                    <div class="stat-value">${stats.pro.unused}</div>
+                    <div class="stat-detail">剩余可兑换</div>
+                </div>
+                <div class="stat-card rose">
+                    <div class="stat-label">兑换记录</div>
+                    <div class="stat-value">${stats.redeemRecords.total}</div>
+                    <div class="stat-detail">成功 ${stats.redeemRecords.done} · 失败 ${stats.redeemRecords.failed} · 处理中 ${stats.redeemRecords.pending}</div>
+                </div>
+            `;
+        } catch (err) {
+            console.error('加载统计数据失败:', err);
+        }
+    }
+
+    // ========== 生成卡密 ==========
+    async function generateCards() {
+        const count = parseInt(document.getElementById('genCount').value);
+        const type = document.getElementById('genType').value;
+        const btn = document.getElementById('genBtn');
+
+        if (!count || count < 1 || count > 500) {
+            showToast('数量必须在 1-500 之间', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 生成中...';
+
+        try {
+            const res = await adminFetch('/api/admin/cards/generate', {
+                method: 'POST',
+                body: JSON.stringify({ count, type })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                showToast(data.error || '生成失败', 'error');
+                return;
+            }
+
+            generatedCodes = data.codes;
+            const result = document.getElementById('genResult');
+            result.classList.add('visible');
+            document.getElementById('genResultTitle').textContent =
+                `✅ 成功生成 ${data.count} 张 ${data.type.toUpperCase()} 卡密 (批次: ${data.batchId})`;
+            document.getElementById('genCodesList').textContent = data.codes.join('\n');
+
+            showToast(data.message, 'success');
+        } catch (err) {
+            showToast('网络错误: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔑 生成卡密';
+        }
+    }
+
+    function copyGeneratedCodes() {
+        if (!generatedCodes.length) return;
+        navigator.clipboard.writeText(generatedCodes.join('\n')).then(() => {
+            showToast('已复制到剪贴板', 'success');
+        });
+    }
+
+    function exportGeneratedCodes() {
+        if (!generatedCodes.length) return;
+        const blob = new Blob([generatedCodes.join('\n')], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cdk-${new Date().toISOString().slice(0,10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('已导出文件', 'success');
+    }
+
+    // ========== 卡密管理 ==========
+    async function loadCards() {
+        const status = document.getElementById('cardsFilterStatus').value;
+        const type = document.getElementById('cardsFilterType').value;
+        const search = document.getElementById('cardsSearch').value;
+
+        const params = new URLSearchParams({ page: cardsPage, pageSize: 15, status, type });
+        if (search) params.set('search', search);
+
+        try {
+            const res = await adminFetch(`/api/admin/cards?${params}`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            const tbody = document.getElementById('cardsTableBody');
+            if (data.cards.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="icon">🔍</div><p>暂无数据</p></div></td></tr>`;
+            } else {
+                tbody.innerHTML = data.cards.map(c => `
+                    <tr>
+                        <td class="code-cell">${c.code}</td>
+                        <td><span class="badge badge-${c.type}">${c.type.toUpperCase()}</span></td>
+                        <td><span class="badge badge-${c.status}">${statusLabel(c.status)}</span></td>
+                        <td style="color:var(--text-muted);font-size:12px;">${c.created_at || '-'}</td>
+                        <td style="color:var(--text-muted);font-size:12px;">${c.used_at || '-'}</td>
+                        <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${c.batch_id}</td>
+                        <td>
+                            ${c.status === 'unused' ?
+                                `<button class="btn btn-ghost btn-sm" onclick="toggleCard('${c.code}', 'disable')" style="color:var(--rose);">禁用</button>` :
+                            c.status === 'disabled' ?
+                                `<button class="btn btn-ghost btn-sm" onclick="toggleCard('${c.code}', 'enable')" style="color:var(--emerald);">启用</button>` :
+                                '-'
+                            }
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            const totalPages = Math.ceil(data.total / data.pageSize) || 1;
+            document.getElementById('cardsPagInfo').textContent = `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
+            document.getElementById('cardsPrev').disabled = data.page <= 1;
+            document.getElementById('cardsNext').disabled = data.page >= totalPages;
+        } catch (err) {
+            console.error('加载卡密失败:', err);
+        }
+    }
+
+    function cardsPagePrev() { if (cardsPage > 1) { cardsPage--; loadCards(); } }
+    function cardsPageNext() { cardsPage++; loadCards(); }
+
+    function debounceSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { cardsPage = 1; loadCards(); }, 300);
+    }
+
+    async function toggleCard(code, action) {
+        const endpoint = action === 'disable' ? '/api/admin/cards/disable' : '/api/admin/cards/enable';
+        try {
+            const res = await adminFetch(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({ codes: [code] })
+            });
+            const data = await res.json();
+            showToast(data.message, 'success');
+            loadCards();
+        } catch (err) {
+            showToast('操作失败', 'error');
+        }
+    }
+
+    function statusLabel(status) {
+        const map = { unused: '未使用', used: '已使用', disabled: '已禁用' };
+        return map[status] || status;
+    }
+
+    // ========== 兑换记录 ==========
+    async function loadRecords() {
+        const status = document.getElementById('recordsFilterStatus').value;
+        const type = document.getElementById('recordsFilterType').value;
+
+        const params = new URLSearchParams({ page: recordsPage, pageSize: 15, status, type });
+
+        try {
+            const res = await adminFetch(`/api/admin/records?${params}`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            const tbody = document.getElementById('recordsTableBody');
+            if (data.records.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
+            } else {
+                tbody.innerHTML = data.records.map(r => `
+                    <tr>
+                        <td style="color:var(--text-muted);">${r.id}</td>
+                        <td class="code-cell">${r.card_code}</td>
+                        <td><span class="badge badge-${r.card_type}">${r.card_type.toUpperCase()}</span></td>
+                        <td><span class="badge badge-${r.status}">${recordStatusLabel(r.status)}</span></td>
+                        <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${r.job_id || '-'}</td>
+                        <td style="font-size:12px;color:var(--text-muted);">${r.ip_address || '-'}</td>
+                        <td style="font-size:12px;color:var(--text-muted);">${r.created_at || '-'}</td>
+                        <td style="font-size:12px;color:var(--rose);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.error_message || ''}">${r.error_message || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+
+            const totalPages = Math.ceil(data.total / data.pageSize) || 1;
+            document.getElementById('recordsPagInfo').textContent = `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
+            document.getElementById('recordsPrev').disabled = data.page <= 1;
+            document.getElementById('recordsNext').disabled = data.page >= totalPages;
+        } catch (err) {
+            console.error('加载记录失败:', err);
+        }
+    }
+
+    function recordsPagePrev() { if (recordsPage > 1) { recordsPage--; loadRecords(); } }
+    function recordsPageNext() { recordsPage++; loadRecords(); }
+
+    function recordStatusLabel(status) {
+        const map = { pending: '排队中', processing: '处理中', done: '成功', failed: '失败' };
+        return map[status] || status;
+    }
+
+    // ========== 工具 ==========
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    // ========== 系统设置 ==========
+    async function loadSettingsPage() {
+        try {
+            const res = await adminFetch('/api/admin/settings');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            document.getElementById('settingsBaseUrl').value = data.baseUrl || '';
+            // API Key 只显示已配置状态，不回显实际值
+            document.getElementById('settingsApiKey').placeholder = data.apiKey
+                ? '已配置（输入新值可重置，留空保持不变）'
+                : '请输入 API Key';
+
+            const banner = document.getElementById('settingsStatusBanner');
+            if (data.configured) {
+                banner.style.display = 'block';
+                banner.style.background = 'rgba(52,211,153,0.08)';
+                banner.style.border = '1px solid rgba(52,211,153,0.2)';
+                banner.style.color = '#34d399';
+                banner.innerHTML = '✅ 接口已就绪，兑换功能正常可用';
+            } else {
+                banner.style.display = 'block';
+                banner.style.background = 'rgba(251,113,133,0.08)';
+                banner.style.border = '1px solid rgba(251,113,133,0.2)';
+                banner.style.color = '#fb7185';
+                banner.innerHTML = '⚠️ 接口尚未完整配置，用户无法进行兑换操作。请填写 Base URL 和 API Key 后保存。';
+            }
+        } catch (err) {
+            console.error('加载设置失败:', err);
+        }
+    }
+
+    async function saveSettings() {
+        const baseUrl = document.getElementById('settingsBaseUrl').value.trim();
+        const apiKey = document.getElementById('settingsApiKey').value.trim();
+        const btn = document.getElementById('saveSettingsBtn');
+
+        if (!baseUrl) {
+            showToast('Base URL 不能为空', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+
+        try {
+            const body = { baseUrl };
+            if (apiKey) body.apiKey = apiKey; // 只在输入了新值时才更新 API Key
+
+            const res = await adminFetch('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                showToast(data.error || '保存失败', 'error');
+                return;
+            }
+
+            showToast('设置已保存', 'success');
+            document.getElementById('settingsApiKey').value = '';
+            loadSettingsPage(); // 刷新状态
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 保存设置';
+        }
+    }
+
+    function toggleApiKeyVisibility() {
+        const input = document.getElementById('settingsApiKey');
+        const btn = document.getElementById('apiKeyToggleBtn');
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = '🙈';
+        } else {
+            input.type = 'password';
+            btn.textContent = '👁';
+        }
+    }
+</script>
+</body>
+</html>

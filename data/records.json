@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "card_code": "CDK-PLUS-V3FYAF42NS",
+    "card_type": "plus",
+    "access_token_hash": "bed7b66c364265af",
+    "job_id": "18bbdc32d3e641bc94271a25c12210df",
+    "status": "done",
+    "error_message": null,
+    "created_at": "2026/4/23 00:02:19",
+    "ip_address": "::ffff:127.0.0.1"
+  }
+]

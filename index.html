@@ -1,285 +1,772 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatGPT 訂閱兌換工具</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>ChatGPT 订阅兑换</title>
+    <meta name="description" content="使用卡密快速兑换 ChatGPT Plus 或 Pro 订阅">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 2s linear infinite;
-            display: inline-block;
-            vertical-align: middle;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(99, 102, 241, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-indigo: #818cf8;
+            --accent-indigo-dark: #6366f1;
+            --accent-emerald: #34d399;
+            --accent-amber: #fbbf24;
+            --accent-rose: #fb7185;
+            --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+            --gradient-2: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+            --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
         }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* 背景动画 */
+        .bg-pattern {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139, 92, 246, 0.08), transparent),
+                radial-gradient(ellipse 50% 30% at 20% 60%, rgba(6, 182, 212, 0.06), transparent);
+        }
+
+        .floating-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.4;
+            animation: float 20s ease-in-out infinite;
+            z-index: 0;
+        }
+
+        .orb-1 { width: 300px; height: 300px; background: #6366f1; top: -100px; right: -50px; animation-delay: 0s; }
+        .orb-2 { width: 200px; height: 200px; background: #8b5cf6; bottom: -50px; left: -50px; animation-delay: -7s; }
+        .orb-3 { width: 150px; height: 150px; background: #06b6d4; top: 50%; left: 50%; animation-delay: -14s; }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            25% { transform: translate(30px, -40px) scale(1.1); }
+            50% { transform: translate(-20px, 20px) scale(0.95); }
+            75% { transform: translate(15px, 30px) scale(1.05); }
+        }
+
+        /* 主容器 */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 40px 20px 60px;
+        }
+
+        /* 头部 */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            background: var(--gradient-1);
+            border-radius: 18px;
+            font-size: 28px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-glow);
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.2); }
+            50% { box-shadow: 0 0 50px rgba(99, 102, 241, 0.4); }
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: var(--gradient-2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        /* 卡片 */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title .icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.15);
+            border-radius: 10px;
+            font-size: 16px;
+        }
+
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            background: var(--gradient-1);
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        /* 输入框 */
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-family: 'Inter', monospace;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input:focus, textarea:focus {
+            border-color: var(--accent-indigo);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        input::placeholder, textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 90px;
+            font-family: 'Inter', monospace;
+            font-size: 13px;
+        }
+
+        .input-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .input-hint a {
+            color: var(--accent-indigo);
+            text-decoration: none;
+        }
+
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: var(--gradient-1);
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* 验证结果 */
+        .verify-result {
+            display: none;
+            padding: 16px;
+            border-radius: 12px;
+            margin-top: 16px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .verify-result.success {
+            display: block;
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+
+        .verify-result.error {
+            display: block;
+            background: rgba(251, 113, 133, 0.1);
+            border: 1px solid rgba(251, 113, 133, 0.2);
+        }
+
+        .verify-result .result-icon {
+            font-size: 20px;
+            margin-bottom: 6px;
+        }
+
+        .verify-result .result-text {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .verify-result.success .result-text { color: var(--accent-emerald); }
+        .verify-result.error .result-text { color: var(--accent-rose); }
+
+        .verify-result .result-detail {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .type-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .type-badge.plus {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent-indigo);
+        }
+
+        .type-badge.pro {
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+        }
+
+        /* 任务状态 */
+        .job-section {
+            display: none;
+            animation: slideUp 0.5s ease;
+        }
+
+        .job-section.visible { display: block; }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.pending { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); }
+        .status-badge.processing { background: rgba(99, 102, 241, 0.15); color: var(--accent-indigo); }
+        .status-badge.done { background: rgba(52, 211, 153, 0.15); color: var(--accent-emerald); }
+        .status-badge.failed { background: rgba(251, 113, 133, 0.15); color: var(--accent-rose); }
+
+        .job-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .job-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .job-info-row .label { color: var(--text-muted); }
+        .job-info-row .value { color: var(--text-primary); font-family: monospace; font-size: 12px; }
+
+        .job-message {
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-top: 16px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .job-message.success {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+            color: var(--accent-emerald);
+        }
+
+        .job-message.error {
+            background: rgba(251, 113, 133, 0.1);
+            border: 1px solid rgba(251, 113, 133, 0.2);
+            color: var(--accent-rose);
+        }
+
+        /* 进度动画 */
+        .progress-bar {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            background: var(--gradient-1);
+            border-radius: 2px;
+            animation: progress-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes progress-pulse {
+            0% { width: 20%; transform: translateX(-100%); }
+            50% { width: 60%; }
+            100% { width: 20%; transform: translateX(500%); }
+        }
+
+        /* 动画 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* 隐藏类 */
+        .hidden { display: none !important; }
+
+        /* 响应式 */
+        @media (max-width: 540px) {
+            .container { padding: 30px 16px 40px; }
+            .card { padding: 20px; }
+            .header h1 { font-size: 24px; }
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--accent-indigo);
+            text-decoration: none;
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen p-4 md:p-8">
-    <div class="max-w-3xl mx-auto space-y-6">
-        <!-- 標題 -->
-        <header class="text-center">
-            <h1 class="text-3xl font-bold text-gray-800">ChatGPT 訂閱兌換</h1>
-            <p class="text-gray-600 mt-2">快速為您的帳號啟用 Plus 或 Pro 訂閱</p>
+<body>
+    <!-- 背景效果 -->
+    <div class="bg-pattern"></div>
+    <div class="floating-orb orb-1"></div>
+    <div class="floating-orb orb-2"></div>
+    <div class="floating-orb orb-3"></div>
+
+    <div class="container">
+        <!-- 标题 -->
+        <header class="header">
+            <div class="logo">⚡</div>
+            <h1>ChatGPT 订阅兑换</h1>
+            <p>使用卡密快速激活 Plus 或 Pro 订阅</p>
         </header>
 
-        <!-- API 配置區域 -->
-        <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 class="text-lg font-semibold mb-4 flex items-center">
-                <span class="mr-2">🔑</span> API 配置
-            </h2>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
-                    <input type="text" id="baseUrl" placeholder="https://api.example.com" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value="https://<your-domain>">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">X-API-Key</label>
-                    <div class="flex gap-2">
-                        <input type="password" id="apiKey" placeholder="輸入您的 API Key" class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                        <button onclick="saveConfig()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">保存並刷新</button>
-                    </div>
-                </div>
-                <div id="balanceSection" class="hidden grid grid-cols-2 gap-4 mt-4 p-4 bg-blue-50 rounded-lg">
-                    <div class="text-center">
-                        <p class="text-sm text-blue-600 font-medium">Plus 餘額</p>
-                        <p id="plusBalance" class="text-2xl font-bold text-blue-800">-</p>
-                    </div>
-                    <div class="text-center border-l border-blue-100">
-                        <p class="text-sm text-blue-600 font-medium">Pro 餘額</p>
-                        <p id="proBalance" class="text-2xl font-bold text-blue-800">-</p>
-                    </div>
-                </div>
+        <!-- 第一步：输入卡密 -->
+        <section class="card" id="step1Card">
+            <div class="card-title">
+                <span class="step-badge">1</span>
+                输入卡密
             </div>
+            <div class="input-group">
+                <label for="cardCodeInput">兑换卡密 (CDK)</label>
+                <input type="text" id="cardCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
+                    autocomplete="off" spellcheck="false"
+                    oninput="this.value = this.value.toUpperCase()">
+            </div>
+            <button class="btn btn-primary" id="verifyBtn" onclick="verifyCard()">
+                验证卡密
+            </button>
+            <div class="verify-result" id="verifyResult"></div>
         </section>
 
-        <!-- 提交兌換區域 -->
-        <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 class="text-lg font-semibold mb-4 flex items-center">
-                <span class="mr-2">🚀</span> 提交兌換
-            </h2>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">ChatGPT Access Token</label>
-                    <textarea id="accessToken" rows="3" placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIs..." class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm"></textarea>
-                    <p class="text-xs text-gray-500 mt-1">從 chatgpt.com/api/auth/session 獲取 accessToken 欄位</p>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">選擇方案 (Workflow)</label>
-                    <div class="grid grid-cols-2 gap-4">
-                        <label class="relative flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
-                            <input type="radio" name="workflow" value="plus" checked class="h-4 w-4 text-blue-600 focus:ring-blue-500">
-                            <span class="ml-3 font-medium">ChatGPT Plus</span>
-                        </label>
-                        <label class="relative flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
-                            <input type="radio" name="workflow" value="pro" class="h-4 w-4 text-blue-600 focus:ring-blue-500">
-                            <span class="ml-3 font-medium">ChatGPT Pro</span>
-                        </label>
-                    </div>
-                </div>
-                <button id="submitBtn" onclick="submitJob()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition disabled:opacity-50">
-                    提交兌換請求
-                </button>
+        <!-- 第二步：输入 Access Token（验证成功后显示） -->
+        <section class="card hidden" id="step2Card">
+            <div class="card-title">
+                <span class="step-badge">2</span>
+                提交兑换
             </div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 16px; background: rgba(99,102,241,0.08); border-radius: 10px;">
+                <span style="font-size: 13px; color: var(--text-secondary);">订阅类型:</span>
+                <span class="type-badge" id="cardTypeBadge"></span>
+            </div>
+            <div class="input-group">
+                <label for="accessTokenInput">ChatGPT Session 数据</label>
+                <textarea id="accessTokenInput" rows="5"
+                    placeholder='{"user":{"id":"...","name":"..."},"expires":"...","accessToken":"eyJhbGciOiJSUzI1NiIs..."}'
+                    spellcheck="false"></textarea>
+                <p class="input-hint">
+                    登录 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 后，访问
+                    <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>，
+                    <strong>全选复制整个页面内容</strong>粘贴到此处，系统会自动提取所需信息
+                </p>
+            </div>
+            <button class="btn btn-primary" id="redeemBtn" onclick="redeemCard()">
+                🚀 提交兑换
+            </button>
         </section>
 
-        <!-- 任務狀態區域 -->
-        <section id="jobSection" class="hidden bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-semibold">任務狀態</h2>
-                <span id="jobBadge" class="px-3 py-1 rounded-full text-xs font-bold uppercase">Pending</span>
+        <!-- 任务状态 -->
+        <section class="card job-section" id="jobSection">
+            <div class="job-header">
+                <div class="card-title" style="margin-bottom: 0;">
+                    <span class="icon">📋</span>
+                    任务状态
+                </div>
+                <span class="status-badge" id="jobBadge">PENDING</span>
             </div>
-            <div class="space-y-3">
-                <div class="flex justify-between text-sm">
-                    <span class="text-gray-500">Job ID:</span>
-                    <span id="jobIdDisplay" class="font-mono text-gray-800"></span>
+            <div class="job-info">
+                <div class="job-info-row">
+                    <span class="label">Job ID</span>
+                    <span class="value" id="jobIdDisplay">-</span>
                 </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-gray-500">當前狀態:</span>
-                    <span id="jobStatusText" class="font-medium">等候中...</span>
-                </div>
-                <div id="jobError" class="hidden p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
-                </div>
-                <div id="jobResult" class="hidden p-3 bg-green-50 text-green-700 rounded-lg text-sm border border-green-100 font-medium">
-                    🎉 訂閱成功！請登入 ChatGPT 檢查狀態。
-                </div>
-                <div class="flex gap-2 mt-4">
-                    <button id="cancelBtn" onclick="cancelJob()" class="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-lg text-sm hover:bg-red-50 transition">取消任務</button>
+                <div class="job-info-row">
+                    <span class="label">当前状态</span>
+                    <span class="value" id="jobStatusText">等候中...</span>
                 </div>
             </div>
+            <div class="progress-bar" id="progressBar">
+                <div class="fill"></div>
+            </div>
+            <div class="job-message success hidden" id="jobResultMsg">
+                🎉 订阅成功！请登录 ChatGPT 检查状态。
+            </div>
+            <div class="job-message error hidden" id="jobErrorMsg"></div>
+            <button class="btn btn-outline hidden" id="retryBtn" onclick="resetForm()" style="margin-top: 16px;">
+                兑换另一张卡密
+            </button>
         </section>
+
+        <footer class="footer">
+            <p>请妥善保管您的卡密，一张卡密仅可使用一次</p>
+        </footer>
     </div>
 
     <script>
+        // 状态
+        let verifiedCard = null;
         let currentJobId = null;
         let isPolling = false;
 
-        // 初始化加載
-        window.onload = () => {
-            const savedApiKey = localStorage.getItem('chatgpt_api_key');
-            const savedBaseUrl = localStorage.getItem('chatgpt_base_url');
-            if (savedApiKey) {
-                document.getElementById('apiKey').value = savedApiKey;
-                if (savedBaseUrl) document.getElementById('baseUrl').value = savedBaseUrl;
-                refreshBalance();
-            }
-        };
+        // ========== 卡密验证 ==========
+        async function verifyCard() {
+            const code = document.getElementById('cardCodeInput').value.trim();
+            const btn = document.getElementById('verifyBtn');
+            const resultDiv = document.getElementById('verifyResult');
 
-        function saveConfig() {
-            const key = document.getElementById('apiKey').value.trim();
-            const url = document.getElementById('baseUrl').value.trim();
-            if (!key) return alert('請輸入 API Key');
-            localStorage.setItem('chatgpt_api_key', key);
-            localStorage.setItem('chatgpt_base_url', url);
-            refreshBalance();
-        }
-
-        async function apiFetch(path, options = {}) {
-            const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
-            const apiKey = document.getElementById('apiKey').value;
-            
-            // 檢測是否在本地代理服務器運行
-            const isLocalProxy = window.location.port === '3000';
-            
-            let url, headers;
-            if (isLocalProxy) {
-                // 通過本地 /api-proxy 轉發
-                url = `/api-proxy${path}`;
-                headers = {
-                    'x-target-url': baseUrl, // 告知代理服務器目標地址
-                    'X-API-Key': apiKey,
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                };
-            } else {
-                // 直接請求 (可能會有 CORS 限制)
-                url = `${baseUrl}${path}`;
-                headers = {
-                    'X-API-Key': apiKey,
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                };
+            if (!code) {
+                showVerifyError('请输入卡密');
+                return;
             }
 
-            const response = await fetch(url, {
-                ...options,
-                headers
-            });
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 验证中...';
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ detail: '未知錯誤' }));
-                throw new Error(errorData.detail || `HTTP ${response.status}`);
-            }
-
-            return response.json();
-        }
-
-        async function refreshBalance() {
             try {
-                const data = await apiFetch('/balance');
-                document.getElementById('plusBalance').innerText = data.balances.plus;
-                document.getElementById('proBalance').innerText = data.balances.pro;
-                document.getElementById('balanceSection').classList.remove('hidden');
+                const res = await fetch('/api/card/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showVerifyError(data.error || '验证失败');
+                    return;
+                }
+
+                // 验证成功
+                verifiedCard = { code, type: data.type };
+                resultDiv.className = 'verify-result success';
+                resultDiv.innerHTML = `
+                    <div class="result-icon">✅</div>
+                    <div class="result-text">卡密有效</div>
+                    <div class="result-detail">
+                        类型: <span class="type-badge ${data.type}">${data.type.toUpperCase()}</span>
+                    </div>
+                `;
+
+                // 显示第二步
+                const step2 = document.getElementById('step2Card');
+                step2.classList.remove('hidden');
+                const badge = document.getElementById('cardTypeBadge');
+                badge.className = `type-badge ${data.type}`;
+                badge.textContent = data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro';
+
+                // 锁定卡密输入
+                document.getElementById('cardCodeInput').readOnly = true;
+                btn.textContent = '✓ 已验证';
+                btn.disabled = true;
+
+                // 滚动到第二步
+                setTimeout(() => {
+                    step2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 200);
+
             } catch (err) {
-                console.error(err);
-                alert('刷新餘額失敗: ' + err.message);
+                showVerifyError('网络错误，请检查连接');
+            } finally {
+                if (!verifiedCard) {
+                    btn.disabled = false;
+                    btn.textContent = '验证卡密';
+                }
             }
         }
 
-        async function submitJob() {
-            let accessToken = document.getElementById('accessToken').value.trim();
-            const workflow = document.querySelector('input[name="workflow"]:checked').value;
-            const submitBtn = document.getElementById('submitBtn');
+        function showVerifyError(message) {
+            const resultDiv = document.getElementById('verifyResult');
+            resultDiv.className = 'verify-result error';
+            resultDiv.innerHTML = `
+                <div class="result-icon">❌</div>
+                <div class="result-text">${message}</div>
+            `;
+        }
 
-            if (!accessToken) return alert('請輸入 Access Token');
+        // ========== 兑换提交 ==========
+        async function redeemCard() {
+            if (!verifiedCard) {
+                alert('请先验证卡密');
+                return;
+            }
 
-            // 自動解析邏輯：如果用戶粘貼了整個 JSON 響應，嘗試提取 accessToken
+            let accessToken = document.getElementById('accessTokenInput').value.trim();
+            const btn = document.getElementById('redeemBtn');
+
+            if (!accessToken) {
+                alert('请粘贴 api/auth/session 的完整内容');
+                return;
+            }
+
+            // 自动从 session JSON 中提取 accessToken
             if (accessToken.startsWith('{')) {
                 try {
                     const json = JSON.parse(accessToken);
                     if (json.accessToken) {
                         accessToken = json.accessToken;
-                        document.getElementById('accessToken').value = accessToken; // 回填簡化後的 token
+                    } else {
+                        alert('粘贴的 JSON 中未找到 accessToken 字段，请确认内容是否正确');
+                        return;
                     }
                 } catch (e) {
-                    // 不是有效的 JSON，保持原樣
+                    alert('粘贴的内容格式不正确，请直接复制 api/auth/session 页面的全部内容');
+                    return;
                 }
             }
 
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 提交中...';
+
             try {
-                submitBtn.disabled = true;
-                submitBtn.innerText = '正在提交...';
-
-                console.log('正在提交任務:', { workflow, tokenLength: accessToken.length });
-
-                const data = await apiFetch('/submit', {
+                const res = await fetch('/api/card/redeem', {
                     method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        access_token: accessToken,
-                        workflow: workflow
+                        code: verifiedCard.code,
+                        access_token: accessToken
                     })
                 });
 
+                const data = await res.json();
+
+                if (!res.ok) {
+                    alert('兑换失败: ' + (data.error || '未知错误'));
+                    btn.disabled = false;
+                    btn.textContent = '🚀 提交兑换';
+                    return;
+                }
+
+                // 成功提交
                 currentJobId = data.job_id;
-                showJobStatus(data);
+                showJobStatus({ job_id: data.job_id, status: data.status });
+
+                // 隐藏前两步
+                document.getElementById('step1Card').classList.add('hidden');
+                document.getElementById('step2Card').classList.add('hidden');
+
+                // 开始轮询
                 startPolling();
-                refreshBalance();
+
             } catch (err) {
-                console.error('提交失敗:', err);
-                alert('提交失敗: ' + err.message + '\n\n請檢查：\n1. Access Token 是否過期\n2. Workflow 選擇是否正確\n3. API Key 權限');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerText = '提交兌換請求';
+                alert('网络错误: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = '🚀 提交兑换';
             }
         }
 
+        // ========== 任务状态 ==========
         function showJobStatus(job) {
-            document.getElementById('jobSection').classList.remove('hidden');
-            document.getElementById('jobIdDisplay').innerText = job.job_id;
-            document.getElementById('jobStatusText').innerText = getStatusDesc(job.status);
-            
-            const badge = document.getElementById('jobBadge');
-            badge.innerText = job.status;
-            
-            // 狀態顏色
-            badge.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase ';
-            if (job.status === 'pending') badge.className += 'bg-yellow-100 text-yellow-700';
-            else if (job.status === 'processing') badge.className += 'bg-blue-100 text-blue-700';
-            else if (job.status === 'done') badge.className += 'bg-green-100 text-green-700';
-            else if (job.status === 'failed') badge.className += 'bg-red-100 text-red-700';
+            const section = document.getElementById('jobSection');
+            section.classList.add('visible');
 
-            // 結果顯示
+            document.getElementById('jobIdDisplay').textContent = job.job_id || '-';
+            document.getElementById('jobStatusText').textContent = getStatusDesc(job.status);
+
+            const badge = document.getElementById('jobBadge');
+            badge.textContent = job.status?.toUpperCase() || 'PENDING';
+            badge.className = `status-badge ${job.status || 'pending'}`;
+
+            const progressBar = document.getElementById('progressBar');
+            const resultMsg = document.getElementById('jobResultMsg');
+            const errorMsg = document.getElementById('jobErrorMsg');
+            const retryBtn = document.getElementById('retryBtn');
+
             if (job.status === 'done') {
-                document.getElementById('jobResult').classList.remove('hidden');
-                document.getElementById('jobError').classList.add('hidden');
-                document.getElementById('cancelBtn').classList.add('hidden');
+                progressBar.classList.add('hidden');
+                resultMsg.classList.remove('hidden');
+                errorMsg.classList.add('hidden');
+                retryBtn.classList.remove('hidden');
             } else if (job.status === 'failed') {
-                document.getElementById('jobError').classList.remove('hidden');
-                document.getElementById('jobError').innerText = '失敗原因: ' + (job.error || '未知');
-                document.getElementById('jobResult').classList.add('hidden');
-                document.getElementById('cancelBtn').classList.add('hidden');
+                progressBar.classList.add('hidden');
+                resultMsg.classList.add('hidden');
+                errorMsg.classList.remove('hidden');
+                errorMsg.textContent = '❌ 兑换失败: ' + (job.error || '未知原因') + '（卡密已自动退回）';
+                retryBtn.classList.remove('hidden');
             } else {
-                document.getElementById('jobResult').classList.add('hidden');
-                document.getElementById('jobError').classList.add('hidden');
-                document.getElementById('cancelBtn').classList.toggle('hidden', job.status !== 'pending');
+                progressBar.classList.remove('hidden');
+                resultMsg.classList.add('hidden');
+                errorMsg.classList.add('hidden');
+                retryBtn.classList.add('hidden');
             }
         }
 
         function getStatusDesc(status) {
-            switch(status) {
-                case 'pending': return '排隊等待中...';
-                case 'processing': return '系統處理中，請稍候...';
-                case 'done': return '處理完成';
-                case 'failed': return '處理失敗';
-                default: return status;
-            }
+            const map = {
+                pending: '排队等待中...',
+                processing: '系统处理中，请稍候...',
+                done: '✅ 兑换成功',
+                failed: '兑换失败'
+            };
+            return map[status] || status;
         }
 
         async function startPolling() {
@@ -288,44 +775,54 @@
 
             while (isPolling && currentJobId) {
                 try {
-                    // 使用 Long-polling: wait=30
-                    const job = await apiFetch(`/job/${currentJobId}?wait=30`);
+                    const res = await fetch(`/api/card/job/${currentJobId}?wait=30`);
+                    if (!res.ok) {
+                        if (res.status === 404) {
+                            isPolling = false;
+                            showJobStatus({ job_id: currentJobId, status: 'failed', error: '任务不存在或已过期' });
+                            break;
+                        }
+                        await new Promise(r => setTimeout(r, 5000));
+                        continue;
+                    }
+
+                    const job = await res.json();
                     showJobStatus(job);
 
                     if (job.status === 'done' || job.status === 'failed') {
                         isPolling = false;
-                        refreshBalance(); // 失敗會自動退費，完成也可能更新，刷新餘額
                         break;
                     }
                 } catch (err) {
-                    console.error('輪詢出錯:', err);
-                    if (err.message.includes('404')) {
-                        isPolling = false;
-                        alert('任務已失效或不存在');
-                        break;
-                    }
-                    // 其他錯誤稍後重試，避免死循環過快
+                    console.error('轮询出错:', err);
                     await new Promise(r => setTimeout(r, 5000));
                 }
             }
         }
 
-        async function cancelJob() {
-            if (!currentJobId) return;
-            if (!confirm('確定要取消這個排隊中的任務嗎？')) return;
+        function resetForm() {
+            verifiedCard = null;
+            currentJobId = null;
+            isPolling = false;
 
-            try {
-                const job = await apiFetch(`/job/${currentJobId}`, {
-                    method: 'DELETE'
-                });
-                showJobStatus(job);
-                isPolling = false;
-                refreshBalance();
-                alert('任務已成功取消並退費');
-            } catch (err) {
-                alert('取消失敗: ' + err.message);
-            }
+            document.getElementById('cardCodeInput').value = '';
+            document.getElementById('cardCodeInput').readOnly = false;
+            document.getElementById('accessTokenInput').value = '';
+            document.getElementById('verifyBtn').textContent = '验证卡密';
+            document.getElementById('verifyBtn').disabled = false;
+            document.getElementById('verifyResult').className = 'verify-result';
+            document.getElementById('verifyResult').innerHTML = '';
+            document.getElementById('step1Card').classList.remove('hidden');
+            document.getElementById('step2Card').classList.add('hidden');
+            document.getElementById('jobSection').classList.remove('visible');
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
+
+        // 回车键验证
+        document.getElementById('cardCodeInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') verifyCard();
+        });
     </script>
 </body>
 </html>
