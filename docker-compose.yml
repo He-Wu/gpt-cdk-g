@@ -10,8 +10,14 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-      # 管理员密码，生产环境请修改
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Asd=235689030466}
+      # 必填：管理员密码（不可留空）
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?请在 .env 文件中设置 ADMIN_PASSWORD}
+      # 推荐：自定义管理后台路径，不设置则每次重启随机生成
+      - ADMIN_PATH=${ADMIN_PATH:-}
+      # 可选：跨域来源（留空则只允许同源）
+      # - ALLOWED_ORIGIN=https://yourdomain.com
+      # 可选：代理白名单（默认 chatgpt.com,chat.openai.com）
+      # - PROXY_ALLOWED_HOSTS=chatgpt.com,chat.openai.com
     volumes:
       # 持久化卡密数据、兑换记录、API 设置
       - ./data:/app/data

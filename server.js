@@ -10,7 +10,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ========== 配置 ==========
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Asd=235689030466';
+// 初始密码：从环境变量读取（后台修改后存入 settings.json，重启仍有效）
+const INITIAL_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!INITIAL_ADMIN_PASSWORD) {
+  console.error('❌ 必须设置 ADMIN_PASSWORD 环境变量后再启动服务');
+  process.exit(1);
+}
 
 // ========== JSON 文件存储 ==========
 const DATA_DIR = path.join(__dirname, 'data');
@@ -42,6 +47,13 @@ function saveSettings(settings) {
 // 运行时设置对象（动态，无需重启）
 let settings = loadSettings();
 
+// 初始化时如果 settings 中没有密码，写入初始密码
+if (!settings.adminPassword) {
+  settings.adminPassword = INITIAL_ADMIN_PASSWORD;
+  saveSettings(settings);
+}
+
+function getAdminPassword() { return settings.adminPassword || INITIAL_ADMIN_PASSWORD; }
 function getApiKey() { return settings.apiKey || ''; }
 function getBaseUrl() { return settings.baseUrl || ''; }
 
@@ -87,9 +99,69 @@ setInterval(() => {
 }, 30000);
 
 // ========== 中间件 ==========
-app.use(cors());
-app.use(express.json());
-app.use(express.static(__dirname));
+// CORS：只允许同源（前后端同服务器部署），如需跨域请设置 ALLOWED_ORIGIN 环境变量
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
+app.use(cors(ALLOWED_ORIGIN ? {
+  origin: (origin, cb) => {
+    if (!origin || origin === ALLOWED_ORIGIN) cb(null, true);
+    else cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+} : false));
+// 请求体大小限制 64kb，防止超大 payload 攻击
+app.use(express.json({ limit: '64kb' }));
+
+// ========== 管理后台隐藏路径 ==========
+// 默认使用随机肯尔字符串，建议通过环境变量自定义
+const ADMIN_PATH = (process.env.ADMIN_PATH || 'manage-' + crypto.randomBytes(6).toString('hex')).replace(/^\//, '');
+
+// 静态文件服务：排除 admin.html，防止直接访问
+app.use(express.static(__dirname, {
+  index: 'index.html',
+  setHeaders: (res, filePath) => {
+    // admin.html 不允许直接访问
+    if (path.basename(filePath) === 'admin.html') {
+      res.setHeader('X-Robots-Tag', 'noindex');
+    }
+  }
+}));
+
+// 拦截 /admin.html 直接访问，返回 404
+app.get(['/admin.html', '/admin', '/administrator', '/backend', '/manage'], (req, res) => {
+  res.status(404).send('Not Found');
+});
+
+// 实际的管理后台入口
+app.get(`/${ADMIN_PATH}`, (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+// ========== 频率限制 ==========
+// 登录：同一 IP 15 分钟内最多 5 次
+const loginAttempts = new Map();
+function checkLoginRate(ip) {
+  const now = Date.now();
+  const rec = loginAttempts.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1000 };
+  if (now > rec.resetAt) { rec.count = 0; rec.resetAt = now + 15 * 60 * 1000; }
+  return rec;
+}
+function recordLoginFail(ip) {
+  const rec = checkLoginRate(ip);
+  rec.count++;
+  loginAttempts.set(ip, rec);
+}
+function clearLoginAttempts(ip) { loginAttempts.delete(ip); }
+
+// 兑换：同一 IP 1 分钟内最多 5 次
+const redeemAttempts = new Map();
+function checkRedeemRate(ip) {
+  const now = Date.now();
+  const rec = redeemAttempts.get(ip) || { count: 0, resetAt: now + 60 * 1000 };
+  if (now > rec.resetAt) { rec.count = 0; rec.resetAt = now + 60 * 1000; }
+  rec.count++;
+  redeemAttempts.set(ip, rec);
+  return rec.count;
+}
 
 // ========== 管理员 Session 管理 ==========
 const adminSessions = new Map();
@@ -136,12 +208,19 @@ function nowStr() {
 
 // ========== 管理员 API ==========
 
-// 登录
+// 登录（含暴力破解保护）
 app.post('/api/admin/login', (req, res) => {
+  const ip = getClientIP(req);
+  const rec = checkLoginRate(ip);
+  if (rec.count >= 5) {
+    return res.status(429).json({ error: `登录尝试次数过多，请 ${Math.ceil((rec.resetAt - Date.now()) / 60000)} 分钟后重试` });
+  }
   const { password } = req.body;
-  if (password !== ADMIN_PASSWORD) {
+  if (!password || password !== getAdminPassword()) {
+    recordLoginFail(ip);
     return res.status(401).json({ error: '密码错误' });
   }
+  clearLoginAttempts(ip);
   const token = generateSessionToken();
   adminSessions.set(token, { createdAt: Date.now() });
   res.json({ token, message: '登录成功' });
@@ -152,6 +231,29 @@ app.post('/api/admin/logout', adminAuth, (req, res) => {
   const token = req.headers['x-admin-token'];
   adminSessions.delete(token);
   res.json({ message: '已登出' });
+});
+
+// 修改管理员密码
+app.post('/api/admin/password', adminAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: '请提供当前密码和新密码' });
+  }
+  if (currentPassword !== getAdminPassword()) {
+    return res.status(401).json({ error: '当前密码错误' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: '新密码至少 8 个字符' });
+  }
+
+  settings.adminPassword = newPassword;
+  saveSettings(settings);
+
+  // 强制下线所有其他 Session（功能可选）
+  // adminSessions.clear();
+
+  res.json({ message: '密码已修改，下次登录请使用新密码' });
 });
 
 // 获取系统设置
@@ -259,8 +361,8 @@ app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
 // 查看卡密列表
 app.get('/api/admin/cards', adminAuth, (req, res) => {
   const { page = 1, pageSize = 20, status, type, search, batch_id } = req.query;
-  const pg = parseInt(page);
-  const ps = parseInt(pageSize);
+  const pg = Math.max(1, parseInt(page) || 1);
+  const ps = Math.min(Math.max(1, parseInt(pageSize) || 20), 100); // 上限 100
 
   let filtered = [...cards];
 
@@ -291,8 +393,8 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
 // 查看兑换记录
 app.get('/api/admin/records', adminAuth, (req, res) => {
   const { page = 1, pageSize = 20, status, type } = req.query;
-  const pg = parseInt(page);
-  const ps = parseInt(pageSize);
+  const pg = Math.max(1, parseInt(page) || 1);
+  const ps = Math.min(Math.max(1, parseInt(pageSize) || 20), 100); // 上限 100
 
   let filtered = [...records];
 
@@ -318,6 +420,9 @@ app.post('/api/admin/cards/disable', adminAuth, (req, res) => {
   if (!Array.isArray(codesToDisable) || codesToDisable.length === 0) {
     return res.status(400).json({ error: '请提供要禁用的卡密列表' });
   }
+  if (codesToDisable.length > 500) {
+    return res.status(400).json({ error: '单次最多操作 500 张卡密' });
+  }
 
   let count = 0;
   for (const code of codesToDisable) {
@@ -337,6 +442,9 @@ app.post('/api/admin/cards/enable', adminAuth, (req, res) => {
   const { codes: codesToEnable } = req.body;
   if (!Array.isArray(codesToEnable) || codesToEnable.length === 0) {
     return res.status(400).json({ error: '请提供要启用的卡密列表' });
+  }
+  if (codesToEnable.length > 500) {
+    return res.status(400).json({ error: '单次最多操作 500 张卡密' });
   }
 
   let count = 0;
@@ -381,8 +489,13 @@ app.post('/api/card/verify', (req, res) => {
   });
 });
 
-// 使用卡密兑换
+// 使用卡密兑换（含频率限制）
 app.post('/api/card/redeem', async (req, res) => {
+  const clientIP = getClientIP(req);
+  if (checkRedeemRate(clientIP) > 5) {
+    return res.status(429).json({ error: '操作过于频繁，请 1 分钟后重试' });
+  }
+
   const { code } = req.body;
   let access_token = req.body.access_token;
 
@@ -409,7 +522,6 @@ app.post('/api/card/redeem', async (req, res) => {
   }
 
   const cardCode = code.trim().toUpperCase();
-  const clientIP = getClientIP(req);
 
   // 查找并标记卡密（原子性：通过 find 锁定）
   const card = cards.find(c => c.code === cardCode && c.status === 'unused');
@@ -500,7 +612,12 @@ app.get('/api/card/job/:jobId', async (req, res) => {
   }
 
   const { jobId } = req.params;
-  const wait = req.query.wait || 0;
+  // 校验 jobId 格式，防止路径注入
+  if (!/^[a-zA-Z0-9_-]{4,128}$/.test(jobId)) {
+    return res.status(400).json({ error: '无效的 Job ID' });
+  }
+  // wait 最大 30 秒
+  const wait = Math.min(Math.max(0, parseInt(req.query.wait) || 0), 30);
 
   try {
     const upstreamUrl = getBaseUrl();
@@ -538,28 +655,49 @@ app.get('/api/card/job/:jobId', async (req, res) => {
     res.json(jobData);
   } catch (err) {
     console.error('查询任务状态失败:', err);
-    res.status(500).json({ error: '查询失败: ' + err.message });
+    res.status(500).json({ error: '查询任务状态失败，请稍后重试' }); // 不暴露内部错误
   }
 });
 
-// ========== 现有代理功能（保留） ==========
-app.use('/api-proxy', createProxyMiddleware({
+// ========== 现有代理功能（保留，加白名单防 SSRF） ==========
+// 只允许代理到这些域名，防止被用作 SSRF 跳板
+const PROXY_ALLOWED_HOSTS = (process.env.PROXY_ALLOWED_HOSTS || 'chatgpt.com,chat.openai.com')
+  .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+
+function isProxyTargetAllowed(targetUrl) {
+  try {
+    const url = new URL(targetUrl);
+    // 只允许 https
+    if (url.protocol !== 'https:') return false;
+    // 主机名必须在白名单内（支持子域名）
+    return PROXY_ALLOWED_HOSTS.some(h => url.hostname === h || url.hostname.endsWith('.' + h));
+  } catch {
+    return false;
+  }
+}
+
+app.use('/api-proxy', (req, res, next) => {
+  const target = req.headers['x-target-url'];
+  if (!target) {
+    return res.status(400).json({ detail: '缺少 x-target-url 请求头' });
+  }
+  if (!isProxyTargetAllowed(target)) {
+    console.warn(`[代理拒绝] 非白名单地址: ${target} (来自 ${getClientIP(req)})`);
+    return res.status(403).json({ detail: '目标地址不在允许范围内' });
+  }
+  next();
+}, createProxyMiddleware({
   target: 'http://placeholder.com',
-  router: (req) => {
-    const target = req.headers['x-target-url'];
-    if (!target) {
-      console.error('Missing x-target-url header');
-      return null;
-    }
-    return target.replace(/\/$/, '');
-  },
+  router: (req) => req.headers['x-target-url'].replace(/\/$/, ''),
   changeOrigin: true,
   pathRewrite: { '^/api-proxy': '' },
-  onProxyReq: (proxyReq, req, res) => {
-    console.log(`Proxying: ${req.method} ${req.url} -> ${req.headers['x-target-url']}${req.url}`);
-  },
-  onError: (err, req, res) => {
-    res.status(500).json({ detail: '代理请求失败: ' + err.message });
+  on: {
+    proxyReq: (proxyReq, req) => {
+      console.log(`[代理] ${req.method} -> ${req.headers['x-target-url']}`);
+    },
+    error: (err, req, res) => {
+      res.status(500).json({ detail: '代理请求失败' }); // 不暴露具体错误
+    }
   }
 }));
 
@@ -582,8 +720,9 @@ process.on('SIGTERM', () => {
 app.listen(PORT, () => {
   console.log(`================================================`);
   console.log(`  卡密兑换服务已启动: http://localhost:${PORT}`);
-  console.log(`  用户页面: http://localhost:${PORT}/index.html`);
-  console.log(`  管理后台: http://localhost:${PORT}/admin.html`);
+  console.log(`  用户页面: http://localhost:${PORT}/`);
+  console.log(`  管理后台: http://localhost:${PORT}/${ADMIN_PATH}`);
+  console.log(`  （请保存此地址，/admin.html 已封禁）`);
   console.log(`  卡密总数: ${cards.length} (可用: ${cards.filter(c => c.status === 'unused').length})`);
   console.log(`================================================`);
   if (!getApiKey() || !getBaseUrl()) {

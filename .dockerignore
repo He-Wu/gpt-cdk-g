@@ -3,4 +3,6 @@ node_modules
 .gitignore
 *.md
 *.log
-.env*
+.env
+data
+data-staging

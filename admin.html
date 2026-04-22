@@ -908,6 +908,30 @@
                     <p style="margin-top:8px;">4. 仪表盘会显示当前配置是否已就绪</p>
                 </div>
             </div>
+
+            <!-- 修改密码 -->
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom:20px;">🔑 修改管理员密码</div>
+                <div style="display:flex;flex-direction:column;gap:16px;max-width:560px;">
+                    <div class="form-group">
+                        <label>当前密码</label>
+                        <input type="password" id="pwdCurrent" placeholder="输入当前密码" autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label>新密码 <span style="color:var(--text-muted);font-weight:400;">（至少 8 位）</span></label>
+                        <input type="password" id="pwdNew" placeholder="输入新密码" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label>确认新密码</label>
+                        <input type="password" id="pwdConfirm" placeholder="再次输入新密码" autocomplete="new-password">
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="changePwdBtn" onclick="changePassword()">
+                            🔑 确认修改
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </main>
@@ -1356,6 +1380,53 @@
         } else {
             input.type = 'password';
             btn.textContent = '👁';
+        }
+    }
+
+    // ========== 修改密码 ==========
+    async function changePassword() {
+        const currentPassword = document.getElementById('pwdCurrent').value;
+        const newPassword = document.getElementById('pwdNew').value;
+        const confirmPassword = document.getElementById('pwdConfirm').value;
+        const btn = document.getElementById('changePwdBtn');
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            showToast('请填写所有密码字段', 'error');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            showToast('两次输入的新密码不一致', 'error');
+            return;
+        }
+        if (newPassword.length < 8) {
+            showToast('新密码至少 8 个字符', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 修改中...';
+
+        try {
+            const res = await adminFetch('/api/admin/password', {
+                method: 'POST',
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                showToast(data.error || '修改失败', 'error');
+                return;
+            }
+
+            showToast(data.message, 'success');
+            document.getElementById('pwdCurrent').value = '';
+            document.getElementById('pwdNew').value = '';
+            document.getElementById('pwdConfirm').value = '';
+        } catch (err) {
+            showToast('网络错误: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔑 确认修改';
         }
     }
 </script>

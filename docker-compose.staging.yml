@@ -1,0 +1,33 @@
+# 预发布测试环境配置（Staging）
+# 用法: docker compose -f docker-compose.staging.yml up -d --build
+
+services:
+  app-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: miao-gpt-staging
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=staging
+      # 管理员密码（staging 可与生产使用不同密码）
+      - ADMIN_PASSWORD=${STAGING_ADMIN_PASSWORD:-staging_change_me_123}
+      # 管理后台路径（staging 固定路径方便测试）
+      - ADMIN_PATH=${STAGING_ADMIN_PATH:-staging-admin-panel}
+      # 代理白名单
+      - PROXY_ALLOWED_HOSTS=chatgpt.com,chat.openai.com
+    volumes:
+      # staging 数据与生产完全隔离
+      - ./data-staging:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "env=staging"
+      - "app=miao-gpt"
