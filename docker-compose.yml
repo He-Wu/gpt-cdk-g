@@ -1,0 +1,23 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: miao-gpt
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # 管理员密码，生产环境请修改
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Asd=235689030466}
+    volumes:
+      # 持久化卡密数据、兑换记录、API 设置
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

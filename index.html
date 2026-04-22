@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatGPT 订阅兑换</title>
+    <title>喵喵GPT源头 - 订阅兑换</title>
     <meta name="description" content="使用卡密快速兑换 ChatGPT Plus 或 Pro 订阅">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -474,6 +474,94 @@
             color: var(--accent-indigo);
             text-decoration: none;
         }
+
+        /* 警告框 */
+        .notice-warning {
+            background: rgba(251, 191, 36, 0.08);
+            border: 1px solid rgba(251, 191, 36, 0.25);
+            border-radius: 14px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+        }
+
+        .notice-warning .notice-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fbbf24;
+            margin-bottom: 10px;
+        }
+
+        .notice-warning .notice-body {
+            font-size: 13px;
+            color: #94a3b8;
+            line-height: 1.7;
+        }
+
+        .notice-warning .notice-body strong {
+            color: #fbbf24;
+        }
+
+        /* 使用说明 */
+        .guide-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+        }
+
+        .guide-card .guide-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .steps-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .steps-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .steps-list .step-num {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent-indigo);
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 1px;
+        }
+
+        .steps-list li a {
+            color: var(--accent-indigo);
+            text-decoration: none;
+        }
+
+        .steps-list li strong {
+            color: var(--text-primary);
+        }
     </style>
 </head>
 <body>
@@ -487,9 +575,46 @@
         <!-- 标题 -->
         <header class="header">
             <div class="logo">⚡</div>
-            <h1>ChatGPT 订阅兑换</h1>
+            <h1>喵喵GPT源头</h1>
             <p>使用卡密快速激活 Plus 或 Pro 订阅</p>
         </header>
+
+        <!-- 重要警告 -->
+        <div class="notice-warning">
+            <div class="notice-title">⚠️ 兑换前必读</div>
+            <div class="notice-body">
+                <strong>已订阅 Plus / Pro 且未到期的用户，请勿兑换！</strong><br>
+                本工具不会覆盖或延长现有订阅期，充入后卡密将直接消耗且无法退回。
+                如您已有活跃会员，请在到期后再兑换。
+            </div>
+        </div>
+
+        <!-- 使用说明 -->
+        <div class="guide-card">
+            <div class="guide-title">📖 使用步骤</div>
+            <ol class="steps-list">
+                <li>
+                    <span class="step-num">1</span>
+                    <span>苹果手机请在 <strong>Safari 浏览器</strong>中打开 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 并登录账号，其他设备使用任意浏览器即可</span>
+                </li>
+                <li>
+                    <span class="step-num">2</span>
+                    <span>登录后，在同一浏览器中访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a></span>
+                </li>
+                <li>
+                    <span class="step-num">3</span>
+                    <span>页面会显示一大串 JSON 文本，<strong>全选并复制所有内容</strong></span>
+                </li>
+                <li>
+                    <span class="step-num">4</span>
+                    <span>输入卡密 → 验证通过 → 将复制的内容粘贴到输入框 → 提交兑换</span>
+                </li>
+                <li>
+                    <span class="step-num">5</span>
+                    <span>兑换成功后，稍等 <strong>30 秒</strong> 再登录 ChatGPT 查看订阅状态</span>
+                </li>
+            </ol>
+        </div>
 
         <!-- 第一步：输入卡密 -->
         <section class="card" id="step1Card">
@@ -567,7 +692,7 @@
         </section>
 
         <footer class="footer">
-            <p>请妥善保管您的卡密，一张卡密仅可使用一次</p>
+            <p>一张卡密仅可使用一次 · 已有活跃会员请在到期后再兑换</p>
         </footer>
     </div>
 
