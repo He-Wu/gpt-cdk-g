@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT 訂閱兌換工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 2s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+        <!-- 標題 -->
+        <header class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">ChatGPT 訂閱兌換</h1>
+            <p class="text-gray-600 mt-2">快速為您的帳號啟用 Plus 或 Pro 訂閱</p>
+        </header>
+
+        <!-- API 配置區域 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h2 class="text-lg font-semibold mb-4 flex items-center">
+                <span class="mr-2">🔑</span> API 配置
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
+                    <input type="text" id="baseUrl" placeholder="https://api.example.com" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" value="https://<your-domain>">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">X-API-Key</label>
+                    <div class="flex gap-2">
+                        <input type="password" id="apiKey" placeholder="輸入您的 API Key" class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <button onclick="saveConfig()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">保存並刷新</button>
+                    </div>
+                </div>
+                <div id="balanceSection" class="hidden grid grid-cols-2 gap-4 mt-4 p-4 bg-blue-50 rounded-lg">
+                    <div class="text-center">
+                        <p class="text-sm text-blue-600 font-medium">Plus 餘額</p>
+                        <p id="plusBalance" class="text-2xl font-bold text-blue-800">-</p>
+                    </div>
+                    <div class="text-center border-l border-blue-100">
+                        <p class="text-sm text-blue-600 font-medium">Pro 餘額</p>
+                        <p id="proBalance" class="text-2xl font-bold text-blue-800">-</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 提交兌換區域 -->
+        <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h2 class="text-lg font-semibold mb-4 flex items-center">
+                <span class="mr-2">🚀</span> 提交兌換
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ChatGPT Access Token</label>
+                    <textarea id="accessToken" rows="3" placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIs..." class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm"></textarea>
+                    <p class="text-xs text-gray-500 mt-1">從 chatgpt.com/api/auth/session 獲取 accessToken 欄位</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">選擇方案 (Workflow)</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="relative flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
+                            <input type="radio" name="workflow" value="plus" checked class="h-4 w-4 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-3 font-medium">ChatGPT Plus</span>
+                        </label>
+                        <label class="relative flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
+                            <input type="radio" name="workflow" value="pro" class="h-4 w-4 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-3 font-medium">ChatGPT Pro</span>
+                        </label>
+                    </div>
+                </div>
+                <button id="submitBtn" onclick="submitJob()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition disabled:opacity-50">
+                    提交兌換請求
+                </button>
+            </div>
+        </section>
+
+        <!-- 任務狀態區域 -->
+        <section id="jobSection" class="hidden bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">任務狀態</h2>
+                <span id="jobBadge" class="px-3 py-1 rounded-full text-xs font-bold uppercase">Pending</span>
+            </div>
+            <div class="space-y-3">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Job ID:</span>
+                    <span id="jobIdDisplay" class="font-mono text-gray-800"></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">當前狀態:</span>
+                    <span id="jobStatusText" class="font-medium">等候中...</span>
+                </div>
+                <div id="jobError" class="hidden p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
+                </div>
+                <div id="jobResult" class="hidden p-3 bg-green-50 text-green-700 rounded-lg text-sm border border-green-100 font-medium">
+                    🎉 訂閱成功！請登入 ChatGPT 檢查狀態。
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button id="cancelBtn" onclick="cancelJob()" class="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-lg text-sm hover:bg-red-50 transition">取消任務</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let currentJobId = null;
+        let isPolling = false;
+
+        // 初始化加載
+        window.onload = () => {
+            const savedApiKey = localStorage.getItem('chatgpt_api_key');
+            const savedBaseUrl = localStorage.getItem('chatgpt_base_url');
+            if (savedApiKey) {
+                document.getElementById('apiKey').value = savedApiKey;
+                if (savedBaseUrl) document.getElementById('baseUrl').value = savedBaseUrl;
+                refreshBalance();
+            }
+        };
+
+        function saveConfig() {
+            const key = document.getElementById('apiKey').value.trim();
+            const url = document.getElementById('baseUrl').value.trim();
+            if (!key) return alert('請輸入 API Key');
+            localStorage.setItem('chatgpt_api_key', key);
+            localStorage.setItem('chatgpt_base_url', url);
+            refreshBalance();
+        }
+
+        async function apiFetch(path, options = {}) {
+            const baseUrl = document.getElementById('baseUrl').value.replace(/\/$/, '');
+            const apiKey = document.getElementById('apiKey').value;
+            
+            // 檢測是否在本地代理服務器運行
+            const isLocalProxy = window.location.port === '3000';
+            
+            let url, headers;
+            if (isLocalProxy) {
+                // 通過本地 /api-proxy 轉發
+                url = `/api-proxy${path}`;
+                headers = {
+                    'x-target-url': baseUrl, // 告知代理服務器目標地址
+                    'X-API-Key': apiKey,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+            } else {
+                // 直接請求 (可能會有 CORS 限制)
+                url = `${baseUrl}${path}`;
+                headers = {
+                    'X-API-Key': apiKey,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+            }
+
+            const response = await fetch(url, {
+                ...options,
+                headers
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ detail: '未知錯誤' }));
+                throw new Error(errorData.detail || `HTTP ${response.status}`);
+            }
+
+            return response.json();
+        }
+
+        async function refreshBalance() {
+            try {
+                const data = await apiFetch('/balance');
+                document.getElementById('plusBalance').innerText = data.balances.plus;
+                document.getElementById('proBalance').innerText = data.balances.pro;
+                document.getElementById('balanceSection').classList.remove('hidden');
+            } catch (err) {
+                console.error(err);
+                alert('刷新餘額失敗: ' + err.message);
+            }
+        }
+
+        async function submitJob() {
+            let accessToken = document.getElementById('accessToken').value.trim();
+            const workflow = document.querySelector('input[name="workflow"]:checked').value;
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (!accessToken) return alert('請輸入 Access Token');
+
+            // 自動解析邏輯：如果用戶粘貼了整個 JSON 響應，嘗試提取 accessToken
+            if (accessToken.startsWith('{')) {
+                try {
+                    const json = JSON.parse(accessToken);
+                    if (json.accessToken) {
+                        accessToken = json.accessToken;
+                        document.getElementById('accessToken').value = accessToken; // 回填簡化後的 token
+                    }
+                } catch (e) {
+                    // 不是有效的 JSON，保持原樣
+                }
+            }
+
+            try {
+                submitBtn.disabled = true;
+                submitBtn.innerText = '正在提交...';
+
+                console.log('正在提交任務:', { workflow, tokenLength: accessToken.length });
+
+                const data = await apiFetch('/submit', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        access_token: accessToken,
+                        workflow: workflow
+                    })
+                });
+
+                currentJobId = data.job_id;
+                showJobStatus(data);
+                startPolling();
+                refreshBalance();
+            } catch (err) {
+                console.error('提交失敗:', err);
+                alert('提交失敗: ' + err.message + '\n\n請檢查：\n1. Access Token 是否過期\n2. Workflow 選擇是否正確\n3. API Key 權限');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = '提交兌換請求';
+            }
+        }
+
+        function showJobStatus(job) {
+            document.getElementById('jobSection').classList.remove('hidden');
+            document.getElementById('jobIdDisplay').innerText = job.job_id;
+            document.getElementById('jobStatusText').innerText = getStatusDesc(job.status);
+            
+            const badge = document.getElementById('jobBadge');
+            badge.innerText = job.status;
+            
+            // 狀態顏色
+            badge.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase ';
+            if (job.status === 'pending') badge.className += 'bg-yellow-100 text-yellow-700';
+            else if (job.status === 'processing') badge.className += 'bg-blue-100 text-blue-700';
+            else if (job.status === 'done') badge.className += 'bg-green-100 text-green-700';
+            else if (job.status === 'failed') badge.className += 'bg-red-100 text-red-700';
+
+            // 結果顯示
+            if (job.status === 'done') {
+                document.getElementById('jobResult').classList.remove('hidden');
+                document.getElementById('jobError').classList.add('hidden');
+                document.getElementById('cancelBtn').classList.add('hidden');
+            } else if (job.status === 'failed') {
+                document.getElementById('jobError').classList.remove('hidden');
+                document.getElementById('jobError').innerText = '失敗原因: ' + (job.error || '未知');
+                document.getElementById('jobResult').classList.add('hidden');
+                document.getElementById('cancelBtn').classList.add('hidden');
+            } else {
+                document.getElementById('jobResult').classList.add('hidden');
+                document.getElementById('jobError').classList.add('hidden');
+                document.getElementById('cancelBtn').classList.toggle('hidden', job.status !== 'pending');
+            }
+        }
+
+        function getStatusDesc(status) {
+            switch(status) {
+                case 'pending': return '排隊等待中...';
+                case 'processing': return '系統處理中，請稍候...';
+                case 'done': return '處理完成';
+                case 'failed': return '處理失敗';
+                default: return status;
+            }
+        }
+
+        async function startPolling() {
+            if (isPolling) return;
+            isPolling = true;
+
+            while (isPolling && currentJobId) {
+                try {
+                    // 使用 Long-polling: wait=30
+                    const job = await apiFetch(`/job/${currentJobId}?wait=30`);
+                    showJobStatus(job);
+
+                    if (job.status === 'done' || job.status === 'failed') {
+                        isPolling = false;
+                        refreshBalance(); // 失敗會自動退費，完成也可能更新，刷新餘額
+                        break;
+                    }
+                } catch (err) {
+                    console.error('輪詢出錯:', err);
+                    if (err.message.includes('404')) {
+                        isPolling = false;
+                        alert('任務已失效或不存在');
+                        break;
+                    }
+                    // 其他錯誤稍後重試，避免死循環過快
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+            }
+        }
+
+        async function cancelJob() {
+            if (!currentJobId) return;
+            if (!confirm('確定要取消這個排隊中的任務嗎？')) return;
+
+            try {
+                const job = await apiFetch(`/job/${currentJobId}`, {
+                    method: 'DELETE'
+                });
+                showJobStatus(job);
+                isPolling = false;
+                refreshBalance();
+                alert('任務已成功取消並退費');
+            } catch (err) {
+                alert('取消失敗: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
