@@ -8,6 +8,11 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const TRUST_PROXY = /^(1|true)$/i.test(process.env.TRUST_PROXY || '');
+
+if (TRUST_PROXY) {
+  app.set('trust proxy', 1);
+}
 
 // ========== 配置 ==========
 // 初始密码：从环境变量读取（后台修改后存入 settings.json，重启仍有效）
@@ -111,33 +116,24 @@ app.use(cors(ALLOWED_ORIGIN ? {
 // 请求体大小限制 64kb，防止超大 payload 攻击
 app.use(express.json({ limit: '64kb' }));
 
-// ========== 管理后台隐藏路径 ==========
-// 默认使用随机肯尔字符串，建议通过环境变量自定义
+// ========== Admin routing ==========
 const ADMIN_PATH = (process.env.ADMIN_PATH || 'manage-' + crypto.randomBytes(6).toString('hex')).replace(/^\//, '');
 
-// 静态文件服务：排除 admin.html，防止直接访问
-app.use(express.static(__dirname, {
-  index: 'index.html',
-  setHeaders: (res, filePath) => {
-    // admin.html 不允许直接访问
-    if (path.basename(filePath) === 'admin.html') {
-      res.setHeader('X-Robots-Tag', 'noindex');
-    }
-  }
-}));
-
-// 拦截 /admin.html 直接访问，返回 404
 app.get(['/admin.html', '/admin', '/administrator', '/backend', '/manage'], (req, res) => {
   res.status(404).send('Not Found');
 });
 
-// 实际的管理后台入口
 app.get(`/${ADMIN_PATH}`, (req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex');
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// ========== 频率限制 ==========
-// 登录：同一 IP 15 分钟内最多 5 次
+app.use(express.static(__dirname, {
+  index: 'index.html',
+  fallthrough: true
+}));
+
+// ========== Rate limits ==========
 const loginAttempts = new Map();
 function checkLoginRate(ip) {
   const now = Date.now();
@@ -199,7 +195,10 @@ function hashAccessToken(token) {
 }
 
 function getClientIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.connection?.remoteAddress || 'unknown';
+  if (TRUST_PROXY) {
+    return req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+  }
+  return req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
 }
 
 function nowStr() {
