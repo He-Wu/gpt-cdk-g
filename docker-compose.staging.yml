@@ -19,6 +19,8 @@ services:
       - ADMIN_PATH=${STAGING_ADMIN_PATH:-staging-admin-panel}
       # 代理白名单
       - PROXY_ALLOWED_HOSTS=chatgpt.com,chat.openai.com
+      # 如果 staging 也经过可信反代，可在环境变量中设为 1
+      - TRUST_PROXY=${STAGING_TRUST_PROXY:-0}
     volumes:
       # staging 数据与生产完全隔离
       - ./data-staging:/app/data

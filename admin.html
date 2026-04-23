@@ -446,6 +446,7 @@
         .badge-processing { background: rgba(99,102,241,0.12); color: var(--accent); }
         .badge-done { background: rgba(52,211,153,0.12); color: var(--emerald); }
         .badge-failed { background: rgba(251,113,133,0.12); color: var(--rose); }
+        .badge-unknown, .badge-expired { background: rgba(251,191,36,0.12); color: var(--amber); }
 
         /* 表单行 */
         .form-row {
@@ -885,6 +886,8 @@
                                 <option value="processing">处理中</option>
                                 <option value="done">成功</option>
                                 <option value="failed">失败</option>
+                                <option value="unknown">待人工核验</option>
+                                <option value="expired">已过期待核验</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -908,6 +911,7 @@
                                 <th>IP 地址</th>
                                 <th>时间</th>
                                 <th>错误信息</th>
+                                <th>操作</th>
                             </tr>
                         </thead>
                         <tbody id="recordsTableBody">
@@ -1347,7 +1351,7 @@
 
             const tbody = document.getElementById('recordsTableBody');
             if (data.records.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
             } else {
                 tbody.innerHTML = data.records.map(r => `
                     <tr>
@@ -1359,6 +1363,7 @@
                         <td style="font-size:12px;color:var(--text-muted);">${r.ip_address || '-'}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${r.created_at || '-'}</td>
                         <td style="font-size:12px;color:var(--rose);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.error_message || ''}">${r.error_message || '-'}</td>
+                        <td>${recordCancelButton(r)}</td>
                     </tr>
                 `).join('');
             }
@@ -1375,8 +1380,55 @@
     function recordsPagePrev() { if (recordsPage > 1) { recordsPage--; loadRecords(); } }
     function recordsPageNext() { recordsPage++; loadRecords(); }
 
+    function recordCancelButton(record) {
+        if (!record.job_id) {
+            return `<button class="btn btn-ghost btn-sm" disabled title="该记录还没有 Job ID">取消</button>`;
+        }
+        const jobId = String(record.job_id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<button class="btn btn-ghost btn-sm" onclick="cancelRecordJob('${jobId}', this)" style="color:var(--rose);">取消</button>`;
+    }
+
+    async function cancelRecordJob(jobId, button) {
+        if (!jobId) {
+            showToast('该记录缺少 Job ID，无法取消', 'error');
+            return;
+        }
+        if (!confirm(`确认取消任务 ${jobId}？`)) return;
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '取消中...';
+        }
+
+        try {
+            const res = await fetch('/api/card/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_id: jobId })
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                showToast(data.error || '取消失败', 'error');
+                return;
+            }
+
+            showToast(data.message || '取消请求已提交', 'success');
+            loadRecords();
+            loadStats();
+        } catch (err) {
+            showToast('取消失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '取消';
+            }
+        }
+    }
+
     function recordStatusLabel(status) {
-        const map = { pending: '排队中', processing: '处理中', done: '成功', failed: '失败' };
+        const map = { pending: '排队中', processing: '处理中', done: '成功', failed: '失败', unknown: '待人工核验', expired: '已过期待核验' };
         return map[status] || status;
     }
 

@@ -9,5 +9,17 @@
     "error_message": null,
     "created_at": "2026/4/23 00:02:19",
     "ip_address": "::ffff:127.0.0.1"
+  },
+  {
+    "id": 2,
+    "card_code": "CDK-PLUS-SNRBSX3ME5",
+    "card_type": "plus",
+    "email": "3110474434@qq.com",
+    "access_token_hash": "89e5408f1aaf0b9a",
+    "job_id": "f5c2323a8690444b8a7ce46a1af02761",
+    "status": "failed",
+    "error_message": "cancelled",
+    "created_at": "2026/4/23 18:36:48",
+    "ip_address": "::ffff:127.0.0.1"
   }
 ]

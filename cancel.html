@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>取消兑换任务</title>
+  <meta name="robots" content="noindex">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #07080d;
+      --card: rgba(255,255,255,0.045);
+      --line: rgba(255,255,255,0.1);
+      --text: #eef2ff;
+      --muted: #8b95a7;
+      --amber: #fbbf24;
+      --cyan: #22d3ee;
+      --rose: #fb7185;
+      --green: #34d399;
+    }
+    body {
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 20%, rgba(251,191,36,0.18), transparent 28%),
+        radial-gradient(circle at 80% 0%, rgba(34,211,238,0.16), transparent 30%),
+        linear-gradient(145deg, #07080d, #10121c 55%, #07080d);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .shell {
+      width: min(560px, 100%);
+      position: relative;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 34px;
+      box-shadow: 0 28px 90px rgba(0,0,0,0.42);
+      backdrop-filter: blur(22px);
+    }
+    .mark {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(251,191,36,0.28), rgba(34,211,238,0.22));
+      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 24px;
+      margin-bottom: 22px;
+    }
+    h1 {
+      font-size: clamp(28px, 7vw, 46px);
+      line-height: 0.96;
+      letter-spacing: -1.6px;
+      margin-bottom: 12px;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 26px;
+    }
+    .notice {
+      border: 1px solid rgba(251,191,36,0.24);
+      background: rgba(251,191,36,0.08);
+      color: #fde68a;
+      border-radius: 16px;
+      padding: 13px 15px;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 22px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: #cbd5e1;
+      margin: 16px 0 8px;
+      font-weight: 700;
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.24);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 15px 16px;
+      font-size: 15px;
+      outline: none;
+      font-family: "Cascadia Mono", "Consolas", monospace;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    input:focus {
+      border-color: rgba(34,211,238,0.7);
+      box-shadow: 0 0 0 4px rgba(34,211,238,0.12);
+      background: rgba(0,0,0,0.34);
+    }
+    button {
+      width: 100%;
+      margin-top: 22px;
+      border: 0;
+      border-radius: 16px;
+      padding: 16px 18px;
+      font-size: 15px;
+      font-weight: 800;
+      color: #071017;
+      background: linear-gradient(135deg, var(--amber), var(--cyan));
+      cursor: pointer;
+      transition: transform 0.18s, filter 0.18s;
+    }
+    button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); }
+    button:disabled { opacity: 0.58; cursor: not-allowed; }
+    .result {
+      display: none;
+      margin-top: 18px;
+      border-radius: 16px;
+      padding: 14px 15px;
+      line-height: 1.6;
+      font-size: 14px;
+      border: 1px solid var(--line);
+    }
+    .result.ok {
+      display: block;
+      color: #bbf7d0;
+      border-color: rgba(52,211,153,0.28);
+      background: rgba(52,211,153,0.08);
+    }
+    .result.err {
+      display: block;
+      color: #fecdd3;
+      border-color: rgba(251,113,133,0.28);
+      background: rgba(251,113,133,0.08);
+    }
+    .links {
+      margin-top: 18px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel">
+      <div class="mark">↩</div>
+      <h1>取消兑换任务</h1>
+      <p class="lead">无需管理员登录。请输入兑换时返回的 Job ID，系统会尝试取消仍可取消的上游任务。</p>
+      <div class="notice">只有仍在排队且上游允许取消的任务才会退回卡密。处理中、已成功、已失败或找不到的任务不会被取消。</div>
+
+      <label for="jobInput">Job ID</label>
+      <input id="jobInput" autocomplete="off" spellcheck="false" placeholder="例如: a1b2c3d4e5f6">
+
+      <button id="cancelBtn" onclick="cancelTask()">确认取消任务</button>
+      <div class="result" id="resultBox"></div>
+
+      <div class="links">
+        <a href="/">返回兑换页</a>
+        <a href="/#queryCard">查询卡密状态</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function cancelTask() {
+      const jobId = document.getElementById('jobInput').value.trim();
+      const btn = document.getElementById('cancelBtn');
+      const box = document.getElementById('resultBox');
+
+      box.className = 'result';
+      box.textContent = '';
+
+      if (!jobId) {
+        box.className = 'result err';
+        box.textContent = '请填写 Job ID。';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '正在取消...';
+      try {
+        const res = await fetch('/api/card/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_id: jobId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          box.className = 'result err';
+          box.textContent = data.error || '取消失败，请稍后重试。';
+          return;
+        }
+        box.className = 'result ok';
+        box.textContent = data.message || '任务已取消，卡密已退回。';
+      } catch (err) {
+        box.className = 'result err';
+        box.textContent = '网络错误，请检查连接后重试。';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '确认取消任务';
+      }
+    }
+  </script>
+</body>
+</html>

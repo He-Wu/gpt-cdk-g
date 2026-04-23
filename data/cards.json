@@ -137,7 +137,8 @@
     "created_at": "2026/4/22 23:23:56",
     "used_at": null,
     "used_by": null,
-    "batch_id": "05f5a022"
+    "batch_id": "05f5a022",
+    "used_email": null
   },
   {
     "id": 15,

@@ -643,6 +643,23 @@
         .status-pill.failed { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
         .status-pill.processing, .status-pill.pending { background: rgba(251,191,36,0.12); color: var(--accent-amber); }
 
+        .cancel-inline-btn {
+            width: auto;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(251, 191, 36, 0.28);
+            background: rgba(251, 191, 36, 0.1);
+            color: var(--accent-amber);
+            font-size: 12px;
+            font-weight: 700;
+            margin-top: 12px;
+        }
+
+        .cancel-inline-btn:hover:not(:disabled) {
+            background: rgba(251, 191, 36, 0.18);
+            transform: translateY(-1px);
+        }
+
         .query-empty {
             text-align: center;
             padding: 16px;
@@ -858,6 +875,9 @@
                 🎉 订阅成功！请登录 ChatGPT 检查状态。
             </div>
             <div class="job-message error hidden" id="jobErrorMsg"></div>
+            <button class="cancel-inline-btn hidden" id="jobCancelBtn" onclick="cancelTaskByJobId(currentJobId, this)">
+                取消任务
+            </button>
             <div class="hidden" id="jobActionBtns" style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
                 <button class="btn btn-primary" id="redeemRetryBtn" onclick="retryRedeem()" style="flex:1;min-width:140px;">
                     🔄 重试兑换
@@ -933,7 +953,7 @@
 
         // ========== 卡密验证 ==========
         // ========== 前置校验工具函数 ==========
-        const CDK_PATTERN = /^CDK-(PLUS|PRO)-[A-Z0-9]{10}$/;
+        const CDK_PATTERN = /^CDK-(PLUS|PRO)-(?:[A-Z0-9]{10}|[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4})$/;
 
         function validateCodeFormat(value) {
             const errEl = document.getElementById('codeError');
@@ -950,11 +970,7 @@
                 } else if (!/^CDK-(PLUS|PRO)-/.test(value)) {
                     hint = '类型错误，应为 CDK-PLUS-… 或 CDK-PRO-…';
                 } else {
-                    const parts = value.split('-');
-                    const suffix = parts[2] || '';
-                    if (suffix.length < 10) hint = `卡密末尾还需输入 ${10 - suffix.length} 个字符`;
-                    else if (suffix.length > 10) hint = '卡密格式错误，末尾应为 10 个字符';
-                    else hint = '卡密格式不正确';
+                    hint = '卡密格式不正确，请输入旧版 10 位码，或新版 5 组安全码';
                 }
                 errEl.innerHTML = `⚠️ ${hint}`;
                 errEl.style.display = 'flex';
@@ -1173,6 +1189,9 @@
             const errorMsg = document.getElementById('jobErrorMsg');
             const retryBtn = document.getElementById('retryBtn');
             const jobActionBtns = document.getElementById('jobActionBtns');
+            const jobCancelBtn = document.getElementById('jobCancelBtn');
+            const cancellable = !!job.job_id && !['done', 'failed', 'unknown', 'expired'].includes(job.status);
+            jobCancelBtn.classList.toggle('hidden', !cancellable);
 
             if (job.status === 'done') {
                 progressBar.classList.add('hidden');
@@ -1190,6 +1209,13 @@
                 jobActionBtns.style.display = 'flex';
                 jobActionBtns.classList.remove('hidden');
                 retryBtn.classList.add('hidden');
+            } else if (job.status === 'unknown' || job.status === 'expired') {
+                progressBar.classList.add('hidden');
+                resultMsg.classList.add('hidden');
+                errorMsg.classList.remove('hidden');
+                errorMsg.textContent = '兑换状态待人工核验：' + (job.error || '请联系客服确认最终结果，暂不要重复提交。');
+                jobActionBtns.classList.add('hidden');
+                retryBtn.classList.add('hidden');
             } else {
                 progressBar.classList.remove('hidden');
                 resultMsg.classList.add('hidden');
@@ -1204,9 +1230,53 @@
                 pending: '排队等待中...',
                 processing: '系统处理中，请稍候...',
                 done: '✅ 兑换成功',
-                failed: '兑换失败'
+                failed: '兑换失败',
+                unknown: '待人工核验',
+                expired: '已过期待核验'
             };
             return map[status] || status;
+        }
+
+        async function cancelTaskByJobId(jobId, button) {
+            if (!jobId) {
+                alert('没有可取消的 Job ID');
+                return;
+            }
+            if (!confirm('确认取消这个兑换任务吗？如果上游允许取消，卡密会自动退回。')) return;
+
+            const oldText = button ? button.textContent : '';
+            if (button) {
+                button.disabled = true;
+                button.textContent = '取消中...';
+            }
+
+            try {
+                const res = await fetch('/api/card/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: jobId })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || '取消失败，请稍后重试');
+                    return;
+                }
+
+                if (jobId === currentJobId) {
+                    isPolling = false;
+                    showJobStatus({ job_id: jobId, status: data.status || 'failed', error: 'cancelled' });
+                }
+                alert(data.message || '任务已取消，卡密已退回');
+                const queryCode = document.getElementById('queryCodeInput')?.value.trim();
+                if (queryCode) queryCard();
+            } catch (err) {
+                alert('取消失败：网络错误，请稍后重试');
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = oldText || '取消任务';
+                }
+            }
         }
 
         async function startPolling() {
@@ -1219,7 +1289,7 @@
                     if (!res.ok) {
                         if (res.status === 404) {
                             isPolling = false;
-                            showJobStatus({ job_id: currentJobId, status: 'failed', error: '任务不存在或已过期' });
+                            showJobStatus({ job_id: currentJobId, status: 'expired', error: '任务已过期或不存在，请联系客服人工核验最终状态' });
                             break;
                         }
                         await new Promise(r => setTimeout(r, 5000));
@@ -1229,7 +1299,7 @@
                     const job = await res.json();
                     showJobStatus(job);
 
-                    if (job.status === 'done' || job.status === 'failed') {
+                    if (job.status === 'done' || job.status === 'failed' || job.status === 'unknown' || job.status === 'expired') {
                         isPolling = false;
                         break;
                     }
@@ -1371,24 +1441,42 @@
                 const statusIconMap = {
                     unused: '&#x2728;',
                     used: '&#x2705;',
-                    disabled: '&#x1F6AB;'
+                    disabled: '&#x1F6AB;',
+                    pending: '&#x23F3;',
+                    processing: '&#x23F3;',
+                    done: '&#x2705;',
+                    failed: '&#x274C;',
+                    unknown: '&#x26A0;',
+                    expired: '&#x26A0;'
                 };
 
-                const redeemRows = data.used_at ? `
+                const redeemRows = data.redeem_status ? `
+                    ${data.used_at ? `
                     <div class="query-row">
                         <span class="q-label">❤️ 兑换成功时间</span>
                         <span class="q-value mono">${data.used_at}</span>
-                    </div>
+                    </div>` : ''}
                     ${data.email ? `
                     <div class="query-row">
                         <span class="q-label">📧 兑换邮箱</span>
                         <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${data.email}</span>
                     </div>` : ''}
-                    ${data.redeem_status ? `
                     <div class="query-row">
                         <span class="q-label">📦 兑换进度</span>
                         <span class="q-value"><span class="status-pill ${data.redeem_status}">${statusIconMap[data.redeem_status] || ''} ${data.redeem_status_label}</span></span>
+                    </div>
+                    ${data.redeem_error ? `
+                    <div class="query-row">
+                        <span class="q-label">状态说明</span>
+                        <span class="q-value" style="color: var(--accent-amber);">${data.redeem_error}</span>
                     </div>` : ''}
+                    ${data.job_id ? `
+                    <div class="query-row">
+                        <span class="q-label">Job ID</span>
+                        <span class="q-value mono">${data.job_id}</span>
+                    </div>` : ''}
+                    ${data.job_id && !['done', 'failed', 'unknown', 'expired'].includes(data.redeem_status) ? `
+                    <button class="cancel-inline-btn" onclick="cancelTaskByJobId('${data.job_id}', this)">取消任务</button>` : ''}
                 ` : '';
 
                 resultDiv.innerHTML = `
@@ -1407,7 +1495,7 @@
                                 <span class="q-value mono">${data.created_at || '-'}</span>
                             </div>
                             ${redeemRows}
-                            ${!data.used_at ? `<div class="query-empty">💡 该卡密尚未使用</div>` : ''}
+                            ${!data.used_at && !data.redeem_status ? `<div class="query-empty">💡 该卡密尚未使用</div>` : ''}
                         </div>
                     </div>`;
 

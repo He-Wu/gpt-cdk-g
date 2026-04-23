@@ -16,11 +16,7 @@ if (TRUST_PROXY) {
 
 // ========== 配置 ==========
 // 初始密码：从环境变量读取（后台修改后存入 settings.json，重启仍有效）
-const INITIAL_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-if (!INITIAL_ADMIN_PASSWORD) {
-  console.error('❌ 必须设置 ADMIN_PASSWORD 环境变量后再启动服务');
-  process.exit(1);
-}
+const INITIAL_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
 // ========== JSON 文件存储 ==========
 const DATA_DIR = path.join(__dirname, 'data');
@@ -54,8 +50,12 @@ let settings = loadSettings();
 
 // 初始化时如果 settings 中没有密码，写入初始密码
 if (!settings.adminPassword) {
-  settings.adminPassword = INITIAL_ADMIN_PASSWORD;
+  settings.adminPassword = INITIAL_ADMIN_PASSWORD || crypto.randomBytes(18).toString('base64url');
   saveSettings(settings);
+  if (!INITIAL_ADMIN_PASSWORD) {
+    console.warn('⚠️ 未设置 ADMIN_PASSWORD，已自动生成临时管理员密码并保存到 data/settings.json，请登录后尽快修改。');
+    console.warn(`⚠️ 临时管理员密码: ${settings.adminPassword}`);
+  }
 }
 
 function getAdminPassword() { return settings.adminPassword || INITIAL_ADMIN_PASSWORD; }
@@ -139,6 +139,11 @@ app.get(`/${ADMIN_PATH}`, (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+app.get('/cancel', (req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex');
+  res.sendFile(path.join(__dirname, 'cancel.html'));
+});
+
 app.use(express.static(__dirname, {
   index: 'index.html',
   fallthrough: true
@@ -170,6 +175,54 @@ function checkRedeemRate(ip) {
   return rec.count;
 }
 
+// 取消：同一 IP 1 分钟内最多 10 次
+const cancelAttempts = new Map();
+function checkCancelRate(ip) {
+  const now = Date.now();
+  const rec = cancelAttempts.get(ip) || { count: 0, resetAt: now + 60 * 1000 };
+  if (now > rec.resetAt) { rec.count = 0; rec.resetAt = now + 60 * 1000; }
+  rec.count++;
+  cancelAttempts.set(ip, rec);
+  return rec.count;
+}
+
+// 无效卡密扫描防护：同一客户端 10 分钟内错 8 次后封禁 30 分钟
+const invalidCardAttempts = new Map();
+const INVALID_CARD_WINDOW_MS = 10 * 60 * 1000;
+const INVALID_CARD_BLOCK_MS = 30 * 60 * 1000;
+const INVALID_CARD_MAX_ATTEMPTS = 8;
+
+function getInvalidCardBlock(ip) {
+  const now = Date.now();
+  const rec = invalidCardAttempts.get(ip);
+  if (!rec) return 0;
+  if (rec.blockedUntil && rec.blockedUntil > now) return rec.blockedUntil - now;
+  if (now > rec.resetAt) {
+    invalidCardAttempts.delete(ip);
+  }
+  return 0;
+}
+
+function recordInvalidCardAttempt(ip) {
+  const now = Date.now();
+  const rec = invalidCardAttempts.get(ip) || { count: 0, resetAt: now + INVALID_CARD_WINDOW_MS, blockedUntil: 0 };
+  if (now > rec.resetAt) {
+    rec.count = 0;
+    rec.resetAt = now + INVALID_CARD_WINDOW_MS;
+    rec.blockedUntil = 0;
+  }
+  rec.count++;
+  if (rec.count >= INVALID_CARD_MAX_ATTEMPTS) {
+    rec.blockedUntil = now + INVALID_CARD_BLOCK_MS;
+  }
+  invalidCardAttempts.set(ip, rec);
+  return rec;
+}
+
+function clearInvalidCardAttempts(ip) {
+  invalidCardAttempts.delete(ip);
+}
+
 // ========== 管理员 Session 管理 ==========
 const adminSessions = new Map();
 
@@ -194,11 +247,48 @@ function adminAuth(req, res, next) {
 function generateCardCode(type) {
   const prefix = type.toUpperCase();
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let random = '';
-  for (let i = 0; i < 10; i++) {
-    random += chars.charAt(crypto.randomInt(chars.length));
+  const groups = [];
+  for (let group = 0; group < 5; group++) {
+    let part = '';
+    for (let i = 0; i < 5; i++) {
+      part += chars.charAt(crypto.randomInt(chars.length));
+    }
+    groups.push(part);
   }
-  return `CDK-${prefix}-${random}`;
+  return `CDK-${prefix}-${groups.join('-')}`;
+}
+
+function normalizeCardCode(code) {
+  return String(code || '').trim().toUpperCase();
+}
+
+function isCardLookupBlocked(req, res) {
+  const blockedMs = getInvalidCardBlock(getClientIP(req));
+  if (blockedMs <= 0) return false;
+  res.status(429).json({
+    error: `卡密尝试次数过多，请 ${Math.ceil(blockedMs / 60000)} 分钟后再试`
+  });
+  return true;
+}
+
+function recordCardLookupResult(req, found) {
+  const ip = getClientIP(req);
+  if (found) {
+    clearInvalidCardAttempts(ip);
+  } else {
+    recordInvalidCardAttempt(ip);
+  }
+}
+
+function findCancelableRecordByJobId(jobId) {
+  return records.find(r =>
+    r.job_id === jobId &&
+    (r.status === 'pending' || r.status === 'processing')
+  );
+}
+
+function isValidJobId(jobId) {
+  return /^[a-zA-Z0-9_-]{4,128}$/.test(String(jobId || ''));
 }
 
 function hashAccessToken(token) {
@@ -214,6 +304,65 @@ function getClientIP(req) {
 
 function nowStr() {
   return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+}
+
+const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 503]);
+const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
+
+function refundCardForRecord(record) {
+  const card = cards.find(c => c.code === record.card_code && c.status === 'used');
+  if (!card) return;
+  card.status = 'unused';
+  card.used_at = null;
+  card.used_by = null;
+  card.used_email = null;
+  saveCards(cards);
+}
+
+function markRecordUncertain(record, message, status = 'unknown') {
+  record.status = status;
+  record.error_message = message;
+  record.needs_manual_review = true;
+  saveRecords(records);
+}
+
+function applyJobStatus(jobId, jobData) {
+  const record = records.find(r => r.job_id === jobId);
+  if (!record) return null;
+
+  if (['pending', 'processing', 'done', 'failed'].includes(jobData.status)) {
+    record.status = jobData.status;
+  }
+  record.error_message = jobData.error || null;
+
+  if (jobData.status === 'failed') {
+    refundCardForRecord(record);
+  }
+
+  saveRecords(records);
+  return record;
+}
+
+async function refreshRecordFromUpstream(record, wait = 0) {
+  if (!record?.job_id || TERMINAL_RECORD_STATUSES.has(record.status)) return record;
+  if (!getApiKey() || !getBaseUrl()) return record;
+
+  const upstreamUrl = getBaseUrl();
+  const jobRes = await fetch(`${upstreamUrl}/job/${record.job_id}?wait=${wait}`, {
+    headers: { 'X-API-Key': getApiKey() }
+  });
+
+  if (jobRes.status === 404) {
+    markRecordUncertain(record, 'Job 已过期或不存在，需人工核验最终兑换状态', 'expired');
+    return record;
+  }
+
+  if (!jobRes.ok) {
+    return record;
+  }
+
+  const jobData = await jobRes.json();
+  return applyJobStatus(record.job_id, jobData) || record;
 }
 
 // ========== 管理员 API ==========
@@ -499,17 +648,21 @@ app.post('/api/card/verify', (req, res) => {
     return res.status(503).json({ error: '系统维护中，暂停兑换。' + getMaintenanceMessage(), maintenance: true });
   }
 
+  if (isCardLookupBlocked(req, res)) return;
+
   const { code } = req.body;
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ error: '请输入卡密' });
   }
 
-  const cardCode = code.trim().toUpperCase();
+  const cardCode = normalizeCardCode(code);
   const card = cards.find(c => c.code === cardCode);
 
   if (!card) {
-    return res.status(404).json({ error: '卡密不存在' });
+    recordCardLookupResult(req, false);
+    return res.status(404).json({ error: '卡密不存在或不可用' });
   }
+  recordCardLookupResult(req, true);
   if (card.status === 'used') {
     return res.status(410).json({ error: '该卡密已被使用' });
   }
@@ -535,6 +688,7 @@ app.post('/api/card/redeem', async (req, res) => {
   if (checkRedeemRate(clientIP) > 5) {
     return res.status(429).json({ error: '操作过于频繁，请 1 分钟后重试' });
   }
+  if (isCardLookupBlocked(req, res)) return;
 
   const { code } = req.body;
   let access_token = req.body.access_token;
@@ -564,13 +718,15 @@ app.post('/api/card/redeem', async (req, res) => {
     return res.status(503).json({ error: '服务尚未配置，请管理员在后台设置 API Key 和 Base URL' });
   }
 
-  const cardCode = code.trim().toUpperCase();
+  const cardCode = normalizeCardCode(code);
 
   // 查找并标记卡密（原子性：通过 find 锁定）
   const card = cards.find(c => c.code === cardCode && c.status === 'unused');
   if (!card) {
-    return res.status(400).json({ error: '卡密无效或已被使用' });
+    recordCardLookupResult(req, false);
+    return res.status(400).json({ error: '卡密不存在或不可用' });
   }
+  recordCardLookupResult(req, true);
 
   // 立即标记为已使用（防止并发）
   card.status = 'used';
@@ -612,19 +768,41 @@ app.post('/api/card/redeem', async (req, res) => {
 
     if (!submitRes.ok) {
       const errData = await submitRes.json().catch(() => ({ detail: '未知错误' }));
-      // 兑换失败，退回卡密
-      card.status = 'unused';
-      card.used_at = null;
-      card.used_by = null;
-      card.used_email = null;
-      saveCards(cards);
-      record.status = 'failed';
-      record.error_message = errData.detail || `HTTP ${submitRes.status}`;
-      saveRecords(records);
-      return res.status(submitRes.status).json({ error: errData.detail || '兑换提交失败' });
+      const errorMessage = errData.detail || `HTTP ${submitRes.status}`;
+      if (SAFE_SUBMIT_REFUND_STATUSES.has(submitRes.status)) {
+        refundCardForRecord(record);
+        record.status = 'failed';
+        record.error_message = errorMessage;
+        saveRecords(records);
+        return res.status(submitRes.status).json({ error: errorMessage });
+      }
+
+      markRecordUncertain(record, `提交状态不确定: ${errorMessage}`);
+      return res.status(502).json({
+        error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
+        status: 'unknown'
+      });
     }
 
-    const jobData = await submitRes.json();
+    let jobData;
+    try {
+      jobData = await submitRes.json();
+    } catch (err) {
+      markRecordUncertain(record, `上游已接受请求但响应解析失败: ${err.message}`);
+      return res.status(502).json({
+        error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
+        status: 'unknown'
+      });
+    }
+
+    if (!jobData || !isValidJobId(jobData.job_id)) {
+      markRecordUncertain(record, '上游已接受请求但未返回 job_id');
+      return res.status(502).json({
+        error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
+        status: 'unknown'
+      });
+    }
+
     record.status = 'processing';
     record.job_id = jobData.job_id;
     saveRecords(records);
@@ -639,16 +817,86 @@ app.post('/api/card/redeem', async (req, res) => {
 
   } catch (err) {
     console.error('兑换请求失败:', err);
-    // 网络错误，退回卡密
-    card.status = 'unused';
-    card.used_at = null;
-    card.used_by = null;
-    card.used_email = null;
-    saveCards(cards);
-    record.status = 'failed';
-    record.error_message = err.message;
-    saveRecords(records);
-    res.status(500).json({ error: '兑换服务暂时不可用，卡密已退回' });
+    markRecordUncertain(record, `提交请求结果不确定: ${err.message}`);
+    res.status(502).json({
+      error: '兑换提交状态不确定，卡密已锁定，请联系管理员人工核验',
+      status: 'unknown'
+    });
+  }
+});
+
+// 公开取消兑换任务：无需管理员权限，只需要 Job ID
+app.post('/api/card/cancel', async (req, res) => {
+  const clientIP = getClientIP(req);
+  if (checkCancelRate(clientIP) > 10) {
+    return res.status(429).json({ error: '取消操作过于频繁，请 1 分钟后重试' });
+  }
+  if (!getApiKey() || !getBaseUrl()) {
+    return res.status(503).json({ error: '服务尚未配置，请稍后再试' });
+  }
+
+  const jobId = String(req.body.job_id || req.body.jobId || '').trim();
+  if (!jobId) {
+    return res.status(400).json({ error: '请提供 Job ID' });
+  }
+  if (!isValidJobId(jobId)) {
+    return res.status(400).json({ error: 'Job ID 格式无效' });
+  }
+
+  try {
+    const record = findCancelableRecordByJobId(jobId);
+    const upstreamUrl = getBaseUrl();
+    const cancelRes = await fetch(`${upstreamUrl}/job/${jobId}`, {
+      method: 'DELETE',
+      headers: { 'X-API-Key': getApiKey() }
+    });
+
+    if (!cancelRes.ok) {
+      const errData = await cancelRes.json().catch(() => ({}));
+      const errorMessage = errData.detail || errData.error || '任务当前不可取消';
+      if (cancelRes.status === 404 && record) {
+        refundCardForRecord(record);
+        record.status = 'expired';
+        record.error_message = errorMessage;
+        saveRecords(records);
+        return res.json({
+          success: true,
+          job_id: jobId,
+          status: record.status,
+          message: '任务不存在或已过期，卡密已退回'
+        });
+      }
+
+      return res.status(cancelRes.status).json({
+        error: errorMessage
+      });
+    }
+
+    const jobData = await cancelRes.json().catch(() => ({
+      job_id: jobId,
+      status: 'failed',
+      error: 'cancelled'
+    }));
+
+    const cancelStatus = jobData.status || 'failed';
+    if (record) {
+      record.status = cancelStatus;
+      record.error_message = jobData.error || 'cancelled';
+      if (cancelStatus === 'failed' || cancelStatus === 'cancelled' || cancelStatus === 'canceled') {
+        refundCardForRecord(record);
+      }
+      saveRecords(records);
+    }
+
+    res.json({
+      success: true,
+      job_id: jobId,
+      status: cancelStatus,
+      message: record ? '任务已取消，卡密已退回' : '取消请求已提交'
+    });
+  } catch (err) {
+    console.error('取消兑换任务失败:', err);
+    res.status(502).json({ error: '取消请求失败，请稍后重试' });
   }
 });
 
@@ -671,31 +919,50 @@ function maskEmail(email) {
   return local[0] + '*'.repeat(Math.min(local.length - 2, 4)) + local[local.length - 1] + '@' + domain;
 }
 
-app.get('/api/card/query', (req, res) => {
+app.get('/api/card/query', async (req, res) => {
   const clientIP = getClientIP(req);
   if (checkQueryRate(clientIP) > 20) {
     return res.status(429).json({ error: '查询过于频繁，请稍后重试' });
   }
+  if (isCardLookupBlocked(req, res)) return;
 
   const { code } = req.query;
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ error: '请提供卡密' });
   }
 
-  const cardCode = code.trim().toUpperCase();
+  const cardCode = normalizeCardCode(code);
   const card = cards.find(c => c.code === cardCode);
 
   if (!card) {
-    return res.status(404).json({ error: '卡密不存在' });
+    recordCardLookupResult(req, false);
+    return res.status(404).json({ error: '卡密不存在或不可用' });
   }
+  recordCardLookupResult(req, true);
 
   // 查找该卡密最新的一条兑换记录（按 id 倒序取第一条，避免多次兑换时拿到旧的失败记录）
   const cardRecords = records.filter(r => r.card_code === cardCode);
-  const record = cardRecords.length > 0
+  let record = cardRecords.length > 0
     ? cardRecords.reduce((a, b) => (b.id > a.id ? b : a))
     : null;
 
+  if (record?.job_id && !TERMINAL_RECORD_STATUSES.has(record.status)) {
+    try {
+      record = await refreshRecordFromUpstream(record, 0);
+    } catch (err) {
+      console.error('刷新兑换状态失败:', err);
+    }
+  }
+
   const statusMap = { unused: '未使用', used: '已使用', disabled: '已禁用' };
+  const redeemStatusLabelMap = {
+    pending: '等待中',
+    processing: '处理中',
+    done: '兑换成功',
+    failed: '兑换失败',
+    unknown: '待人工核验',
+    expired: '已过期待核验'
+  };
 
   // used_at 仅在卡密当前状态为 used 时返回，防止退回后新一轮兑换时间与旧记录状态混显
   const usedAt = card.status === 'used' ? (card.used_at || null) : null;
@@ -709,13 +976,11 @@ app.get('/api/card/query', (req, res) => {
     created_at: card.created_at,
     used_at: usedAt,
     email: usedEmail,
+    job_id: record && isValidJobId(record.job_id) ? record.job_id : null,
     redeem_status: record ? record.status : null,
-    redeem_status_label: record ? {
-      pending: '等待中',
-      processing: '处理中',
-      done: '兑换成功',
-      failed: '兑换失败'
-    }[record.status] || record.status : null
+    redeem_status_label: record ? redeemStatusLabelMap[record.status] || record.status : null,
+    redeem_error: record ? record.error_message : null,
+    needs_manual_review: record ? record.needs_manual_review === true : false
   });
 });
 
@@ -727,7 +992,7 @@ app.get('/api/card/job/:jobId', async (req, res) => {
 
   const { jobId } = req.params;
   // 校验 jobId 格式，防止路径注入
-  if (!/^[a-zA-Z0-9_-]{4,128}$/.test(jobId)) {
+  if (!isValidJobId(jobId)) {
     return res.status(400).json({ error: '无效的 Job ID' });
   }
   // wait 最大 30 秒
@@ -739,6 +1004,17 @@ app.get('/api/card/job/:jobId', async (req, res) => {
       headers: { 'X-API-Key': getApiKey() }
     });
 
+    if (jobRes.status === 404) {
+      const record = records.find(r => r.job_id === jobId);
+      if (record && !TERMINAL_RECORD_STATUSES.has(record.status)) {
+        markRecordUncertain(record, 'Job 已过期或不存在，需人工核验最终兑换状态', 'expired');
+      }
+      return res.status(404).json({
+        error: '任务已过期或不存在，请联系管理员人工核验',
+        status: 'expired'
+      });
+    }
+
     if (!jobRes.ok) {
       return res.status(jobRes.status).json({ error: '查询任务状态失败' });
     }
@@ -746,25 +1022,8 @@ app.get('/api/card/job/:jobId', async (req, res) => {
     const jobData = await jobRes.json();
 
     // 更新兑换记录状态
-    if (jobData.status === 'done' || jobData.status === 'failed') {
-      const record = records.find(r => r.job_id === jobId);
-      if (record) {
-        record.status = jobData.status;
-        record.error_message = jobData.error || null;
-
-        // 如果任务失败，退回卡密
-        if (jobData.status === 'failed') {
-          const card = cards.find(c => c.code === record.card_code && c.status === 'used');
-          if (card) {
-            card.status = 'unused';
-            card.used_at = null;
-            card.used_by = null;
-            card.used_email = null;
-            saveCards(cards);
-          }
-        }
-        saveRecords(records);
-      }
+    if (['pending', 'processing', 'done', 'failed'].includes(jobData.status)) {
+      applyJobStatus(jobId, jobData);
     }
 
     res.json(jobData);
