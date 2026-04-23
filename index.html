@@ -664,9 +664,74 @@
             height: 1px;
             background: var(--border-color);
         }
+        /* 维护模式遗罩 */
+        .maintenance-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #0a0a0f;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 24px;
+        }
+        .maintenance-overlay.active { display: flex; }
+        .maintenance-icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+            animation: pulse-glow 3s ease-in-out infinite;
+            filter: drop-shadow(0 0 20px rgba(251,191,36,0.4));
+        }
+        .maintenance-title {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+        .maintenance-msg {
+            font-size: 15px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            max-width: 480px;
+            white-space: pre-wrap;
+        }
+        .maintenance-dots {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 36px;
+        }
+        .maintenance-dots span {
+            width: 8px; height: 8px;
+            background: var(--accent-amber);
+            border-radius: 50%;
+            animation: bounce-dot 1.4s ease-in-out infinite;
+            opacity: 0.4;
+        }
+        .maintenance-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .maintenance-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce-dot {
+            0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
+            40% { transform: scale(1.4); opacity: 1; }
+        }
     </style>
 </head>
 <body>
+    <!-- 维护模式遗罩 -->
+    <div class="maintenance-overlay" id="maintenanceOverlay">
+        <div class="maintenance-icon">🔧</div>
+        <div class="maintenance-title">系统维护中</div>
+        <div class="maintenance-msg" id="maintenanceMsgText">系统正在进行维护升级，请稍后再访问。</div>
+        <div class="maintenance-dots">
+            <span></span><span></span><span></span>
+        </div>
+    </div>
+
     <!-- 背景效果 -->
     <div class="bg-pattern"></div>
     <div class="floating-orb orb-1"></div>
@@ -729,7 +794,9 @@
                 <label for="cardCodeInput">兑换卡密 (CDK)</label>
                 <input type="text" id="cardCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
                     autocomplete="off" spellcheck="false"
-                    oninput="this.value = this.value.toUpperCase()">
+                    oninput="this.value = this.value.toUpperCase(); validateCodeFormat(this.value)"
+                    onblur="validateCodeFormat(this.value)">
+                <div id="codeError" style="display:none; margin-top:6px; font-size:12px; color:#fb7185; display:flex; align-items:center; gap:5px;"></div>
             </div>
             <button class="btn btn-primary" id="verifyBtn" onclick="verifyCard()">
                 验证卡密
@@ -751,7 +818,9 @@
                 <label for="accessTokenInput">ChatGPT Session 数据</label>
                 <textarea id="accessTokenInput" rows="5"
                     placeholder='{"user":{"id":"...","name":"..."},"expires":"...","accessToken":"eyJhbGciOiJSUzI1NiIs..."}'
-                    spellcheck="false"></textarea>
+                    spellcheck="false"
+                    oninput="clearTokenError()"></textarea>
+                <div id="tokenError" style="display:none; margin-top:6px; font-size:12px; color:#fb7185;"></div>
                 <p class="input-hint">
                     登录 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 后，访问
                     <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>，
@@ -789,6 +858,15 @@
                 🎉 订阅成功！请登录 ChatGPT 检查状态。
             </div>
             <div class="job-message error hidden" id="jobErrorMsg"></div>
+            <div class="hidden" id="jobActionBtns" style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+                <button class="btn btn-primary" id="redeemRetryBtn" onclick="retryRedeem()" style="flex:1;min-width:140px;">
+                    🔄 重试兑换
+                </button>
+                <button class="btn btn-outline" id="redeemNewBtn" onclick="resetForm()" style="flex:1;min-width:140px;">
+                    换一张卡密
+                </button>
+            </div>
+            <!-- 成功后只显示换一张 -->
             <button class="btn btn-outline hidden" id="retryBtn" onclick="resetForm()" style="margin-top: 16px;">
                 兑换另一张卡密
             </button>
@@ -833,6 +911,108 @@
         let verifiedCard = null;
         let currentJobId = null;
         let isPolling = false;
+        let maintenanceActive = false;
+
+        // ========== 页面加载时检查维护状态 ==========
+        async function checkMaintenanceStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                maintenanceActive = !!data.maintenance;
+                if (maintenanceActive) {
+                    const overlay = document.getElementById('maintenanceOverlay');
+                    const msgEl = document.getElementById('maintenanceMsgText');
+                    if (data.message) msgEl.textContent = data.message;
+                    overlay.classList.add('active');
+                }
+            } catch (e) {
+                // 网络错误时不展示维护页
+            }
+        }
+        checkMaintenanceStatus();
+
+        // ========== 卡密验证 ==========
+        // ========== 前置校验工具函数 ==========
+        const CDK_PATTERN = /^CDK-(PLUS|PRO)-[A-Z0-9]{10}$/;
+
+        function validateCodeFormat(value) {
+            const errEl = document.getElementById('codeError');
+            const input = document.getElementById('cardCodeInput');
+            if (!value) {
+                errEl.style.display = 'none';
+                input.style.borderColor = '';
+                return true;
+            }
+            if (!CDK_PATTERN.test(value)) {
+                let hint = '';
+                if (!value.startsWith('CDK-')) {
+                    hint = '卡密必须以 CDK- 开头';
+                } else if (!/^CDK-(PLUS|PRO)-/.test(value)) {
+                    hint = '类型错误，应为 CDK-PLUS-… 或 CDK-PRO-…';
+                } else {
+                    const parts = value.split('-');
+                    const suffix = parts[2] || '';
+                    if (suffix.length < 10) hint = `卡密末尾还需输入 ${10 - suffix.length} 个字符`;
+                    else if (suffix.length > 10) hint = '卡密格式错误，末尾应为 10 个字符';
+                    else hint = '卡密格式不正确';
+                }
+                errEl.innerHTML = `⚠️ ${hint}`;
+                errEl.style.display = 'flex';
+                input.style.borderColor = 'rgba(251,113,133,0.5)';
+                return false;
+            }
+            errEl.style.display = 'none';
+            input.style.borderColor = 'rgba(52,211,153,0.4)';
+            return true;
+        }
+
+        function showTokenError(msg) {
+            const errEl = document.getElementById('tokenError');
+            const ta = document.getElementById('accessTokenInput');
+            errEl.innerHTML = `⚠️ ${msg}`;
+            errEl.style.display = 'block';
+            ta.style.borderColor = 'rgba(251,113,133,0.5)';
+        }
+
+        function clearTokenError() {
+            const errEl = document.getElementById('tokenError');
+            const ta = document.getElementById('accessTokenInput');
+            errEl.style.display = 'none';
+            ta.style.borderColor = '';
+        }
+
+        // 校验 Session 数据，返回 { ok, token, error }
+        function validateSessionInput(raw) {
+            if (!raw) return { ok: false, error: '请粘贴 api/auth/session 页面的内容' };
+            if (raw.length < 50) return { ok: false, error: '内容过短，请复制完整的页面内容' };
+
+            let token = raw;
+
+            if (raw.startsWith('{')) {
+                let parsed;
+                try { parsed = JSON.parse(raw); }
+                catch (e) { return { ok: false, error: 'JSON 格式错误，请完整复制页面内容，勿手动修改' }; }
+                if (!parsed.accessToken) {
+                    if (parsed.error === 'unauthenticated') return { ok: false, error: 'ChatGPT 未登录，请先在同一浏览器登录账号后再来获取' };
+                    return { ok: false, error: 'JSON 中未找到 accessToken 字段，请确认复制的是 api/auth/session 页面的内容' };
+                }
+                token = parsed.accessToken;
+            }
+
+            // JWT 校验：必须以 eyJ 开头且长度足够
+            if (!token.startsWith('eyJ')) {
+                return { ok: false, error: 'accessToken 格式无效，应以 eyJ 开头（JWT 格式）' };
+            }
+            if (token.length < 100) {
+                return { ok: false, error: 'accessToken 长度异常，请确认复制的是完整内容' };
+            }
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                return { ok: false, error: 'accessToken 不是标准 JWT 格式（应有三段用 . 分隔）' };
+            }
+
+            return { ok: true, token };
+        }
 
         // ========== 卡密验证 ==========
         async function verifyCard() {
@@ -840,8 +1020,14 @@
             const btn = document.getElementById('verifyBtn');
             const resultDiv = document.getElementById('verifyResult');
 
+            // 前置校验
             if (!code) {
                 showVerifyError('请输入卡密');
+                document.getElementById('codeError').style.display = 'none';
+                return;
+            }
+            if (!validateCodeFormat(code)) {
+                // validateCodeFormat 已内联显示错误
                 return;
             }
 
@@ -864,6 +1050,8 @@
 
                 // 验证成功
                 verifiedCard = { code, type: data.type };
+                document.getElementById('codeError').style.display = 'none';
+                document.getElementById('cardCodeInput').style.borderColor = '';
                 resultDiv.className = 'verify-result success';
                 resultDiv.innerHTML = `
                     <div class="result-icon">✅</div>
@@ -912,33 +1100,21 @@
         // ========== 兑换提交 ==========
         async function redeemCard() {
             if (!verifiedCard) {
-                alert('请先验证卡密');
+                showVerifyError('请先验证卡密');
                 return;
             }
 
-            let accessToken = document.getElementById('accessTokenInput').value.trim();
+            const raw = document.getElementById('accessTokenInput').value.trim();
             const btn = document.getElementById('redeemBtn');
 
-            if (!accessToken) {
-                alert('请粘贴 api/auth/session 的完整内容');
+            // 前置校验 Session 数据
+            const validation = validateSessionInput(raw);
+            if (!validation.ok) {
+                showTokenError(validation.error);
+                document.getElementById('accessTokenInput').focus();
                 return;
             }
-
-            // 自动从 session JSON 中提取 accessToken
-            if (accessToken.startsWith('{')) {
-                try {
-                    const json = JSON.parse(accessToken);
-                    if (json.accessToken) {
-                        accessToken = json.accessToken;
-                    } else {
-                        alert('粘贴的 JSON 中未找到 accessToken 字段，请确认内容是否正确');
-                        return;
-                    }
-                } catch (e) {
-                    alert('粘贴的内容格式不正确，请直接复制 api/auth/session 页面的全部内容');
-                    return;
-                }
-            }
+            clearTokenError();
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> 提交中...';
@@ -949,14 +1125,14 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: verifiedCard.code,
-                        access_token: accessToken
+                        access_token: raw  // 服务端自动解析
                     })
                 });
 
                 const data = await res.json();
 
                 if (!res.ok) {
-                    alert('兑换失败: ' + (data.error || '未知错误'));
+                    showTokenError(data.error || '兑换失败，请稍后重试');
                     btn.disabled = false;
                     btn.textContent = '🚀 提交兑换';
                     return;
@@ -996,22 +1172,29 @@
             const resultMsg = document.getElementById('jobResultMsg');
             const errorMsg = document.getElementById('jobErrorMsg');
             const retryBtn = document.getElementById('retryBtn');
+            const jobActionBtns = document.getElementById('jobActionBtns');
 
             if (job.status === 'done') {
                 progressBar.classList.add('hidden');
                 resultMsg.classList.remove('hidden');
                 errorMsg.classList.add('hidden');
+                // 成功：只显示「兑换另一张」
+                jobActionBtns.classList.add('hidden');
                 retryBtn.classList.remove('hidden');
             } else if (job.status === 'failed') {
                 progressBar.classList.add('hidden');
                 resultMsg.classList.add('hidden');
                 errorMsg.classList.remove('hidden');
                 errorMsg.textContent = '❌ 兑换失败: ' + (job.error || '未知原因') + '（卡密已自动退回）';
-                retryBtn.classList.remove('hidden');
+                // 失败：显示「重试兑换」和「换一张」
+                jobActionBtns.style.display = 'flex';
+                jobActionBtns.classList.remove('hidden');
+                retryBtn.classList.add('hidden');
             } else {
                 progressBar.classList.remove('hidden');
                 resultMsg.classList.add('hidden');
                 errorMsg.classList.add('hidden');
+                jobActionBtns.classList.add('hidden');
                 retryBtn.classList.add('hidden');
             }
         }
@@ -1074,6 +1257,79 @@
             document.getElementById('jobSection').classList.remove('visible');
 
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 重试兑换：保留卡密和 access token，自动重新验证并返回第二步
+        async function retryRedeem() {
+            if (!verifiedCard) { resetForm(); return; }
+
+            const retryBtn = document.getElementById('redeemRetryBtn');
+            retryBtn.disabled = true;
+            retryBtn.innerHTML = '<span class="spinner"></span> 验证中...';
+
+            // 隐藏任务状态区域
+            currentJobId = null;
+            isPolling = false;
+            document.getElementById('jobSection').classList.remove('visible');
+            document.getElementById('jobErrorMsg').classList.add('hidden');
+            document.getElementById('jobResultMsg').classList.add('hidden');
+            document.getElementById('progressBar').classList.remove('hidden');
+            document.getElementById('jobActionBtns').classList.add('hidden');
+            document.getElementById('retryBtn').classList.add('hidden');
+
+            // 重新验证卡密（卡密已退回 unused）
+            try {
+                const res = await fetch('/api/card/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: verifiedCard.code })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    // 卡密不再可用（如被禁用），全重置
+                    alert('卡密已无法重试：' + (data.error || '未知错误'));
+                    resetForm();
+                    return;
+                }
+
+                // 验证通过，更新 verifiedCard 并显示第二步
+                verifiedCard = { code: verifiedCard.code, type: data.type };
+
+                const step1 = document.getElementById('step1Card');
+                const step2 = document.getElementById('step2Card');
+                const verifyResult = document.getElementById('verifyResult');
+                const verifyBtn = document.getElementById('verifyBtn');
+                const cardTypeBadge = document.getElementById('cardTypeBadge');
+
+                // 恢复 step1 状态
+                step1.classList.remove('hidden');
+                document.getElementById('cardCodeInput').readOnly = true;
+                verifyBtn.textContent = '✓ 已验证';
+                verifyBtn.disabled = true;
+                verifyResult.className = 'verify-result success';
+                verifyResult.innerHTML = `
+                    <div class="result-icon">✅</div>
+                    <div class="result-text">卡密有效（重试）</div>
+                    <div class="result-detail">类型: <span class="type-badge ${data.type}">${data.type.toUpperCase()}</span></div>
+                `;
+
+                // 显示 step2，自动恢复兑换按钮
+                cardTypeBadge.className = `type-badge ${data.type}`;
+                cardTypeBadge.textContent = data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro';
+                const redeemBtn = document.getElementById('redeemBtn');
+                redeemBtn.disabled = false;
+                redeemBtn.textContent = '🚀 重试兑换';
+                step2.classList.remove('hidden');
+
+                setTimeout(() => step2.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+
+            } catch (err) {
+                alert('网络错误，请检查连接后重试');
+            } finally {
+                retryBtn.disabled = false;
+                retryBtn.innerHTML = '🔄 重试兑换';
+            }
         }
 
         // 回车键验证

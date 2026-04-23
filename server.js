@@ -42,7 +42,7 @@ function loadSettings() {
   } catch (e) {
     console.error('加载设置失败:', e.message);
   }
-  return { apiKey: '', baseUrl: '' };
+  return { apiKey: '', baseUrl: '', maintenanceEnabled: false, maintenanceMessage: '' };
 }
 
 function saveSettings(settings) {
@@ -61,6 +61,17 @@ if (!settings.adminPassword) {
 function getAdminPassword() { return settings.adminPassword || INITIAL_ADMIN_PASSWORD; }
 function getApiKey() { return settings.apiKey || ''; }
 function getBaseUrl() { return settings.baseUrl || ''; }
+function isMaintenanceEnabled() { return settings.maintenanceEnabled === true; }
+function getMaintenanceMessage() { return settings.maintenanceMessage || '系统正在维护中，请稍后再试。'; }
+
+// ========== 公开状态接口 ==========
+// 前端页面加载时查询维护模式状态
+app.get('/api/status', (req, res) => {
+  res.json({
+    maintenance: isMaintenanceEnabled(),
+    message: isMaintenanceEnabled() ? getMaintenanceMessage() : null
+  });
+});
 
 // 加载数据
 function loadCards() {
@@ -260,7 +271,9 @@ app.get('/api/admin/settings', adminAuth, (req, res) => {
   res.json({
     apiKey: settings.apiKey ? '***已配置***' : '',
     baseUrl: settings.baseUrl || '',
-    configured: !!(settings.apiKey && settings.baseUrl)
+    configured: !!(settings.apiKey && settings.baseUrl),
+    maintenanceEnabled: settings.maintenanceEnabled === true,
+    maintenanceMessage: settings.maintenanceMessage || ''
   });
 });
 
@@ -279,6 +292,24 @@ app.post('/api/admin/settings', adminAuth, (req, res) => {
   res.json({
     message: '设置已保存',
     configured: !!(settings.apiKey && settings.baseUrl)
+  });
+});
+
+// 保存维护模式设置
+app.post('/api/admin/maintenance', adminAuth, (req, res) => {
+  const { enabled, message } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled 必须为布尔值' });
+  }
+  settings.maintenanceEnabled = enabled;
+  if (typeof message === 'string') {
+    settings.maintenanceMessage = message.trim().slice(0, 500);
+  }
+  saveSettings(settings);
+  res.json({
+    message: enabled ? '维护模式已开启' : '维护模式已关闭',
+    maintenanceEnabled: settings.maintenanceEnabled,
+    maintenanceMessage: settings.maintenanceMessage
   });
 });
 
@@ -463,6 +494,11 @@ app.post('/api/admin/cards/enable', adminAuth, (req, res) => {
 
 // 验证卡密
 app.post('/api/card/verify', (req, res) => {
+  // 维护模式拦截
+  if (isMaintenanceEnabled()) {
+    return res.status(503).json({ error: '系统维护中，暂停兑换。' + getMaintenanceMessage(), maintenance: true });
+  }
+
   const { code } = req.body;
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ error: '请输入卡密' });
@@ -490,6 +526,11 @@ app.post('/api/card/verify', (req, res) => {
 
 // 使用卡密兑换（含频率限制）
 app.post('/api/card/redeem', async (req, res) => {
+  // 维护模式拦截
+  if (isMaintenanceEnabled()) {
+    return res.status(503).json({ error: '系统维护中，暂停兑换。' + getMaintenanceMessage(), maintenance: true });
+  }
+
   const clientIP = getClientIP(req);
   if (checkRedeemRate(clientIP) > 5) {
     return res.status(429).json({ error: '操作过于频繁，请 1 分钟后重试' });
@@ -648,10 +689,17 @@ app.get('/api/card/query', (req, res) => {
     return res.status(404).json({ error: '卡密不存在' });
   }
 
-  // 查找对应兑换记录
-  const record = records.find(r => r.card_code === cardCode);
+  // 查找该卡密最新的一条兑换记录（按 id 倒序取第一条，避免多次兑换时拿到旧的失败记录）
+  const cardRecords = records.filter(r => r.card_code === cardCode);
+  const record = cardRecords.length > 0
+    ? cardRecords.reduce((a, b) => (b.id > a.id ? b : a))
+    : null;
 
   const statusMap = { unused: '未使用', used: '已使用', disabled: '已禁用' };
+
+  // used_at 仅在卡密当前状态为 used 时返回，防止退回后新一轮兑换时间与旧记录状态混显
+  const usedAt = card.status === 'used' ? (card.used_at || null) : null;
+  const usedEmail = card.status === 'used' ? (card.used_email ? maskEmail(card.used_email) : null) : null;
 
   res.json({
     code: card.code,
@@ -659,8 +707,8 @@ app.get('/api/card/query', (req, res) => {
     status: card.status,
     status_label: statusMap[card.status] || card.status,
     created_at: card.created_at,
-    used_at: card.used_at || null,
-    email: card.used_email ? maskEmail(card.used_email) : null,
+    used_at: usedAt,
+    email: usedEmail,
     redeem_status: record ? record.status : null,
     redeem_status_label: record ? {
       pending: '等待中',

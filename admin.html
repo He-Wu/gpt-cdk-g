@@ -622,6 +622,66 @@
 
         .hidden { display: none !important; }
 
+        /* 维护模式 toggle 开关 */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+        .toggle-row .toggle-info .toggle-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .toggle-row .toggle-info .toggle-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.1);
+            border-radius: 26px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 20px; height: 20px;
+            left: 3px; top: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: #ef4444; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+        .maintenance-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+        .maintenance-badge.on  { background: rgba(239,68,68,0.15); color: #f87171; }
+        .maintenance-badge.off { background: rgba(52,211,153,0.12); color: var(--emerald); }
+
         /* 响应式 */
         @media (max-width: 768px) {
             .sidebar { display: none; }
@@ -689,6 +749,7 @@
             </div>
             <div class="nav-item" onclick="switchPage('settings')" data-page="settings">
                 <span class="nav-icon">⚙️</span> 系统设置
+                <span class="maintenance-badge off" id="sidebarMaintBadge" style="margin-left:auto;">正常</span>
             </div>
         </nav>
         <div class="sidebar-footer">
@@ -909,6 +970,35 @@
                 </div>
             </div>
 
+            <!-- 维护模式 -->
+            <div class="panel" id="maintenancePanel">
+                <div class="panel-title" style="margin-bottom:4px;">🔧 系统维护模式</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">开启后用户将看到维护公告页面，无法进行验证或兑换操作。</p>
+
+                <div class="toggle-row">
+                    <div class="toggle-info">
+                        <div class="toggle-label">维护模式开关</div>
+                        <div class="toggle-desc" id="maintStatusDesc">当前：正常运行中</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="maintToggle" onchange="onMaintToggleChange()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label>维护公告内容 <span style="color:var(--text-muted);font-weight:400;">（最多 500 字）</span></label>
+                    <textarea id="maintMessage"
+                        style="width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:90px;transition:all 0.2s;line-height:1.6;"
+                        placeholder="例如：系统升级维护中，预计 2 小时后恢复，感谢您的耐心等待。"
+                        maxlength="500"></textarea>
+                </div>
+
+                <button class="btn btn-primary" id="saveMaintBtn" onclick="saveMaintenance()">
+                    💾 保存维护设置
+                </button>
+            </div>
+
             <!-- 修改密码 -->
             <div class="panel">
                 <div class="panel-title" style="margin-bottom:20px;">🔑 修改管理员密码</div>
@@ -1047,7 +1137,7 @@
         if (page === 'dashboard') loadStats();
         if (page === 'cards') loadCards();
         if (page === 'records') loadRecords();
-        if (page === 'settings') loadSettingsPage();
+        if (page === 'settings') { loadSettingsPage(); loadMaintenancePage(); }
     }
 
     // ========== 仪表盘 ==========
@@ -1307,7 +1397,6 @@
             const data = await res.json();
 
             document.getElementById('settingsBaseUrl').value = data.baseUrl || '';
-            // API Key 只显示已配置状态，不回显实际值
             document.getElementById('settingsApiKey').placeholder = data.apiKey
                 ? '已配置（输入新值可重置，留空保持不变）'
                 : '请输入 API Key';
@@ -1328,6 +1417,64 @@
             }
         } catch (err) {
             console.error('加载设置失败:', err);
+        }
+    }
+
+    // ========== 维护模式 ==========
+    async function loadMaintenancePage() {
+        try {
+            const res = await adminFetch('/api/admin/settings');
+            if (!res.ok) return;
+            const data = await res.json();
+            const enabled = !!data.maintenanceEnabled;
+            document.getElementById('maintToggle').checked = enabled;
+            document.getElementById('maintMessage').value = data.maintenanceMessage || '';
+            updateMaintUI(enabled);
+        } catch (err) {
+            console.error('加载维护设置失败:', err);
+        }
+    }
+
+    function onMaintToggleChange() {
+        updateMaintUI(document.getElementById('maintToggle').checked);
+    }
+
+    function updateMaintUI(enabled) {
+        const desc = document.getElementById('maintStatusDesc');
+        const badge = document.getElementById('sidebarMaintBadge');
+        if (enabled) {
+            desc.textContent = '当前：🔴 维护中 — 用户将看到维护页面';
+            desc.style.color = '#f87171';
+            badge.textContent = '维护中';
+            badge.className = 'maintenance-badge on';
+        } else {
+            desc.textContent = '当前：正常运行中';
+            desc.style.color = '';
+            badge.textContent = '正常';
+            badge.className = 'maintenance-badge off';
+        }
+    }
+
+    async function saveMaintenance() {
+        const enabled = document.getElementById('maintToggle').checked;
+        const message = document.getElementById('maintMessage').value.trim();
+        const btn = document.getElementById('saveMaintBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+        try {
+            const res = await adminFetch('/api/admin/maintenance', {
+                method: 'POST',
+                body: JSON.stringify({ enabled, message })
+            });
+            const data = await res.json();
+            if (!res.ok) { showToast(data.error || '保存失败', 'error'); return; }
+            showToast(data.message, enabled ? 'error' : 'success');
+            updateMaintUI(enabled);
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 保存维护设置';
         }
     }
 
