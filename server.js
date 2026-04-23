@@ -503,10 +503,13 @@ app.post('/api/card/redeem', async (req, res) => {
   }
 
   // 服务端自动解析：支持传入整个 api/auth/session JSON
+  let sessionEmail = null;
   if (typeof access_token === 'string' && access_token.trim().startsWith('{')) {
     try {
       const sessionJson = JSON.parse(access_token.trim());
       if (sessionJson.accessToken) {
+        // 尝试提取邮箱
+        sessionEmail = sessionJson.user?.email || null;
         access_token = sessionJson.accessToken;
       } else {
         return res.status(400).json({ error: 'Session JSON 中未找到 accessToken 字段' });
@@ -532,6 +535,7 @@ app.post('/api/card/redeem', async (req, res) => {
   card.status = 'used';
   card.used_at = nowStr();
   card.used_by = hashAccessToken(access_token);
+  card.used_email = sessionEmail || null;
   saveCards(cards);
 
   // 创建兑换记录
@@ -539,6 +543,7 @@ app.post('/api/card/redeem', async (req, res) => {
     id: records.length + 1,
     card_code: cardCode,
     card_type: card.type,
+    email: sessionEmail || null,
     access_token_hash: hashAccessToken(access_token),
     job_id: null,
     status: 'pending',
@@ -570,6 +575,7 @@ app.post('/api/card/redeem', async (req, res) => {
       card.status = 'unused';
       card.used_at = null;
       card.used_by = null;
+      card.used_email = null;
       saveCards(cards);
       record.status = 'failed';
       record.error_message = errData.detail || `HTTP ${submitRes.status}`;
@@ -596,12 +602,73 @@ app.post('/api/card/redeem', async (req, res) => {
     card.status = 'unused';
     card.used_at = null;
     card.used_by = null;
+    card.used_email = null;
     saveCards(cards);
     record.status = 'failed';
     record.error_message = err.message;
     saveRecords(records);
     res.status(500).json({ error: '兑换服务暂时不可用，卡密已退回' });
   }
+});
+
+// ========== 公开卡密查询 API ==========
+// 用户可查询自己卡密的状态，邮箱脱敏显示
+const queryAttempts = new Map();
+function checkQueryRate(ip) {
+  const now = Date.now();
+  const rec = queryAttempts.get(ip) || { count: 0, resetAt: now + 60 * 1000 };
+  if (now > rec.resetAt) { rec.count = 0; rec.resetAt = now + 60 * 1000; }
+  rec.count++;
+  queryAttempts.set(ip, rec);
+  return rec.count;
+}
+
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return null;
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return local[0] + '***@' + domain;
+  return local[0] + '*'.repeat(Math.min(local.length - 2, 4)) + local[local.length - 1] + '@' + domain;
+}
+
+app.get('/api/card/query', (req, res) => {
+  const clientIP = getClientIP(req);
+  if (checkQueryRate(clientIP) > 20) {
+    return res.status(429).json({ error: '查询过于频繁，请稍后重试' });
+  }
+
+  const { code } = req.query;
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ error: '请提供卡密' });
+  }
+
+  const cardCode = code.trim().toUpperCase();
+  const card = cards.find(c => c.code === cardCode);
+
+  if (!card) {
+    return res.status(404).json({ error: '卡密不存在' });
+  }
+
+  // 查找对应兑换记录
+  const record = records.find(r => r.card_code === cardCode);
+
+  const statusMap = { unused: '未使用', used: '已使用', disabled: '已禁用' };
+
+  res.json({
+    code: card.code,
+    type: card.type,
+    status: card.status,
+    status_label: statusMap[card.status] || card.status,
+    created_at: card.created_at,
+    used_at: card.used_at || null,
+    email: card.used_email ? maskEmail(card.used_email) : null,
+    redeem_status: record ? record.status : null,
+    redeem_status_label: record ? {
+      pending: '等待中',
+      processing: '处理中',
+      done: '兑换成功',
+      failed: '兑换失败'
+    }[record.status] || record.status : null
+  });
 });
 
 // 查询兑换任务状态
@@ -644,6 +711,7 @@ app.get('/api/card/job/:jobId', async (req, res) => {
             card.status = 'unused';
             card.used_at = null;
             card.used_by = null;
+            card.used_email = null;
             saveCards(cards);
           }
         }

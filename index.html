@@ -562,6 +562,108 @@
         .steps-list li strong {
             color: var(--text-primary);
         }
+
+        /* 卡密查询结果 */
+        .query-result {
+            margin-top: 20px;
+            border-radius: 14px;
+            overflow: hidden;
+            animation: slideUp 0.4s ease;
+        }
+
+        .query-result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-color);
+            border-radius: 14px 14px 0 0;
+        }
+
+        .query-result-header .qcode {
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 1px;
+        }
+
+        .query-result-body {
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 14px 14px;
+            background: rgba(255,255,255,0.02);
+        }
+
+        .query-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 13px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 13px;
+        }
+
+        .query-row:last-child { border-bottom: none; }
+
+        .query-row .q-label {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .query-row .q-value {
+            color: var(--text-primary);
+            font-weight: 500;
+            text-align: right;
+        }
+
+        .query-row .q-value.mono {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .status-pill.unused { background: rgba(52,211,153,0.12); color: var(--accent-emerald); }
+        .status-pill.used { background: rgba(99,102,241,0.12); color: var(--accent-indigo); }
+        .status-pill.disabled { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
+        .status-pill.done { background: rgba(52,211,153,0.12); color: var(--accent-emerald); }
+        .status-pill.failed { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
+        .status-pill.processing, .status-pill.pending { background: rgba(251,191,36,0.12); color: var(--accent-amber); }
+
+        .query-empty {
+            text-align: center;
+            padding: 16px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
     </style>
 </head>
 <body>
@@ -694,6 +796,35 @@
 
         <footer class="footer">
             <p>一张卡密仅可使用一次 · 已有会员请到期后兑换 · Team/工作空间账号请勿兑换</p>
+        </footer>
+
+        <!-- 分隔线 -->
+        <div class="divider">卡密查询</div>
+
+        <!-- 卡密查询区域 -->
+        <section class="card" id="queryCard">
+            <div class="card-title">
+                <span class="icon">🔍</span>
+                卡密状态查询
+            </div>
+            <div class="input-group" style="margin-bottom: 12px;">
+                <label for="queryCodeInput">输入卡密</label>
+                <div class="input-wrapper">
+                    <input type="text" id="queryCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
+                        autocomplete="off" spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"
+                        style="padding-right: 100px;">
+                    <button id="queryBtn" onclick="queryCard()"
+                        style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 7px 16px; background: var(--gradient-1); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
+                        查&nbsp;询
+                    </button>
+                </div>
+            </div>
+            <div id="queryResult"></div>
+        </section>
+
+        <footer class="footer" style="margin-top: 10px;">
+            <p>&#169; 喵喵GPT源头 &nbsp;&middot;&nbsp; 一卡一用 · 安全可靠</p>
         </footer>
     </div>
 
@@ -949,6 +1080,88 @@
         document.getElementById('cardCodeInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') verifyCard();
         });
+
+        // 回车键查询
+        document.getElementById('queryCodeInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') queryCard();
+        });
+
+        // ========== 卡密查询 ==========
+        async function queryCard() {
+            const code = document.getElementById('queryCodeInput').value.trim();
+            const btn = document.getElementById('queryBtn');
+            const resultDiv = document.getElementById('queryResult');
+
+            if (!code) {
+                resultDiv.innerHTML = `<div class="query-empty">请输入卡密</div>`;
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span>';
+
+            try {
+                const res = await fetch(`/api/card/query?code=${encodeURIComponent(code)}`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    resultDiv.innerHTML = `
+                        <div style="padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
+                            <span>&#10060;</span> ${data.error || '查询失败'}
+                        </div>`;
+                    return;
+                }
+
+                const statusIconMap = {
+                    unused: '&#x2728;',
+                    used: '&#x2705;',
+                    disabled: '&#x1F6AB;'
+                };
+
+                const redeemRows = data.used_at ? `
+                    <div class="query-row">
+                        <span class="q-label">❤️ 兑换成功时间</span>
+                        <span class="q-value mono">${data.used_at}</span>
+                    </div>
+                    ${data.email ? `
+                    <div class="query-row">
+                        <span class="q-label">📧 兑换邮箱</span>
+                        <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${data.email}</span>
+                    </div>` : ''}
+                    ${data.redeem_status ? `
+                    <div class="query-row">
+                        <span class="q-label">📦 兑换进度</span>
+                        <span class="q-value"><span class="status-pill ${data.redeem_status}">${statusIconMap[data.redeem_status] || ''} ${data.redeem_status_label}</span></span>
+                    </div>` : ''}
+                ` : '';
+
+                resultDiv.innerHTML = `
+                    <div class="query-result">
+                        <div class="query-result-header">
+                            <span class="qcode">${data.code}</span>
+                            <span class="status-pill ${data.status}">${statusIconMap[data.status] || ''} ${data.status_label}</span>
+                        </div>
+                        <div class="query-result-body">
+                            <div class="query-row">
+                                <span class="q-label">🏷️ 订阅类型</span>
+                                <span class="q-value"><span class="type-badge ${data.type}">${data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro'}</span></span>
+                            </div>
+                            <div class="query-row">
+                                <span class="q-label">📅 生成时间</span>
+                                <span class="q-value mono">${data.created_at || '-'}</span>
+                            </div>
+                            ${redeemRows}
+                            ${!data.used_at ? `<div class="query-empty">💡 该卡密尚未使用</div>` : ''}
+                        </div>
+                    </div>`;
+
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="query-empty">网络错误，请检查连接后重试</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '查&nbsp;询';
+            }
+        }
     </script>
 </body>
 </html>
