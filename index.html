@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>喵喵GPT源头 - 订阅兑换</title>
+    <title>GPT源头 - 订阅兑换</title>
     <meta name="description" content="使用卡密快速兑换 ChatGPT Plus 或 Pro 订阅">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -334,9 +334,19 @@
             color: var(--accent-indigo);
         }
 
+        .type-badge.plus_1y {
+            background: rgba(6, 182, 212, 0.15);
+            color: #22d3ee;
+        }
+
         .type-badge.pro {
             background: rgba(139, 92, 246, 0.15);
             color: #a78bfa;
+        }
+
+        .type-badge.pro_20x {
+            background: rgba(244, 114, 182, 0.15);
+            color: #f472b6;
         }
 
         /* 任务状态 */
@@ -562,9 +572,250 @@
         .steps-list li strong {
             color: var(--text-primary);
         }
+
+        /* 卡密查询结果 */
+        .query-result {
+            margin-top: 20px;
+            border-radius: 14px;
+            overflow: hidden;
+            animation: slideUp 0.4s ease;
+        }
+
+        .query-result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-color);
+            border-radius: 14px 14px 0 0;
+        }
+
+        .query-result-header .qcode {
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 1px;
+        }
+
+        .query-result-body {
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 14px 14px;
+            background: rgba(255,255,255,0.02);
+        }
+
+        .query-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 13px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 13px;
+        }
+
+        .query-row:last-child { border-bottom: none; }
+
+        .query-row .q-label {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .query-row .q-value {
+            color: var(--text-primary);
+            font-weight: 500;
+            text-align: right;
+        }
+
+        .query-row .q-value.mono {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .status-pill.unused { background: rgba(52,211,153,0.12); color: var(--accent-emerald); }
+        .status-pill.used { background: rgba(99,102,241,0.12); color: var(--accent-indigo); }
+        .status-pill.disabled { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
+        .status-pill.done { background: rgba(52,211,153,0.12); color: var(--accent-emerald); }
+        .status-pill.failed { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
+        .status-pill.processing, .status-pill.pending { background: rgba(251,191,36,0.12); color: var(--accent-amber); }
+
+        .cancel-inline-btn {
+            width: auto;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(251, 191, 36, 0.28);
+            background: rgba(251, 191, 36, 0.1);
+            color: var(--accent-amber);
+            font-size: 12px;
+            font-weight: 700;
+            margin-top: 12px;
+        }
+
+        .cancel-inline-btn:hover:not(:disabled) {
+            background: rgba(251, 191, 36, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .query-empty {
+            text-align: center;
+            padding: 16px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .batch-query-section {
+            margin-top: 18px;
+            padding-top: 18px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .batch-query-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+
+        .query-table-wrap {
+            margin-top: 16px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.02);
+        }
+
+        .query-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 720px;
+            font-size: 13px;
+        }
+
+        .query-table th,
+        .query-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            vertical-align: middle;
+        }
+
+        .query-table th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .query-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .query-table .mono-cell {
+            font-family: monospace;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .query-table .error-cell {
+            color: var(--accent-amber);
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+        /* 维护模式遗罩 */
+        .maintenance-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #0a0a0f;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 24px;
+        }
+        .maintenance-overlay.active { display: flex; }
+        .maintenance-icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+            animation: pulse-glow 3s ease-in-out infinite;
+            filter: drop-shadow(0 0 20px rgba(251,191,36,0.4));
+        }
+        .maintenance-title {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+        .maintenance-msg {
+            font-size: 15px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            max-width: 480px;
+            white-space: pre-wrap;
+        }
+        .maintenance-dots {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 36px;
+        }
+        .maintenance-dots span {
+            width: 8px; height: 8px;
+            background: var(--accent-amber);
+            border-radius: 50%;
+            animation: bounce-dot 1.4s ease-in-out infinite;
+            opacity: 0.4;
+        }
+        .maintenance-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .maintenance-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce-dot {
+            0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
+            40% { transform: scale(1.4); opacity: 1; }
+        }
     </style>
 </head>
 <body>
+    <!-- 维护模式遗罩 -->
+    <div class="maintenance-overlay" id="maintenanceOverlay">
+        <div class="maintenance-icon">🔧</div>
+        <div class="maintenance-title">系统维护中</div>
+        <div class="maintenance-msg" id="maintenanceMsgText">系统正在进行维护升级，请稍后再访问。</div>
+        <div class="maintenance-dots">
+            <span></span><span></span><span></span>
+        </div>
+    </div>
+
     <!-- 背景效果 -->
     <div class="bg-pattern"></div>
     <div class="floating-orb orb-1"></div>
@@ -575,7 +826,7 @@
         <!-- 标题 -->
         <header class="header">
             <div class="logo">⚡</div>
-            <h1>喵喵GPT源头</h1>
+            <h1>GPT源头</h1>
             <p>使用卡密快速激活 Plus 或 Pro 订阅</p>
         </header>
 
@@ -627,7 +878,9 @@
                 <label for="cardCodeInput">兑换卡密 (CDK)</label>
                 <input type="text" id="cardCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
                     autocomplete="off" spellcheck="false"
-                    oninput="this.value = this.value.toUpperCase()">
+                    oninput="this.value = this.value.toUpperCase(); validateCodeFormat(this.value)"
+                    onblur="validateCodeFormat(this.value)">
+                <div id="codeError" style="display:none; margin-top:6px; font-size:12px; color:#fb7185; display:flex; align-items:center; gap:5px;"></div>
             </div>
             <button class="btn btn-primary" id="verifyBtn" onclick="verifyCard()">
                 验证卡密
@@ -649,7 +902,9 @@
                 <label for="accessTokenInput">ChatGPT Session 数据</label>
                 <textarea id="accessTokenInput" rows="5"
                     placeholder='{"user":{"id":"...","name":"..."},"expires":"...","accessToken":"eyJhbGciOiJSUzI1NiIs..."}'
-                    spellcheck="false"></textarea>
+                    spellcheck="false"
+                    oninput="clearTokenError()"></textarea>
+                <div id="tokenError" style="display:none; margin-top:6px; font-size:12px; color:#fb7185;"></div>
                 <p class="input-hint">
                     登录 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 后，访问
                     <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>，
@@ -679,6 +934,10 @@
                     <span class="label">当前状态</span>
                     <span class="value" id="jobStatusText">等候中...</span>
                 </div>
+                <div class="job-info-row hidden" id="jobQueueRow">
+                    <span class="label">排队进度</span>
+                    <span class="value" id="jobQueueText">-</span>
+                </div>
             </div>
             <div class="progress-bar" id="progressBar">
                 <div class="fill"></div>
@@ -687,6 +946,18 @@
                 🎉 订阅成功！请登录 ChatGPT 检查状态。
             </div>
             <div class="job-message error hidden" id="jobErrorMsg"></div>
+            <button class="cancel-inline-btn hidden" id="jobCancelBtn" onclick="cancelTaskByJobId(currentJobId, this)">
+                取消任务
+            </button>
+            <div class="hidden" id="jobActionBtns" style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+                <button class="btn btn-primary" id="redeemRetryBtn" onclick="retryRedeem()" style="flex:1;min-width:140px;">
+                    🔄 重试兑换
+                </button>
+                <button class="btn btn-outline" id="redeemNewBtn" onclick="resetForm()" style="flex:1;min-width:140px;">
+                    换一张卡密
+                </button>
+            </div>
+            <!-- 成功后只显示换一张 -->
             <button class="btn btn-outline hidden" id="retryBtn" onclick="resetForm()" style="margin-top: 16px;">
                 兑换另一张卡密
             </button>
@@ -695,6 +966,55 @@
         <footer class="footer">
             <p>一张卡密仅可使用一次 · 已有会员请到期后兑换 · Team/工作空间账号请勿兑换</p>
         </footer>
+
+        <!-- 分隔线 -->
+        <div class="divider">卡密查询</div>
+
+        <!-- 卡密查询区域 -->
+        <section class="card" id="queryCard">
+            <div class="card-title">
+                <span class="icon">🔍</span>
+                卡密状态查询
+            </div>
+            <div class="input-group" style="margin-bottom: 12px;">
+                <label for="queryCodeInput">输入卡密</label>
+                <div class="input-wrapper">
+                    <input type="text" id="queryCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
+                        autocomplete="off" spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"
+                        style="padding-right: 100px;">
+                    <button id="queryBtn" onclick="queryCard()"
+                        style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 7px 16px; background: var(--gradient-1); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
+                        查&nbsp;询
+                    </button>
+                </div>
+            </div>
+            <div id="queryResult"></div>
+
+            <div class="batch-query-section">
+                <div class="card-title" style="margin-bottom: 14px;">
+                    <span class="icon">📚</span>
+                    批量卡密查询
+                </div>
+                <div class="input-group" style="margin-bottom: 0;">
+                    <label for="batchQueryInput">一次可查询多个卡密</label>
+                    <textarea id="batchQueryInput" placeholder="每行一个卡密，或使用逗号分隔&#10;公共页面单次最多查询 20 个"
+                        spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"></textarea>
+                    <div class="input-hint">支持换行或逗号分隔，批量结果会按表格展示。</div>
+                </div>
+                <div class="batch-query-actions">
+                    <button id="batchQueryBtn" class="btn btn-outline" type="button" onclick="queryCardsBatch()" style="width: auto; padding: 10px 18px;">
+                        批量查询
+                    </button>
+                </div>
+                <div id="batchQueryResult"></div>
+            </div>
+        </section>
+
+        <footer class="footer" style="margin-top: 10px;">
+            <p>&#169; GPT源头 &nbsp;&middot;&nbsp; 一卡一用 · 安全可靠</p>
+        </footer>
     </div>
 
     <script>
@@ -702,6 +1022,104 @@
         let verifiedCard = null;
         let currentJobId = null;
         let isPolling = false;
+        let maintenanceActive = false;
+
+        // ========== 页面加载时检查维护状态 ==========
+        async function checkMaintenanceStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                maintenanceActive = !!data.maintenance;
+                if (maintenanceActive) {
+                    const overlay = document.getElementById('maintenanceOverlay');
+                    const msgEl = document.getElementById('maintenanceMsgText');
+                    if (data.message) msgEl.textContent = data.message;
+                    overlay.classList.add('active');
+                }
+            } catch (e) {
+                // 网络错误时不展示维护页
+            }
+        }
+        checkMaintenanceStatus();
+
+        // ========== 卡密验证 ==========
+        // ========== 前置校验工具函数 ==========
+        const CDK_PATTERN = /^CDK-(PLUS|PLUS_1Y|PRO|PRO_20X)-(?:[A-Z0-9]{10}|[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4})$/;
+
+        function validateCodeFormat(value) {
+            const errEl = document.getElementById('codeError');
+            const input = document.getElementById('cardCodeInput');
+            if (!value) {
+                errEl.style.display = 'none';
+                input.style.borderColor = '';
+                return true;
+            }
+            if (!CDK_PATTERN.test(value)) {
+                let hint = '';
+                if (!value.startsWith('CDK-')) {
+                    hint = '卡密必须以 CDK- 开头';
+                } else if (!/^CDK-(PLUS|PLUS_1Y|PRO|PRO_20X)-/.test(value)) {
+                    hint = '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-…、CDK-PRO-… 或 CDK-PRO_20X-…';
+                } else {
+                    hint = '卡密格式不正确，请输入旧版 10 位码，或新版 5 组安全码';
+                }
+                errEl.innerHTML = `⚠️ ${hint}`;
+                errEl.style.display = 'flex';
+                input.style.borderColor = 'rgba(251,113,133,0.5)';
+                return false;
+            }
+            errEl.style.display = 'none';
+            input.style.borderColor = 'rgba(52,211,153,0.4)';
+            return true;
+        }
+
+        function showTokenError(msg) {
+            const errEl = document.getElementById('tokenError');
+            const ta = document.getElementById('accessTokenInput');
+            errEl.innerHTML = `⚠️ ${msg}`;
+            errEl.style.display = 'block';
+            ta.style.borderColor = 'rgba(251,113,133,0.5)';
+        }
+
+        function clearTokenError() {
+            const errEl = document.getElementById('tokenError');
+            const ta = document.getElementById('accessTokenInput');
+            errEl.style.display = 'none';
+            ta.style.borderColor = '';
+        }
+
+        // 校验 Session 数据，返回 { ok, token, error }
+        function validateSessionInput(raw) {
+            if (!raw) return { ok: false, error: '请粘贴 api/auth/session 页面的内容' };
+            if (raw.length < 50) return { ok: false, error: '内容过短，请复制完整的页面内容' };
+
+            let token = raw;
+
+            if (raw.startsWith('{')) {
+                let parsed;
+                try { parsed = JSON.parse(raw); }
+                catch (e) { return { ok: false, error: 'JSON 格式错误，请完整复制页面内容，勿手动修改' }; }
+                if (!parsed.accessToken) {
+                    if (parsed.error === 'unauthenticated') return { ok: false, error: 'ChatGPT 未登录，请先在同一浏览器登录账号后再来获取' };
+                    return { ok: false, error: 'JSON 中未找到 accessToken 字段，请确认复制的是 api/auth/session 页面的内容' };
+                }
+                token = parsed.accessToken;
+            }
+
+            // JWT 校验：必须以 eyJ 开头且长度足够
+            if (!token.startsWith('eyJ')) {
+                return { ok: false, error: 'accessToken 格式无效，应以 eyJ 开头（JWT 格式）' };
+            }
+            if (token.length < 100) {
+                return { ok: false, error: 'accessToken 长度异常，请确认复制的是完整内容' };
+            }
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                return { ok: false, error: 'accessToken 不是标准 JWT 格式（应有三段用 . 分隔）' };
+            }
+
+            return { ok: true, token };
+        }
 
         // ========== 卡密验证 ==========
         async function verifyCard() {
@@ -709,8 +1127,14 @@
             const btn = document.getElementById('verifyBtn');
             const resultDiv = document.getElementById('verifyResult');
 
+            // 前置校验
             if (!code) {
                 showVerifyError('请输入卡密');
+                document.getElementById('codeError').style.display = 'none';
+                return;
+            }
+            if (!validateCodeFormat(code)) {
+                // validateCodeFormat 已内联显示错误
                 return;
             }
 
@@ -733,12 +1157,14 @@
 
                 // 验证成功
                 verifiedCard = { code, type: data.type };
+                document.getElementById('codeError').style.display = 'none';
+                document.getElementById('cardCodeInput').style.borderColor = '';
                 resultDiv.className = 'verify-result success';
                 resultDiv.innerHTML = `
                     <div class="result-icon">✅</div>
                     <div class="result-text">卡密有效</div>
                     <div class="result-detail">
-                        类型: <span class="type-badge ${data.type}">${data.type.toUpperCase()}</span>
+                        类型: <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span>
                     </div>
                 `;
 
@@ -747,7 +1173,7 @@
                 step2.classList.remove('hidden');
                 const badge = document.getElementById('cardTypeBadge');
                 badge.className = `type-badge ${data.type}`;
-                badge.textContent = data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro';
+                badge.textContent = subscriptionTypeLabel(data.type);
 
                 // 锁定卡密输入
                 document.getElementById('cardCodeInput').readOnly = true;
@@ -781,33 +1207,21 @@
         // ========== 兑换提交 ==========
         async function redeemCard() {
             if (!verifiedCard) {
-                alert('请先验证卡密');
+                showVerifyError('请先验证卡密');
                 return;
             }
 
-            let accessToken = document.getElementById('accessTokenInput').value.trim();
+            const raw = document.getElementById('accessTokenInput').value.trim();
             const btn = document.getElementById('redeemBtn');
 
-            if (!accessToken) {
-                alert('请粘贴 api/auth/session 的完整内容');
+            // 前置校验 Session 数据
+            const validation = validateSessionInput(raw);
+            if (!validation.ok) {
+                showTokenError(validation.error);
+                document.getElementById('accessTokenInput').focus();
                 return;
             }
-
-            // 自动从 session JSON 中提取 accessToken
-            if (accessToken.startsWith('{')) {
-                try {
-                    const json = JSON.parse(accessToken);
-                    if (json.accessToken) {
-                        accessToken = json.accessToken;
-                    } else {
-                        alert('粘贴的 JSON 中未找到 accessToken 字段，请确认内容是否正确');
-                        return;
-                    }
-                } catch (e) {
-                    alert('粘贴的内容格式不正确，请直接复制 api/auth/session 页面的全部内容');
-                    return;
-                }
-            }
+            clearTokenError();
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> 提交中...';
@@ -818,14 +1232,22 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: verifiedCard.code,
-                        access_token: accessToken
+                        access_token: raw  // 服务端自动解析
                     })
                 });
 
                 const data = await res.json();
 
                 if (!res.ok) {
-                    alert('兑换失败: ' + (data.error || '未知错误'));
+                    if (data.status && ['unknown', 'expired'].includes(data.status)) {
+                        showJobStatus({ 
+                            job_id: data.job_id || 'unknown', 
+                            status: data.status, 
+                            error: data.error || '状态不确定，请联系管理员人工核验。' 
+                        });
+                        return;
+                    }
+                    showTokenError(data.error || '兑换失败，请稍后重试');
                     btn.disabled = false;
                     btn.textContent = '🚀 提交兑换';
                     return;
@@ -833,7 +1255,7 @@
 
                 // 成功提交
                 currentJobId = data.job_id;
-                showJobStatus({ job_id: data.job_id, status: data.status });
+                showJobStatus(data);
 
                 // 隐藏前两步
                 document.getElementById('step1Card').classList.add('hidden');
@@ -856,6 +1278,11 @@
 
             document.getElementById('jobIdDisplay').textContent = job.job_id || '-';
             document.getElementById('jobStatusText').textContent = getStatusDesc(job.status);
+            const queueRow = document.getElementById('jobQueueRow');
+            const queueText = document.getElementById('jobQueueText');
+            const queueInfo = formatQueueEstimate(job);
+            queueRow.classList.toggle('hidden', !queueInfo);
+            queueText.textContent = queueInfo || '-';
 
             const badge = document.getElementById('jobBadge');
             badge.textContent = job.status?.toUpperCase() || 'PENDING';
@@ -865,22 +1292,39 @@
             const resultMsg = document.getElementById('jobResultMsg');
             const errorMsg = document.getElementById('jobErrorMsg');
             const retryBtn = document.getElementById('retryBtn');
+            const jobActionBtns = document.getElementById('jobActionBtns');
+            const jobCancelBtn = document.getElementById('jobCancelBtn');
+            const cancellable = !!job.job_id && !['done', 'failed', 'unknown', 'expired'].includes(job.status);
+            jobCancelBtn.classList.toggle('hidden', !cancellable);
 
             if (job.status === 'done') {
                 progressBar.classList.add('hidden');
                 resultMsg.classList.remove('hidden');
                 errorMsg.classList.add('hidden');
+                // 成功：只显示「兑换另一张」
+                jobActionBtns.classList.add('hidden');
                 retryBtn.classList.remove('hidden');
             } else if (job.status === 'failed') {
                 progressBar.classList.add('hidden');
                 resultMsg.classList.add('hidden');
                 errorMsg.classList.remove('hidden');
                 errorMsg.textContent = '❌ 兑换失败: ' + (job.error || '未知原因') + '（卡密已自动退回）';
-                retryBtn.classList.remove('hidden');
+                // 失败：显示「重试兑换」和「换一张」
+                jobActionBtns.style.display = 'flex';
+                jobActionBtns.classList.remove('hidden');
+                retryBtn.classList.add('hidden');
+            } else if (job.status === 'unknown' || job.status === 'expired') {
+                progressBar.classList.add('hidden');
+                resultMsg.classList.add('hidden');
+                errorMsg.classList.remove('hidden');
+                errorMsg.textContent = '兑换状态待人工核验：' + (job.error || '请联系客服确认最终结果，暂不要重复提交。');
+                jobActionBtns.classList.add('hidden');
+                retryBtn.classList.add('hidden');
             } else {
                 progressBar.classList.remove('hidden');
                 resultMsg.classList.add('hidden');
                 errorMsg.classList.add('hidden');
+                jobActionBtns.classList.add('hidden');
                 retryBtn.classList.add('hidden');
             }
         }
@@ -890,9 +1334,77 @@
                 pending: '排队等待中...',
                 processing: '系统处理中，请稍候...',
                 done: '✅ 兑换成功',
-                failed: '兑换失败'
+                failed: '兑换失败',
+                unknown: '待人工核验',
+                expired: '已过期待核验'
             };
             return map[status] || status;
+        }
+
+        function formatQueueEstimate(job) {
+            const parts = [];
+            if (job.queue_position !== null && job.queue_position !== undefined) {
+                parts.push(`排队位置 ${job.queue_position}`);
+            }
+            if (job.estimated_wait_seconds !== null && job.estimated_wait_seconds !== undefined) {
+                const seconds = Number(job.estimated_wait_seconds);
+                if (Number.isFinite(seconds)) {
+                    parts.push(seconds < 60 ? `预计 ${Math.ceil(seconds)} 秒` : `预计 ${Math.ceil(seconds / 60)} 分钟`);
+                }
+            }
+            return parts.join(' · ');
+        }
+
+        function subscriptionTypeLabel(type) {
+            const map = {
+                plus: 'ChatGPT Plus',
+                plus_1y: 'ChatGPT Plus 1 年',
+                pro: 'ChatGPT Pro 5X',
+                pro_20x: 'ChatGPT Pro 20X'
+            };
+            return map[type] || String(type || '-').toUpperCase();
+        }
+
+        async function cancelTaskByJobId(jobId, button) {
+            if (!jobId) {
+                alert('没有可取消的 Job ID');
+                return;
+            }
+            if (!confirm('确认取消这个兑换任务吗？如果上游允许取消，卡密会自动退回。')) return;
+
+            const oldText = button ? button.textContent : '';
+            if (button) {
+                button.disabled = true;
+                button.textContent = '取消中...';
+            }
+
+            try {
+                const res = await fetch('/api/card/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: jobId })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || '取消失败，请稍后重试');
+                    return;
+                }
+
+                if (jobId === currentJobId) {
+                    isPolling = false;
+                    showJobStatus({ job_id: jobId, status: data.status || 'failed', error: 'cancelled' });
+                }
+                alert(data.message || '任务已取消，卡密已退回');
+                const queryCode = document.getElementById('queryCodeInput')?.value.trim();
+                if (queryCode) queryCard();
+            } catch (err) {
+                alert('取消失败：网络错误，请稍后重试');
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = oldText || '取消任务';
+                }
+            }
         }
 
         async function startPolling() {
@@ -905,7 +1417,7 @@
                     if (!res.ok) {
                         if (res.status === 404) {
                             isPolling = false;
-                            showJobStatus({ job_id: currentJobId, status: 'failed', error: '任务不存在或已过期' });
+                            showJobStatus({ job_id: currentJobId, status: 'expired', error: '任务已过期或不存在，请联系客服人工核验最终状态' });
                             break;
                         }
                         await new Promise(r => setTimeout(r, 5000));
@@ -915,7 +1427,7 @@
                     const job = await res.json();
                     showJobStatus(job);
 
-                    if (job.status === 'done' || job.status === 'failed') {
+                    if (job.status === 'done' || job.status === 'failed' || job.status === 'unknown' || job.status === 'expired') {
                         isPolling = false;
                         break;
                     }
@@ -945,10 +1457,296 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
+        // 重试兑换：保留卡密和 access token，自动重新验证并返回第二步
+        async function retryRedeem() {
+            if (!verifiedCard) { resetForm(); return; }
+
+            const retryBtn = document.getElementById('redeemRetryBtn');
+            retryBtn.disabled = true;
+            retryBtn.innerHTML = '<span class="spinner"></span> 验证中...';
+
+            // 隐藏任务状态区域
+            currentJobId = null;
+            isPolling = false;
+            document.getElementById('jobSection').classList.remove('visible');
+            document.getElementById('jobErrorMsg').classList.add('hidden');
+            document.getElementById('jobResultMsg').classList.add('hidden');
+            document.getElementById('progressBar').classList.remove('hidden');
+            document.getElementById('jobActionBtns').classList.add('hidden');
+            document.getElementById('retryBtn').classList.add('hidden');
+
+            // 重新验证卡密（卡密已退回 unused）
+            try {
+                const res = await fetch('/api/card/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: verifiedCard.code })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    // 卡密不再可用（如被禁用），全重置
+                    alert('卡密已无法重试：' + (data.error || '未知错误'));
+                    resetForm();
+                    return;
+                }
+
+                // 验证通过，更新 verifiedCard 并显示第二步
+                verifiedCard = { code: verifiedCard.code, type: data.type };
+
+                const step1 = document.getElementById('step1Card');
+                const step2 = document.getElementById('step2Card');
+                const verifyResult = document.getElementById('verifyResult');
+                const verifyBtn = document.getElementById('verifyBtn');
+                const cardTypeBadge = document.getElementById('cardTypeBadge');
+
+                // 恢复 step1 状态
+                step1.classList.remove('hidden');
+                document.getElementById('cardCodeInput').readOnly = true;
+                verifyBtn.textContent = '✓ 已验证';
+                verifyBtn.disabled = true;
+                verifyResult.className = 'verify-result success';
+                verifyResult.innerHTML = `
+                    <div class="result-icon">✅</div>
+                    <div class="result-text">卡密有效（重试）</div>
+                    <div class="result-detail">类型: <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></div>
+                `;
+
+                // 显示 step2，自动恢复兑换按钮
+                cardTypeBadge.className = `type-badge ${data.type}`;
+                cardTypeBadge.textContent = subscriptionTypeLabel(data.type);
+                const redeemBtn = document.getElementById('redeemBtn');
+                redeemBtn.disabled = false;
+                redeemBtn.textContent = '🚀 重试兑换';
+                step2.classList.remove('hidden');
+
+                setTimeout(() => step2.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+
+            } catch (err) {
+                alert('网络错误，请检查连接后重试');
+            } finally {
+                retryBtn.disabled = false;
+                retryBtn.innerHTML = '🔄 重试兑换';
+            }
+        }
+
         // 回车键验证
         document.getElementById('cardCodeInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') verifyCard();
         });
+
+        // 回车键查询
+        document.getElementById('queryCodeInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') queryCard();
+        });
+
+        document.getElementById('batchQueryInput').addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') queryCardsBatch();
+        });
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function queryStatusIcon(status) {
+            const statusIconMap = {
+                unused: '&#x2728;',
+                used: '&#x2705;',
+                disabled: '&#x1F6AB;',
+                pending: '&#x23F3;',
+                processing: '&#x23F3;',
+                done: '&#x2705;',
+                failed: '&#x274C;',
+                unknown: '&#x26A0;',
+                expired: '&#x26A0;',
+                not_found: '&#x1F50D;'
+            };
+            return statusIconMap[status] || '';
+        }
+
+        function renderBatchQueryTable(items) {
+            return `
+                <div class="query-table-wrap">
+                    <table class="query-table">
+                        <thead>
+                            <tr>
+                                <th>卡密</th>
+                                <th>类型</th>
+                                <th>卡密状态</th>
+                                <th>兑换状态</th>
+                                <th>Job ID</th>
+                                <th>错误信息</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map((item) => {
+                                const cardStatusClass = escapeHtml(item.status || 'not_found');
+                                const redeemStatus = item.redeem_status
+                                    ? `<span class="status-pill ${escapeHtml(item.redeem_status)}">${queryStatusIcon(item.redeem_status)} ${escapeHtml(item.redeem_status_label || item.redeem_status)}</span>`
+                                    : '-';
+                                const errorText = item.error || item.redeem_error || (item.needs_manual_review ? '需人工核验' : '-');
+                                return `
+                                    <tr>
+                                        <td class="mono-cell">${escapeHtml(item.code || '-')}</td>
+                                        <td>${item.type ? `<span class="type-badge ${escapeHtml(item.type)}">${escapeHtml(subscriptionTypeLabel(item.type))}</span>` : '-'}</td>
+                                        <td><span class="status-pill ${cardStatusClass}">${queryStatusIcon(item.status)} ${escapeHtml(item.status_label || item.status || '未知')}</span></td>
+                                        <td>${redeemStatus}</td>
+                                        <td class="mono-cell">${escapeHtml(item.job_id || '-')}</td>
+                                        <td class="error-cell">${escapeHtml(errorText)}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ========== 卡密查询 ==========
+        async function queryCard() {
+            const code = document.getElementById('queryCodeInput').value.trim();
+            const btn = document.getElementById('queryBtn');
+            const resultDiv = document.getElementById('queryResult');
+
+            if (!code) {
+                resultDiv.innerHTML = `<div class="query-empty">请输入卡密</div>`;
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span>';
+
+            try {
+                const res = await fetch(`/api/card/query?code=${encodeURIComponent(code)}`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    resultDiv.innerHTML = `
+                        <div style="padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
+                            <span>&#10060;</span> ${data.error || '查询失败'}
+                        </div>`;
+                    return;
+                }
+
+                const redeemRows = data.redeem_status ? `
+                    ${data.used_at ? `
+                    <div class="query-row">
+                        <span class="q-label">❤️ 兑换成功时间</span>
+                        <span class="q-value mono">${data.used_at}</span>
+                    </div>` : ''}
+                    ${data.email ? `
+                    <div class="query-row">
+                        <span class="q-label">📧 兑换邮箱</span>
+                        <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${data.email}</span>
+                    </div>` : ''}
+                    <div class="query-row">
+                        <span class="q-label">📦 兑换进度</span>
+                        <span class="q-value"><span class="status-pill ${data.redeem_status}">${queryStatusIcon(data.redeem_status)} ${data.redeem_status_label}</span></span>
+                    </div>
+                    ${(data.queue_position !== null && data.queue_position !== undefined) || (data.estimated_wait_seconds !== null && data.estimated_wait_seconds !== undefined) ? `
+                    <div class="query-row">
+                        <span class="q-label">⏳ 排队预估</span>
+                        <span class="q-value">${formatQueueEstimate(data)}</span>
+                    </div>` : ''}
+                    ${data.redeem_error ? `
+                    <div class="query-row">
+                        <span class="q-label">状态说明</span>
+                        <span class="q-value" style="color: var(--accent-amber);">${data.redeem_error}</span>
+                    </div>` : ''}
+                    ${data.needs_manual_review ? `
+                    <div style="margin:0 20px 12px; padding: 12px; background: rgba(251, 191, 36, 0.1); border-left: 3px solid #fbbf24; border-radius: 4px; font-size: 13px;">
+                        <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">⚠️ 需人工核验</div>
+                        <div style="color:var(--text-secondary);">此卡密在提交时遇到异常，目前状态不确定。卡密已锁定，请勿重复提交，请联系客服人工查询。</div>
+                        <div style="color:var(--text-secondary);font-size:11px;opacity:0.8;margin-top:4px;">[Diagnostics: ${data.manual_review_stage || 'unknown'} - ${data.manual_review_reason || 'N/A'}]</div>
+                    </div>` : ''}
+                    ${data.job_id ? `
+                    <div class="query-row">
+                        <span class="q-label">Job ID</span>
+                        <span class="q-value mono">${data.job_id}</span>
+                    </div>` : ''}
+                    ${data.job_id && !['done', 'failed', 'unknown', 'expired'].includes(data.redeem_status) ? `
+                    <button class="cancel-inline-btn" onclick="cancelTaskByJobId('${data.job_id}', this)">取消任务</button>` : ''}
+                ` : '';
+
+                resultDiv.innerHTML = `
+                    <div class="query-result">
+                        <div class="query-result-header">
+                            <span class="qcode">${data.code}</span>
+                            <span class="status-pill ${data.status}">${queryStatusIcon(data.status)} ${data.status_label}</span>
+                        </div>
+                        <div class="query-result-body">
+                            <div class="query-row">
+                                <span class="q-label">🏷️ 订阅类型</span>
+                                <span class="q-value"><span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></span>
+                            </div>
+                            <div class="query-row">
+                                <span class="q-label">📅 生成时间</span>
+                                <span class="q-value mono">${data.created_at || '-'}</span>
+                            </div>
+                            ${redeemRows}
+                            ${!data.used_at && !data.redeem_status ? `<div class="query-empty">💡 该卡密尚未使用</div>` : ''}
+                        </div>
+                    </div>`;
+
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="query-empty">网络错误，请检查连接后重试</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '查&nbsp;询';
+            }
+        }
+
+        async function queryCardsBatch() {
+            const text = document.getElementById('batchQueryInput').value.trim();
+            const btn = document.getElementById('batchQueryBtn');
+            const resultDiv = document.getElementById('batchQueryResult');
+
+            if (!text) {
+                resultDiv.innerHTML = `<div class="query-empty">请输入至少一个卡密</div>`;
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span>';
+
+            try {
+                const res = await fetch('/api/card/query/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    resultDiv.innerHTML = `
+                        <div style="margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
+                            <span>&#10060;</span> ${escapeHtml(data.error || '批量查询失败')}
+                        </div>`;
+                    return;
+                }
+
+                const items = Array.isArray(data.results) ? data.results : [];
+                if (!items.length) {
+                    resultDiv.innerHTML = `<div class="query-empty">没有查询到结果</div>`;
+                    return;
+                }
+
+                resultDiv.innerHTML = `
+                    <div style="margin-top: 16px; color: var(--text-secondary); font-size: 12px;">共查询 ${items.length} 个卡密</div>
+                    ${renderBatchQueryTable(items)}
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="query-empty">网络错误，请检查连接后重试</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '批量查询';
+            }
+        }
     </script>
 </body>
 </html>

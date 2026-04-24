@@ -4,3 +4,4 @@ node_modules/
 .gemini/
 data/
 data-staging/
+tests

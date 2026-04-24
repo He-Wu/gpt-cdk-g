@@ -18,6 +18,8 @@ services:
       # - ALLOWED_ORIGIN=https://yourdomain.com
       # 可选：代理白名单（默认 chatgpt.com,chat.openai.com）
       # - PROXY_ALLOWED_HOSTS=chatgpt.com,chat.openai.com
+      # 可选：如果前面有可信反代并传递 X-Forwarded-For，设为 1 获取真实客户端 IP
+      - TRUST_PROXY=${TRUST_PROXY:-0}
     volumes:
       # 持久化卡密数据、兑换记录、API 设置
       - ./data:/app/data

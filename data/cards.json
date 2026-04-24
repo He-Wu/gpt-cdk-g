@@ -123,7 +123,7 @@
     "id": 13,
     "code": "CDK-PLUS-MLEMD5BH9Q",
     "type": "plus",
-    "status": "unused",
+    "status": "disabled",
     "created_at": "2026/4/22 23:23:56",
     "used_at": null,
     "used_by": null,
@@ -133,11 +133,12 @@
     "id": 14,
     "code": "CDK-PLUS-SNRBSX3ME5",
     "type": "plus",
-    "status": "unused",
+    "status": "disabled",
     "created_at": "2026/4/22 23:23:56",
     "used_at": null,
     "used_by": null,
-    "batch_id": "05f5a022"
+    "batch_id": "05f5a022",
+    "used_email": null
   },
   {
     "id": 15,
@@ -148,5 +149,73 @@
     "used_at": "2026/4/23 00:02:19",
     "used_by": "bed7b66c364265af",
     "batch_id": "05f5a022"
+  },
+  {
+    "id": 16,
+    "code": "CDK-PLUS_1Y-5LRMZ-6RK9P-3PTJX-LK26Y-F8EXK",
+    "type": "plus_1y",
+    "status": "disabled",
+    "created_at": "2026/4/23 20:09:22",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "16b1c620"
+  },
+  {
+    "id": 17,
+    "code": "CDK-PRO_20X-K9VUK-39W7H-K7QN9-QHN22-R7MEN",
+    "type": "pro_20x",
+    "status": "used",
+    "created_at": "2026/4/24 13:16:29",
+    "used_at": "2026/4/24 13:16:53",
+    "used_by": "999612ce3daf6a62",
+    "batch_id": "2eb4ec9c",
+    "used_email": "rickyhawaii1983@gmail.com"
+  },
+  {
+    "id": 18,
+    "code": "CDK-PRO_20X-UTUX6-U8P2G-ECGPP-GEYZ9-AZCGF",
+    "type": "pro_20x",
+    "status": "used",
+    "created_at": "2026/4/24 14:03:38",
+    "used_at": "2026/4/24 14:04:25",
+    "used_by": "88d15d91850aea2d",
+    "batch_id": "a7d8f8b7",
+    "used_email": "MargareteTurnerhilv@outlook.com"
+  },
+  {
+    "id": 19,
+    "code": "CDK-PLUS-FMV33-D2M9D-8UPUW-XWX5C-RU2EM",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/25 01:48:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "464e6070",
+    "created_by_username": "aaa11",
+    "created_by_role": "sub_admin"
+  },
+  {
+    "id": 20,
+    "code": "CDK-PLUS-X4HZ7-88WWK-JSNYL-NXYE3-65AJT",
+    "type": "plus",
+    "status": "unused",
+    "created_at": "2026/4/25 01:48:51",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "464e6070",
+    "created_by_username": "aaa11",
+    "created_by_role": "sub_admin"
+  },
+  {
+    "id": 21,
+    "code": "CDK-PLUS_1Y-F7MLQ-PF9SR-2AV3R-MMHCH-JU9AX",
+    "type": "plus_1y",
+    "status": "disabled",
+    "created_at": "2026/4/25 01:48:58",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "1c1b7519",
+    "created_by_username": "aaa11",
+    "created_by_role": "sub_admin"
   }
 ]
