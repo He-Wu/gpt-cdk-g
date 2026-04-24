@@ -1,5 +1,34 @@
 {
   "apiKey": "sk_f152d4e6f47493a826ec0d8d2c47ab91",
   "baseUrl": "https://grknik3qae.localto.net",
-  "adminPassword": "Y77VYWe3d87y33UVcLd3Sw94"
+  "adminPassword": "Y77VYWe3d87y33UVcLd3Sw94",
+  "subAdmins": [
+    {
+      "id": "bf69c7fd-9357-4fe6-b973-00b8eb5a3599",
+      "username": "aaa11",
+      "passwordHash": "c71e65d0cf8896602a3f300097e6ccf9:089a7d789635853e1d70e0e6c71318e39e0427649ed6ed93b8d4a32aaa46e1807981fa0fc146995cb20e70f6430c9e7f016e717f176fa2e1113bae6095b4082e",
+      "status": "active",
+      "created_at": "2026/4/25 01:48:03"
+    }
+  ],
+  "typedMaintenance": {
+    "plus": {
+      "enabled": false,
+      "message": ""
+    },
+    "plus_1y": {
+      "enabled": false,
+      "message": ""
+    },
+    "pro": {
+      "enabled": false,
+      "message": ""
+    },
+    "pro_20x": {
+      "enabled": false,
+      "message": ""
+    }
+  },
+  "maintenanceEnabled": false,
+  "maintenanceMessage": ""
 }

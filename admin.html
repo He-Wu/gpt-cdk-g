@@ -552,6 +552,46 @@
             overflow-x: auto;
         }
 
+        .batch-query-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .batch-query-helper {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .bulk-action-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .bulk-action-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .table-check-cell {
+            width: 40px;
+            text-align: center;
+        }
+
+        .table-check-cell input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -611,6 +651,7 @@
         .badge-done { background: rgba(52,211,153,0.12); color: var(--emerald); }
         .badge-failed { background: rgba(251,113,133,0.12); color: var(--rose); }
         .badge-unknown, .badge-expired { background: rgba(251,191,36,0.12); color: var(--amber); }
+        .badge-not_found { background: rgba(148,163,184,0.14); color: var(--text-secondary); }
 
         /* 表单行 */
         .form-row {
@@ -632,7 +673,8 @@
         }
 
         .form-group input,
-        .form-group select {
+        .form-group select,
+        .form-group textarea {
             width: 100%;
             padding: 10px 14px;
             background: var(--bg-input);
@@ -646,9 +688,17 @@
         }
 
         .form-group input:focus,
-        .form-group select:focus {
+        .form-group select:focus,
+        .form-group textarea:focus {
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.5;
         }
 
         .form-group select {
@@ -907,9 +957,15 @@
         <div class="logo">
             <div class="logo-icon">🔐</div>
             <h1>管理后台</h1>
-            <p>请输入管理员密码登录</p>
+            <p>请输入管理员密码登录，子管理员可填写用户名登录</p>
         </div>
         <div class="login-error" id="loginError"></div>
+        <div class="form-group">
+            <label for="loginUsername">用户名</label>
+            <input type="text" id="loginUsername" placeholder="子管理员请输入用户名，不填则使用主管理员密码登录"
+                autocomplete="username"
+                onkeydown="if(event.key==='Enter') adminLogin()">
+        </div>
         <div class="form-group">
             <label for="loginPassword">密码</label>
             <input type="password" id="loginPassword" placeholder="请输入管理员密码"
@@ -943,7 +999,10 @@
             <div class="nav-item" onclick="switchPage('records')" data-page="records">
                 <span class="nav-icon">📋</span> 兑换记录
             </div>
-            <div class="nav-item" onclick="switchPage('settings')" data-page="settings">
+            <div class="nav-item" onclick="switchPage('accounts')" data-page="accounts" data-permission="manage_accounts">
+                <span class="nav-icon">👥</span> 账号管理
+            </div>
+            <div class="nav-item" onclick="switchPage('settings')" data-page="settings" data-permission="manage_settings">
                 <span class="nav-icon">⚙️</span> 系统设置
                 <span class="maintenance-badge off" id="sidebarMaintBadge" style="margin-left:auto;">正常</span>
             </div>
@@ -974,7 +1033,10 @@
             <div class="nav-item" onclick="switchPage('records')" data-page="records">
                 <span class="nav-icon">🔍</span> 兑换记录
             </div>
-            <div class="nav-item" onclick="switchPage('settings')" data-page="settings">
+            <div class="nav-item" onclick="switchPage('accounts')" data-page="accounts" data-permission="manage_accounts">
+                <span class="nav-icon">👥</span> 账号管理
+            </div>
+            <div class="nav-item" onclick="switchPage('settings')" data-page="settings" data-permission="manage_settings">
                 <span class="nav-icon">⚙️</span> 系统设置
                 <span class="maintenance-badge off" id="mobileMaintBadge" style="margin-left:auto;">正常</span>
             </div>
@@ -1044,6 +1106,7 @@
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-ghost btn-sm" onclick="copyGeneratedCodes()">📋 复制</button>
                             <button class="btn btn-ghost btn-sm" onclick="exportGeneratedCodes()">📥 导出</button>
+                            <button class="btn btn-ghost btn-sm" onclick="clearGeneratedCodes()">🗑 清空结果</button>
                         </div>
                     </div>
                     <div class="codes-list" id="genCodesList"></div>
@@ -1056,6 +1119,38 @@
             <div class="page-header">
                 <h2>卡密管理</h2>
                 <p>查看和管理所有卡密</p>
+            </div>
+            <div class="panel">
+                <div class="panel-title">批量卡密查询</div>
+                <div class="form-group" style="margin-top: 18px;">
+                    <label for="adminBatchQueryInput">输入多个卡密</label>
+                    <textarea id="adminBatchQueryInput" rows="5" placeholder="每行一个卡密，或使用逗号分隔&#10;后台单次最多查询 200 个"
+                        spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"></textarea>
+                </div>
+                <div class="batch-query-toolbar">
+                    <div class="batch-query-helper">支持换行或逗号分隔，结果会展示卡密状态、兑换状态、Job ID 和错误信息。</div>
+                    <button class="btn btn-primary" type="button" id="adminBatchQueryBtn" onclick="loadBatchCardQuery()" style="width: auto;">
+                        批量查询
+                    </button>
+                </div>
+                <div id="adminBatchQueryResult"></div>
+            </div>
+            <div class="panel" data-permission="manage_cards">
+                <div class="panel-title">批量状态操作</div>
+                <div class="form-group" style="margin-top: 18px;">
+                    <label for="bulkCardActionInput">输入多个卡密</label>
+                    <textarea id="bulkCardActionInput" rows="5" placeholder="每行一个卡密，或使用逗号分隔&#10;可直接批量禁用或启用"
+                        spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"></textarea>
+                </div>
+                <div class="bulk-action-toolbar">
+                    <div class="batch-query-helper">支持直接粘贴多个卡密，使用现有卡密状态接口批量处理。</div>
+                    <div class="bulk-action-buttons">
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkDisableInputBtn" onclick="applyBulkCardAction('disable', 'input')">批量禁用</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkEnableInputBtn" onclick="applyBulkCardAction('enable', 'input')">批量启用</button>
+                    </div>
+                </div>
             </div>
             <div class="panel">
                 <div class="panel-header">
@@ -1082,14 +1177,20 @@
                                 oninput="debounceSearch()">
                         </div>
                     </div>
+                    <div class="bulk-action-buttons" data-permission="manage_cards">
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkDisableSelectedBtn" onclick="applyBulkCardAction('disable', 'selected')">批量禁用</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkEnableSelectedBtn" onclick="applyBulkCardAction('enable', 'selected')">批量启用</button>
+                    </div>
                 </div>
                 <div class="table-wrapper">
                     <table>
                         <thead>
                             <tr>
+                                <th class="table-check-cell" data-permission="manage_cards"><input type="checkbox" id="cardsSelectAll" onchange="toggleAllCardSelections(this.checked)"></th>
                                 <th>卡密</th>
                                 <th>类型</th>
                                 <th>状态</th>
+                                <th>生成人</th>
                                 <th>创建时间</th>
                                 <th>使用时间</th>
                                 <th>批次</th>
@@ -1139,11 +1240,18 @@
                                 <option value="pro_20x">Pro 20X</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <input type="date" id="recordsDateFrom" onchange="loadRecords()">
+                        </div>
+                        <div class="form-group">
+                            <input type="date" id="recordsDateTo" onchange="loadRecords()">
+                        </div>
                         <div class="form-group search-input">
                             <input type="text" id="recordsSearch" placeholder="搜索卡密 / Job ID / 邮箱 / IP / 错误..."
                                 oninput="debounceRecordsSearch()">
                         </div>
                     </div>
+                    <button class="btn btn-ghost btn-sm" type="button" id="recordsRefreshBtn" onclick="loadRecords()">刷新记录</button>
                 </div>
                 <div class="table-wrapper">
                     <table>
@@ -1156,6 +1264,7 @@
                                 <th>Job ID</th>
                                 <th>预计等待</th>
                                 <th>IP 地址</th>
+                                <th>生成人</th>
                                 <th>时间</th>
                                 <th>错误信息</th>
                                 <th>操作</th>
@@ -1174,8 +1283,50 @@
                 </div>
             </div>
         </div>
+        <!-- ===== 账号管理页 ===== -->
+        <div class="page" id="page-accounts" data-permission="manage_accounts">
+            <div class="page-header">
+                <h2>账号管理</h2>
+                <p>创建并管理子管理员账号</p>
+            </div>
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom: 20px;">👤 创建子管理员</div>
+                <div style="display:flex;flex-direction:column;gap:16px;max-width:560px;">
+                    <div class="form-group">
+                        <label for="subAdminUsername">用户名</label>
+                        <input type="text" id="subAdminUsername" placeholder="例如：agent_01" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="subAdminPassword">初始密码</label>
+                        <input type="password" id="subAdminPassword" placeholder="至少 8 位" autocomplete="new-password">
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" type="button" id="createSubAdminBtn" onclick="createSubAdminAccount()">创建子管理员</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">子管理员列表</div>
+                    <button class="btn btn-ghost btn-sm" type="button" id="subAdminsRefreshBtn" onclick="loadSubAdmins()">刷新列表</button>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subAdminsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
         <!-- ===== 系统设置页 ===== -->
-        <div class="page" id="page-settings">
+        <div class="page" id="page-settings" data-permission="manage_settings">
             <div class="page-header">
                 <h2>系统设置</h2>
                 <p>配置上游 API 连接信息</p>
@@ -1245,6 +1396,12 @@
                         maxlength="500"></textarea>
                 </div>
 
+                <div style="margin:20px 0 16px;padding-top:16px;border-top:1px solid var(--border);">
+                    <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">按类型维护</div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">只暂停某个订阅类型，未维护的类型仍可正常验证和兑换。</div>
+                    <div id="typedMaintenance"></div>
+                </div>
+
                 <button class="btn btn-primary" id="saveMaintBtn" onclick="saveMaintenance()">
                     💾 保存维护设置
                 </button>
@@ -1284,18 +1441,123 @@
     let cardsPage = 1;
     let recordsPage = 1;
     let generatedCodes = [];
+    let generatedCodesMeta = { type: '', count: 0 };
     let searchTimer = null;
     let recordsSearchTimer = null;
+    let currentViewer = null;
+    let currentRecords = [];
+    let currentSubAdmins = [];
+    let currentCards = [];
+    let selectedCardCodes = new Set();
+    let typedMaintenance = {};
+    const MAINTENANCE_TYPES = [
+        { key: 'plus', label: 'Plus 月卡', domId: 'maint-type-plus' },
+        { key: 'plus_1y', label: 'Plus 年卡', domId: 'maint-type-plus_1y' },
+        { key: 'pro', label: 'Pro 5X', domId: 'maint-type-pro' },
+        { key: 'pro_20x', label: 'Pro 20X', domId: 'maint-type-pro_20x' }
+    ];
     const PAGE_TITLES = {
         dashboard: '仪表盘',
         generate: '生成卡密',
         cards: '卡密管理',
         records: '兑换记录',
+        accounts: '账号管理',
         settings: '系统设置'
     };
 
+    function defaultTypedMaintenance() {
+        return Object.fromEntries(MAINTENANCE_TYPES.map(({ key }) => [key, { enabled: false, message: '' }]));
+    }
+
+    function normalizeTypedMaintenance(raw) {
+        const next = defaultTypedMaintenance();
+        if (!raw || typeof raw !== 'object') return next;
+        MAINTENANCE_TYPES.forEach(({ key }) => {
+            const current = raw[key];
+            if (!current || typeof current !== 'object') return;
+            next[key] = {
+                enabled: current.enabled === true,
+                message: typeof current.message === 'string' ? current.message : ''
+            };
+        });
+        return next;
+    }
+
+    function hasTypedMaintenanceEnabled(raw = typedMaintenance) {
+        return MAINTENANCE_TYPES.some(({ key }) => raw[key]?.enabled);
+    }
+
+    function renderTypedMaintenanceControls() {
+        const container = document.getElementById('typedMaintenance');
+        if (!container) return;
+        container.innerHTML = MAINTENANCE_TYPES.map(({ key, label, domId }) => `
+            <div style="padding:14px 0;border-top:1px solid var(--border);">
+                <div class="toggle-row" style="margin-bottom:10px;">
+                    <div class="toggle-info">
+                        <div class="toggle-label">${label}</div>
+                        <div class="toggle-desc" id="${domId}-desc">当前：正常</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="${domId}-toggle" onchange="onTypedMaintenanceChange('${key}')">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <textarea id="${domId}-message"
+                    style="width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:72px;transition:all 0.2s;line-height:1.6;"
+                    placeholder="${label} 维护提示，例如：该类型维护中，请稍后再试。"
+                    maxlength="500"></textarea>
+            </div>
+        `).join('');
+        applyTypedMaintenanceToForm(typedMaintenance);
+    }
+
+    function updateTypedMaintenanceRow(type) {
+        const config = MAINTENANCE_TYPES.find((item) => item.key === type);
+        const desc = document.getElementById(`${config?.domId || `maint-type-${type}`}-desc`);
+        const toggle = document.getElementById(`${config?.domId || `maint-type-${type}`}-toggle`);
+        if (!desc || !toggle) return;
+        if (toggle.checked) {
+            desc.textContent = '当前：已暂停兑换';
+            desc.style.color = '#f87171';
+        } else {
+            desc.textContent = '当前：正常';
+            desc.style.color = '';
+        }
+    }
+
+    function applyTypedMaintenanceToForm(raw) {
+        typedMaintenance = normalizeTypedMaintenance(raw);
+        MAINTENANCE_TYPES.forEach(({ key, domId }) => {
+            const toggle = document.getElementById(`${domId}-toggle`);
+            const message = document.getElementById(`${domId}-message`);
+            if (toggle) toggle.checked = typedMaintenance[key].enabled;
+            if (message) message.value = typedMaintenance[key].message || '';
+            updateTypedMaintenanceRow(key);
+        });
+    }
+
+    function collectTypedMaintenanceFromForm() {
+        const next = defaultTypedMaintenance();
+        MAINTENANCE_TYPES.forEach(({ key, domId }) => {
+            const toggle = document.getElementById(`${domId}-toggle`);
+            const message = document.getElementById(`${domId}-message`);
+            next[key] = {
+                enabled: !!toggle?.checked,
+                message: (message?.value || '').trim()
+            };
+        });
+        typedMaintenance = next;
+        return next;
+    }
+
+    function onTypedMaintenanceChange(type) {
+        updateTypedMaintenanceRow(type);
+        updateMaintUI(document.getElementById('maintToggle').checked, collectTypedMaintenanceFromForm());
+    }
+
     // ========== 初始化 ==========
     window.onload = () => {
+        renderTypedMaintenanceControls();
         updateMobilePageTitle('dashboard');
         if (adminToken) {
             checkAuth();
@@ -1310,17 +1572,51 @@
         if (event.key === 'Escape') closeMobileNav();
     });
 
+    function normalizeViewer(payload) {
+        const viewer = payload?.viewer || payload || {};
+        return {
+            role: viewer.role || 'super_admin',
+            username: viewer.username || 'super_admin',
+            permissions: {
+                manage_settings: viewer.permissions?.manage_settings === true,
+                manage_accounts: viewer.permissions?.manage_accounts === true,
+                manage_cards: viewer.permissions?.manage_cards === true,
+                generate_cards: viewer.permissions?.generate_cards !== false,
+                view_all_cards: viewer.permissions?.view_all_cards === true,
+                view_all_records: viewer.permissions?.view_all_records === true
+            }
+        };
+    }
+
+    function hasPermission(permission) {
+        return currentViewer?.permissions?.[permission] === true;
+    }
+
+    function applyViewerState() {
+        document.querySelectorAll('[data-permission]').forEach((node) => {
+            const permission = node.getAttribute('data-permission');
+            node.classList.toggle('hidden', permission ? !hasPermission(permission) : false);
+        });
+    }
+
+    function getSafeDefaultPage() {
+        return 'dashboard';
+    }
+
     async function checkAuth() {
         try {
-            const res = await adminFetch('/api/admin/stats');
+            const res = await adminFetch('/api/admin/me');
             if (res.ok) {
+                currentViewer = normalizeViewer(await res.json());
                 showApp();
             } else {
                 adminToken = '';
+                currentViewer = null;
                 localStorage.removeItem('admin_token');
             }
         } catch {
             adminToken = '';
+            currentViewer = null;
             localStorage.removeItem('admin_token');
         }
     }
@@ -1339,13 +1635,14 @@
 
     // ========== 登录 ==========
     async function adminLogin() {
+        const username = document.getElementById('loginUsername').value.trim();
         const password = document.getElementById('loginPassword').value;
         const btn = document.getElementById('loginBtn');
         const errorDiv = document.getElementById('loginError');
 
         if (!password) {
             errorDiv.style.display = 'block';
-            errorDiv.textContent = '请输入密码';
+            errorDiv.textContent = username ? '请输入密码' : '请输入管理员密码';
             return;
         }
 
@@ -1356,7 +1653,7 @@
             const res = await fetch('/api/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password })
+                body: JSON.stringify({ username, password })
             });
 
             const data = await res.json();
@@ -1368,6 +1665,7 @@
             }
 
             adminToken = data.token;
+            currentViewer = normalizeViewer(data);
             localStorage.setItem('admin_token', adminToken);
             errorDiv.style.display = 'none';
             showApp();
@@ -1383,18 +1681,22 @@
     function adminLogout() {
         adminFetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
         adminToken = '';
+        currentViewer = null;
+        currentRecords = [];
+        currentSubAdmins = [];
         localStorage.removeItem('admin_token');
         setMobileNavOpen(false);
         document.getElementById('appLayout').classList.remove('active');
         document.getElementById('loginPage').style.display = 'flex';
+        document.getElementById('loginUsername').value = '';
         document.getElementById('loginPassword').value = '';
     }
 
     function showApp() {
+        applyViewerState();
         document.getElementById('loginPage').style.display = 'none';
         document.getElementById('appLayout').classList.add('active');
-        updateMobilePageTitle('dashboard');
-        loadStats();
+        switchPage(getSafeDefaultPage());
     }
 
     function setMobileNavOpen(open) {
@@ -1418,6 +1720,12 @@
 
     // ========== 页面切换 ==========
     function switchPage(page) {
+        const pageNode = document.getElementById(`page-${page}`);
+        const requiredPermission = pageNode?.getAttribute('data-permission');
+        if (requiredPermission && !hasPermission(requiredPermission)) {
+            showToast('当前账号没有访问该页面的权限', 'error');
+            page = getSafeDefaultPage();
+        }
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         document.getElementById(`page-${page}`).classList.add('active');
@@ -1428,31 +1736,47 @@
         if (page === 'dashboard') loadStats();
         if (page === 'cards') loadCards();
         if (page === 'records') loadRecords();
+        if (page === 'accounts') loadSubAdmins();
         if (page === 'settings') { loadSettingsPage(); loadMaintenancePage(); }
     }
 
     // ========== 仪表盘 ==========
     async function loadStats() {
         try {
+            const settingsPromise = hasPermission('manage_settings')
+                ? adminFetch('/api/admin/settings')
+                : Promise.resolve(null);
             const [statsRes, settingsRes] = await Promise.all([
                 adminFetch('/api/admin/stats'),
-                adminFetch('/api/admin/settings')
+                settingsPromise
             ]);
             if (!statsRes.ok) return;
             const stats = await statsRes.json();
-            const cfg = settingsRes.ok ? await settingsRes.json() : { configured: false };
+            if (stats.viewer) {
+                currentViewer = normalizeViewer(stats.viewer);
+                applyViewerState();
+            }
+            const cfg = settingsRes && settingsRes.ok
+                ? await settingsRes.json()
+                : { configured: false };
 
             const grid = document.getElementById('statsGrid');
-            const configCard = cfg.configured
+            const configCard = hasPermission('manage_settings') && cfg.configured
                 ? `<div class="stat-card emerald">
                     <div class="stat-label">接口状态</div>
                     <div class="stat-value" style="font-size:18px;padding-top:4px">✅ 已就绪</div>
                     <div class="stat-detail">${cfg.baseUrl || ''}</div>
                    </div>`
-                : `<div class="stat-card rose" style="cursor:pointer" onclick="switchPage('settings')">
+                : hasPermission('manage_settings')
+                ? `<div class="stat-card rose" style="cursor:pointer" onclick="switchPage('settings')">
                     <div class="stat-label">接口状态</div>
                     <div class="stat-value" style="font-size:18px;padding-top:4px">⚠️ 未配置</div>
                     <div class="stat-detail">点击前往设置页面配置</div>
+                   </div>`
+                : `<div class="stat-card indigo">
+                    <div class="stat-label">当前账号</div>
+                    <div class="stat-value" style="font-size:18px;padding-top:4px">${escapeHtml(currentViewer?.username || 'sub_admin')}</div>
+                    <div class="stat-detail">子管理员视角，仅展示自己创建的数据</div>
                    </div>`;
 
             grid.innerHTML = configCard + `
@@ -1540,6 +1864,7 @@
             }
 
             generatedCodes = data.codes;
+            generatedCodesMeta = { type: data.type || type, count: data.count || data.codes.length };
             const result = document.getElementById('genResult');
             result.classList.add('visible');
             document.getElementById('genResultTitle').textContent =
@@ -1568,13 +1893,361 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `cdk-${new Date().toISOString().slice(0,10)}.txt`;
+        a.download = buildGeneratedCodesFilename();
         a.click();
         URL.revokeObjectURL(url);
         showToast('已导出文件', 'success');
     }
 
+    function buildGeneratedCodesFilename() {
+        const safeType = String(generatedCodesMeta.type || document.getElementById('genType')?.value || 'cdk')
+            .replace('plus_1y', 'plus-1y')
+            .replace('pro_20x', 'pro-20x')
+            .replace(/[^a-zA-Z0-9-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            || 'cdk';
+        const count = Number(generatedCodesMeta.count || generatedCodes.length || 0);
+        const now = new Date();
+        const timestamp = [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, '0'),
+            String(now.getDate()).padStart(2, '0'),
+            String(now.getHours()).padStart(2, '0'),
+            String(now.getMinutes()).padStart(2, '0'),
+            String(now.getSeconds()).padStart(2, '0')
+        ].join('');
+        return `${safeType}-${count}-${timestamp}.txt`;
+    }
+
+    function clearGeneratedCodes() {
+        generatedCodes = [];
+        generatedCodesMeta = { type: '', count: 0 };
+        document.getElementById('genCodesList').textContent = '';
+        document.getElementById('genResultTitle').textContent = '✅ 生成成功';
+        document.getElementById('genResult').classList.remove('visible');
+        showToast('已清空本次生成结果', 'success');
+    }
+
     // ========== 卡密管理 ==========
+    document.getElementById('adminBatchQueryInput').addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') loadBatchCardQuery();
+    });
+
+    document.getElementById('bulkCardActionInput').addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') applyBulkCardAction('disable', 'input');
+    });
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderAdminBatchQueryResult(items) {
+        return `
+            <div style="margin-top: 16px; color: var(--text-secondary); font-size: 12px;">共查询 ${items.length} 个卡密</div>
+            <div class="table-wrapper" style="margin-top: 12px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>卡密</th>
+                            <th>类型</th>
+                            <th>卡密状态</th>
+                            <th>兑换状态</th>
+                            <th>Job ID</th>
+                            <th>错误信息</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item) => {
+                            const status = item.status || 'not_found';
+                            const redeemStatus = item.redeem_status || '';
+                            const errorText = item.error || item.redeem_error || (item.needs_manual_review ? '需人工核验' : '-');
+                            return `
+                                <tr>
+                                    <td class="code-cell">${escapeHtml(item.code || '-')}</td>
+                                    <td>${item.type ? `<span class="badge badge-${escapeHtml(item.type)}">${escapeHtml(typeLabel(item.type))}</span>` : '-'}</td>
+                                    <td><span class="badge badge-${escapeHtml(status)}">${escapeHtml(item.status_label || statusLabel(status))}</span></td>
+                                    <td>${redeemStatus ? `<span class="badge badge-${escapeHtml(redeemStatus)}">${escapeHtml(item.redeem_status_label || recordStatusLabel(redeemStatus))}</span>` : '-'}</td>
+                                    <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${escapeHtml(item.job_id || '-')}</td>
+                                    <td style="font-size:12px;color:var(--rose);">${escapeHtml(errorText)}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    async function loadBatchCardQuery() {
+        const text = document.getElementById('adminBatchQueryInput').value.trim();
+        const btn = document.getElementById('adminBatchQueryBtn');
+        const resultDiv = document.getElementById('adminBatchQueryResult');
+
+        if (!text) {
+            resultDiv.innerHTML = `<div class="empty-state" style="margin-top:16px;"><div class="icon">🔍</div><p>请输入至少一个卡密</p></div>`;
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 查询中...';
+
+        try {
+            const res = await adminFetch('/api/admin/cards/query/batch', {
+                method: 'POST',
+                body: JSON.stringify({ text })
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                resultDiv.innerHTML = `<div class="empty-state" style="margin-top:16px;"><div class="icon">⚠️</div><p>${escapeHtml(data.error || '批量查询失败')}</p></div>`;
+                return;
+            }
+
+            const items = Array.isArray(data.results) ? data.results : [];
+            if (!items.length) {
+                resultDiv.innerHTML = `<div class="empty-state" style="margin-top:16px;"><div class="icon">📭</div><p>没有查询到结果</p></div>`;
+                return;
+            }
+
+            resultDiv.innerHTML = renderAdminBatchQueryResult(items);
+        } catch (err) {
+            resultDiv.innerHTML = `<div class="empty-state" style="margin-top:16px;"><div class="icon">⚠️</div><p>网络错误，请稍后重试</p></div>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '批量查询';
+        }
+    }
+
+    function getCurrentPageSelectableCodes() {
+        return currentCards
+            .filter((item) => item.status === 'unused' || item.status === 'disabled')
+            .map((item) => item.code);
+    }
+
+    function updateCardsSelectAllState() {
+        const selectAll = document.getElementById('cardsSelectAll');
+        if (!selectAll) return;
+        const selectableCodes = getCurrentPageSelectableCodes();
+        if (!selectableCodes.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            selectAll.disabled = true;
+            return;
+        }
+        selectAll.disabled = false;
+        const selectedCount = selectableCodes.filter((code) => selectedCardCodes.has(code)).length;
+        selectAll.checked = selectedCount === selectableCodes.length;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < selectableCodes.length;
+    }
+
+    function updateBulkCardButtons() {
+        const selectedCodes = Array.from(selectedCardCodes);
+        const hasUnused = selectedCodes.some((code) => currentCards.find((item) => item.code === code)?.status === 'unused');
+        const hasDisabled = selectedCodes.some((code) => currentCards.find((item) => item.code === code)?.status === 'disabled');
+        const disableBtn = document.getElementById('bulkDisableSelectedBtn');
+        const enableBtn = document.getElementById('bulkEnableSelectedBtn');
+        if (disableBtn) disableBtn.disabled = !hasUnused;
+        if (enableBtn) enableBtn.disabled = !hasDisabled;
+        updateCardsSelectAllState();
+    }
+
+    function toggleCardSelection(code, checked) {
+        if (!hasPermission('manage_cards')) return;
+        if (checked) selectedCardCodes.add(code);
+        else selectedCardCodes.delete(code);
+        updateBulkCardButtons();
+    }
+
+    function toggleAllCardSelections(checked) {
+        if (!hasPermission('manage_cards')) return;
+        getCurrentPageSelectableCodes().forEach((code) => {
+            if (checked) selectedCardCodes.add(code);
+            else selectedCardCodes.delete(code);
+        });
+        document.querySelectorAll('.card-select-checkbox').forEach((node) => {
+            node.checked = !!checked;
+        });
+        updateBulkCardButtons();
+    }
+
+    function parseBulkCardCodesFromText(text) {
+        const seen = new Set();
+        return String(text || '')
+            .split(/[\r\n,]+/)
+            .map((item) => item.trim().toUpperCase())
+            .filter((item) => {
+                if (!item || seen.has(item)) return false;
+                seen.add(item);
+                return true;
+            });
+    }
+
+    async function applyBulkCardAction(action, source) {
+        if (!hasPermission('manage_cards')) return;
+        const codes = source === 'selected'
+            ? Array.from(selectedCardCodes)
+            : parseBulkCardCodesFromText(document.getElementById('bulkCardActionInput').value);
+        if (!codes.length) {
+            showToast(source === 'selected' ? '请先勾选卡密' : '请输入至少一个卡密', 'error');
+            return;
+        }
+
+        const endpoint = action === 'disable' ? '/api/admin/cards/disable' : '/api/admin/cards/enable';
+        const buttonId = source === 'selected'
+            ? (action === 'disable' ? 'bulkDisableSelectedBtn' : 'bulkEnableSelectedBtn')
+            : (action === 'disable' ? 'bulkDisableInputBtn' : 'bulkEnableInputBtn');
+        const btn = document.getElementById(buttonId);
+        const oldText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 处理中...';
+        }
+
+        try {
+            const res = await adminFetch(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({ codes })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '批量操作失败', 'error');
+                return;
+            }
+            if (source === 'input') {
+                document.getElementById('bulkCardActionInput').value = '';
+            } else {
+                selectedCardCodes.clear();
+            }
+            showToast(data.message || `已批量${action === 'disable' ? '禁用' : '启用'} ${codes.length} 张卡密`, 'success');
+            await loadCards();
+        } catch (err) {
+            showToast(`批量${action === 'disable' ? '禁用' : '启用'}失败: ${err.message}`, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = oldText || (action === 'disable' ? '批量禁用' : '批量启用');
+            }
+            updateBulkCardButtons();
+        }
+    }
+
+    async function loadSubAdmins() {
+        if (!hasPermission('manage_accounts')) return;
+        const tbody = document.getElementById('subAdminsTableBody');
+        if (!tbody) return;
+
+        try {
+            const res = await adminFetch('/api/admin/sub-admins');
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><div class="icon">⚠️</div><p>${escapeHtml(data.error || '加载子管理员失败')}</p></div></td></tr>`;
+                return;
+            }
+
+            currentSubAdmins = Array.isArray(data.subAdmins) ? data.subAdmins : [];
+            if (!currentSubAdmins.length) {
+                tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><div class="icon">👥</div><p>暂无子管理员</p></div></td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = currentSubAdmins.map((item) => `
+                <tr>
+                    <td class="code-cell">${escapeHtml(item.username)}</td>
+                    <td><span class="badge badge-${item.status === 'disabled' ? 'disabled' : 'unused'}">${item.status === 'disabled' ? '已禁用' : '正常'}</span></td>
+                    <td style="color:var(--text-muted);font-size:12px;">${escapeHtml(item.created_at || '-')}</td>
+                    <td>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button class="btn btn-ghost btn-sm" type="button" onclick="resetSubAdminPassword('${escapeHtml(item.id)}')" style="color:var(--amber);">重置密码</button>
+                            <button class="btn btn-ghost btn-sm" type="button" onclick="toggleSubAdminStatus('${escapeHtml(item.id)}', ${item.status !== 'disabled'})" style="color:${item.status === 'disabled' ? 'var(--emerald)' : 'var(--rose)'};">${item.status === 'disabled' ? '启用' : '禁用'}</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><div class="icon">⚠️</div><p>网络错误，请稍后重试</p></div></td></tr>`;
+        }
+    }
+
+    async function createSubAdminAccount() {
+        if (!hasPermission('manage_accounts')) return;
+        const username = document.getElementById('subAdminUsername').value.trim();
+        const password = document.getElementById('subAdminPassword').value;
+        const btn = document.getElementById('createSubAdminBtn');
+
+        if (!username || !password) {
+            showToast('请填写用户名和初始密码', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 创建中...';
+        try {
+            const res = await adminFetch('/api/admin/sub-admins', {
+                method: 'POST',
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '创建子管理员失败', 'error');
+                return;
+            }
+            document.getElementById('subAdminUsername').value = '';
+            document.getElementById('subAdminPassword').value = '';
+            showToast(data.message || '子管理员已创建', 'success');
+            loadSubAdmins();
+        } catch (err) {
+            showToast('创建失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '创建子管理员';
+        }
+    }
+
+    async function resetSubAdminPassword(id) {
+        if (!hasPermission('manage_accounts')) return;
+        const newPassword = prompt('请输入新的子管理员密码（至少 8 位）');
+        if (newPassword === null) return;
+
+        try {
+            const res = await adminFetch(`/api/admin/sub-admins/${encodeURIComponent(id)}/password`, {
+                method: 'POST',
+                body: JSON.stringify({ newPassword })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '重置密码失败', 'error');
+                return;
+            }
+            showToast(data.message || '密码已重置', 'success');
+        } catch (err) {
+            showToast('重置密码失败: ' + err.message, 'error');
+        }
+    }
+
+    async function toggleSubAdminStatus(id, enabled) {
+        if (!hasPermission('manage_accounts')) return;
+        try {
+            const res = await adminFetch(`/api/admin/sub-admins/${encodeURIComponent(id)}/status`, {
+                method: 'POST',
+                body: JSON.stringify({ enabled: !enabled })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '更新状态失败', 'error');
+                return;
+            }
+            showToast(data.message || '状态已更新', 'success');
+            loadSubAdmins();
+        } catch (err) {
+            showToast('更新状态失败: ' + err.message, 'error');
+        }
+    }
+
     async function loadCards() {
         const status = document.getElementById('cardsFilterStatus').value;
         const type = document.getElementById('cardsFilterType').value;
@@ -1587,23 +2260,32 @@
             const res = await adminFetch(`/api/admin/cards?${params}`);
             if (!res.ok) return;
             const data = await res.json();
+            currentCards = Array.isArray(data.cards) ? data.cards : [];
+            selectedCardCodes.clear();
 
             const tbody = document.getElementById('cardsTableBody');
-            if (data.cards.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="icon">🔍</div><p>暂无数据</p></div></td></tr>`;
+            if (currentCards.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${hasPermission('manage_cards') ? 9 : 8}"><div class="empty-state"><div class="icon">🔍</div><p>暂无数据</p></div></td></tr>`;
             } else {
-                tbody.innerHTML = data.cards.map(c => `
+                tbody.innerHTML = currentCards.map(c => `
                     <tr>
+                        ${hasPermission('manage_cards') ? `
+                        <td class="table-check-cell">
+                            ${(c.status === 'unused' || c.status === 'disabled')
+                                ? `<input type="checkbox" class="card-select-checkbox" onchange="toggleCardSelection('${c.code}', this.checked)">`
+                                : '-'}
+                        </td>` : ''}
                         <td class="code-cell">${c.code}</td>
                         <td><span class="badge badge-${c.type}">${typeLabel(c.type)}</span></td>
                         <td><span class="badge badge-${c.status}">${statusLabel(c.status)}</span></td>
+                        <td style="color:var(--text-muted);font-size:12px;">${escapeHtml(c.created_by_username || 'super_admin')}</td>
                         <td style="color:var(--text-muted);font-size:12px;">${c.created_at || '-'}</td>
                         <td style="color:var(--text-muted);font-size:12px;">${c.used_at || '-'}</td>
                         <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${c.batch_id}</td>
                         <td>
-                            ${c.status === 'unused' ?
+                            ${hasPermission('manage_cards') && c.status === 'unused' ?
                                 `<button class="btn btn-ghost btn-sm" onclick="toggleCard('${c.code}', 'disable')" style="color:var(--rose);">禁用</button>` :
-                            c.status === 'disabled' ?
+                            hasPermission('manage_cards') && c.status === 'disabled' ?
                                 `<button class="btn btn-ghost btn-sm" onclick="toggleCard('${c.code}', 'enable')" style="color:var(--emerald);">启用</button>` :
                                 '-'
                             }
@@ -1611,6 +2293,7 @@
                     </tr>
                 `).join('');
             }
+            updateBulkCardButtons();
 
             const totalPages = Math.ceil(data.total / data.pageSize) || 1;
             document.getElementById('cardsPagInfo').textContent = `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
@@ -1663,9 +2346,13 @@
     async function loadRecords() {
         const status = document.getElementById('recordsFilterStatus').value;
         const type = document.getElementById('recordsFilterType').value;
+        const dateFrom = document.getElementById('recordsDateFrom').value;
+        const dateTo = document.getElementById('recordsDateTo').value;
         const search = document.getElementById('recordsSearch').value.trim();
 
         const params = new URLSearchParams({ page: recordsPage, pageSize: 15, status, type });
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
         if (search) params.set('search', search);
 
         try {
@@ -1678,16 +2365,17 @@
                     return;
                 }
                 showToast(errorData.error || '加载兑换记录失败', 'error');
-                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
                 return;
             }
             const data = await res.json();
+            currentRecords = Array.isArray(data.records) ? data.records : [];
 
             const tbody = document.getElementById('recordsTableBody');
-            if (data.records.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
+            if (currentRecords.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
             } else {
-                tbody.innerHTML = data.records.map(r => `
+                tbody.innerHTML = currentRecords.map(r => `
                     <tr>
                         <td style="color:var(--text-muted);">${r.id}</td>
                         <td class="code-cell">${r.card_code}</td>
@@ -1696,9 +2384,10 @@
                         <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${r.job_id || '-'}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${formatEstimate(r)}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${r.ip_address || '-'}</td>
+                        <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(r.created_by_username || 'super_admin')}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${r.created_at || '-'}</td>
                         <td style="font-size:12px;color:var(--rose);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.error_message || ''}">${r.error_message || '-'}</td>
-                        <td>${recordCancelButton(r)}</td>
+                        <td>${recordActionButtons(r)}</td>
                     </tr>
                 `).join('');
             }
@@ -1737,20 +2426,59 @@
         return parts.join(' · ') || '-';
     }
 
-    function recordCancelButton(record) {
-        if (!record.job_id) {
-            return `<button class="btn btn-ghost btn-sm" disabled title="该记录还没有 Job ID">取消</button>`;
+    function recordActionButtons(record) {
+        const actions = [];
+        if (record.needs_manual_review || record.manual_review_reason || record.upstream_detail) {
+            actions.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="showRecordDiagnostics(${Number(record.id) || 0})" style="color:var(--amber);">诊断</button>`);
         }
-        const jobId = String(record.job_id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        return `<button class="btn btn-ghost btn-sm" onclick="cancelRecordJob('${jobId}', this)" style="color:var(--rose);">取消</button>`;
+        actions.push(recordCancelButton(record));
+        return `<div style="display:flex;gap:8px;flex-wrap:wrap;">${actions.join('')}</div>`;
     }
 
-    async function cancelRecordJob(jobId, button) {
-        if (!jobId) {
-            showToast('该记录缺少 Job ID，无法取消', 'error');
+    function recordCancelButton(record) {
+        const isManualReviewWithoutJobId = !record.job_id && record.needs_manual_review === true;
+        if (!record.job_id && !isManualReviewWithoutJobId) {
+            return `<button class="btn btn-ghost btn-sm" disabled title="该记录还没有 Job ID">取消</button>`;
+        }
+        const jobId = record.job_id ? String(record.job_id).replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
+        const recordId = Number(record.id) || 0;
+        const title = isManualReviewWithoutJobId
+            ? '该记录没有 Job ID，将直接按本地记录取消并退回卡密'
+            : '取消该兑换任务并退回卡密';
+        return `<button class="btn btn-ghost btn-sm" onclick="cancelRecordJob('${jobId}', ${recordId}, this)" style="color:var(--rose);" title="${title}">取消</button>`;
+    }
+
+    function showRecordDiagnostics(recordId) {
+        const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+        if (!record) {
+            showToast('未找到诊断记录', 'error');
             return;
         }
-        if (!confirm(`确认取消任务 ${jobId}？`)) return;
+        const details = [
+            `记录 ID: ${record.id || '-'}`,
+            `Job ID: ${record.job_id || '-'}`,
+            `当前状态: ${record.status || '-'}`,
+            `needs_manual_review: ${record.needs_manual_review ? 'true' : 'false'}`,
+            `manual_review_reason: ${record.manual_review_reason || '-'}`,
+            `manual_review_stage: ${record.manual_review_stage || '-'}`,
+            `upstream_status_code: ${record.upstream_status_code ?? '-'}`,
+            `upstream_detail: ${record.upstream_detail || '-'}`,
+            `error_message: ${record.error_message || '-'}`
+        ];
+        alert(details.join('\n'));
+    }
+
+    async function cancelRecordJob(jobId, recordId, button) {
+        const hasJobId = !!jobId;
+        const hasRecordId = Number(recordId) > 0;
+        if (!hasJobId && !hasRecordId) {
+            showToast('该记录缺少可取消标识', 'error');
+            return;
+        }
+        const confirmText = hasJobId
+            ? `确认取消任务 ${jobId}？`
+            : `该记录没有 Job ID，将直接人工取消并退回卡密，确认继续吗？`;
+        if (!confirm(confirmText)) return;
 
         const originalText = button ? button.textContent : '';
         if (button) {
@@ -1759,10 +2487,9 @@
         }
 
         try {
-            const res = await fetch('/api/card/cancel', {
+            const res = await adminFetch('/api/admin/job/cancel', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ job_id: jobId })
+                body: JSON.stringify(hasJobId ? { job_id: jobId } : { record_id: recordId })
             });
             const data = await res.json().catch(() => ({}));
 
@@ -1838,7 +2565,8 @@
             const enabled = !!data.maintenanceEnabled;
             document.getElementById('maintToggle').checked = enabled;
             document.getElementById('maintMessage').value = data.maintenanceMessage || '';
-            updateMaintUI(enabled);
+            applyTypedMaintenanceToForm(data.typedMaintenance);
+            updateMaintUI(enabled, data.typedMaintenance);
         } catch (err) {
             console.error('加载维护设置失败:', err);
         }
@@ -1848,41 +2576,56 @@
         updateMaintUI(document.getElementById('maintToggle').checked);
     }
 
-    function updateMaintUI(enabled) {
-        const desc = document.getElementById('maintStatusDesc');
+    function updateMaintBadge(label, variant) {
         const badges = [document.getElementById('sidebarMaintBadge'), document.getElementById('mobileMaintBadge')].filter(Boolean);
+        badges.forEach((badge) => {
+            badge.textContent = label;
+            badge.className = variant === 'off' ? 'maintenance-badge off' : 'maintenance-badge on';
+            if (variant === 'partial') {
+                badge.style.background = 'rgba(251,191,36,0.12)';
+                badge.style.color = '#fbbf24';
+            } else {
+                badge.style.background = '';
+                badge.style.color = '';
+            }
+        });
+    }
+
+    function updateMaintUI(enabled, rawTypedMaintenance = typedMaintenance) {
+        const desc = document.getElementById('maintStatusDesc');
+        typedMaintenance = normalizeTypedMaintenance(rawTypedMaintenance);
         if (enabled) {
-            desc.textContent = '当前：🔴 维护中 — 用户将看到维护页面';
+            desc.textContent = '当前：全站维护中';
             desc.style.color = '#f87171';
-            badges.forEach(badge => {
-                badge.textContent = '维护中';
-                badge.className = 'maintenance-badge on';
-            });
+            updateMaintBadge('维护中', 'on');
+        } else if (hasTypedMaintenanceEnabled(typedMaintenance)) {
+            desc.textContent = '当前：部分类型维护中';
+            desc.style.color = '#fbbf24';
+            updateMaintBadge('部分维护', 'partial');
         } else {
             desc.textContent = '当前：正常运行中';
             desc.style.color = '';
-            badges.forEach(badge => {
-                badge.textContent = '正常';
-                badge.className = 'maintenance-badge off';
-            });
+            updateMaintBadge('正常', 'off');
         }
     }
 
     async function saveMaintenance() {
         const enabled = document.getElementById('maintToggle').checked;
         const message = document.getElementById('maintMessage').value.trim();
+        const nextTypedMaintenance = collectTypedMaintenanceFromForm();
         const btn = document.getElementById('saveMaintBtn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> 保存中...';
         try {
             const res = await adminFetch('/api/admin/maintenance', {
                 method: 'POST',
-                body: JSON.stringify({ enabled, message })
+                body: JSON.stringify({ enabled, message, typedMaintenance: nextTypedMaintenance })
             });
             const data = await res.json();
             if (!res.ok) { showToast(data.error || '保存失败', 'error'); return; }
+            applyTypedMaintenanceToForm(data.typedMaintenance || nextTypedMaintenance);
             showToast(data.message, enabled ? 'error' : 'success');
-            updateMaintUI(enabled);
+            updateMaintUI(enabled, data.typedMaintenance || nextTypedMaintenance);
         } catch (err) {
             showToast('保存失败: ' + err.message, 'error');
         } finally {

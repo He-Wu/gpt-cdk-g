@@ -677,6 +677,63 @@
             font-size: 13px;
         }
 
+        .batch-query-section {
+            margin-top: 18px;
+            padding-top: 18px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .batch-query-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+
+        .query-table-wrap {
+            margin-top: 16px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.02);
+        }
+
+        .query-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 720px;
+            font-size: 13px;
+        }
+
+        .query-table th,
+        .query-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            vertical-align: middle;
+        }
+
+        .query-table th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .query-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .query-table .mono-cell {
+            font-family: monospace;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .query-table .error-cell {
+            color: var(--accent-amber);
+        }
+
         .divider {
             display: flex;
             align-items: center;
@@ -933,6 +990,26 @@
                 </div>
             </div>
             <div id="queryResult"></div>
+
+            <div class="batch-query-section">
+                <div class="card-title" style="margin-bottom: 14px;">
+                    <span class="icon">📚</span>
+                    批量卡密查询
+                </div>
+                <div class="input-group" style="margin-bottom: 0;">
+                    <label for="batchQueryInput">一次可查询多个卡密</label>
+                    <textarea id="batchQueryInput" placeholder="每行一个卡密，或使用逗号分隔&#10;公共页面单次最多查询 20 个"
+                        spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"></textarea>
+                    <div class="input-hint">支持换行或逗号分隔，批量结果会按表格展示。</div>
+                </div>
+                <div class="batch-query-actions">
+                    <button id="batchQueryBtn" class="btn btn-outline" type="button" onclick="queryCardsBatch()" style="width: auto; padding: 10px 18px;">
+                        批量查询
+                    </button>
+                </div>
+                <div id="batchQueryResult"></div>
+            </div>
         </section>
 
         <footer class="footer" style="margin-top: 10px;">
@@ -1162,6 +1239,14 @@
                 const data = await res.json();
 
                 if (!res.ok) {
+                    if (data.status && ['unknown', 'expired'].includes(data.status)) {
+                        showJobStatus({ 
+                            job_id: data.job_id || 'unknown', 
+                            status: data.status, 
+                            error: data.error || '状态不确定，请联系管理员人工核验。' 
+                        });
+                        return;
+                    }
                     showTokenError(data.error || '兑换失败，请稍后重试');
                     btn.disabled = false;
                     btn.textContent = '🚀 提交兑换';
@@ -1455,6 +1540,73 @@
             if (e.key === 'Enter') queryCard();
         });
 
+        document.getElementById('batchQueryInput').addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') queryCardsBatch();
+        });
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function queryStatusIcon(status) {
+            const statusIconMap = {
+                unused: '&#x2728;',
+                used: '&#x2705;',
+                disabled: '&#x1F6AB;',
+                pending: '&#x23F3;',
+                processing: '&#x23F3;',
+                done: '&#x2705;',
+                failed: '&#x274C;',
+                unknown: '&#x26A0;',
+                expired: '&#x26A0;',
+                not_found: '&#x1F50D;'
+            };
+            return statusIconMap[status] || '';
+        }
+
+        function renderBatchQueryTable(items) {
+            return `
+                <div class="query-table-wrap">
+                    <table class="query-table">
+                        <thead>
+                            <tr>
+                                <th>卡密</th>
+                                <th>类型</th>
+                                <th>卡密状态</th>
+                                <th>兑换状态</th>
+                                <th>Job ID</th>
+                                <th>错误信息</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map((item) => {
+                                const cardStatusClass = escapeHtml(item.status || 'not_found');
+                                const redeemStatus = item.redeem_status
+                                    ? `<span class="status-pill ${escapeHtml(item.redeem_status)}">${queryStatusIcon(item.redeem_status)} ${escapeHtml(item.redeem_status_label || item.redeem_status)}</span>`
+                                    : '-';
+                                const errorText = item.error || item.redeem_error || (item.needs_manual_review ? '需人工核验' : '-');
+                                return `
+                                    <tr>
+                                        <td class="mono-cell">${escapeHtml(item.code || '-')}</td>
+                                        <td>${item.type ? `<span class="type-badge ${escapeHtml(item.type)}">${escapeHtml(subscriptionTypeLabel(item.type))}</span>` : '-'}</td>
+                                        <td><span class="status-pill ${cardStatusClass}">${queryStatusIcon(item.status)} ${escapeHtml(item.status_label || item.status || '未知')}</span></td>
+                                        <td>${redeemStatus}</td>
+                                        <td class="mono-cell">${escapeHtml(item.job_id || '-')}</td>
+                                        <td class="error-cell">${escapeHtml(errorText)}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
         // ========== 卡密查询 ==========
         async function queryCard() {
             const code = document.getElementById('queryCodeInput').value.trim();
@@ -1481,18 +1633,6 @@
                     return;
                 }
 
-                const statusIconMap = {
-                    unused: '&#x2728;',
-                    used: '&#x2705;',
-                    disabled: '&#x1F6AB;',
-                    pending: '&#x23F3;',
-                    processing: '&#x23F3;',
-                    done: '&#x2705;',
-                    failed: '&#x274C;',
-                    unknown: '&#x26A0;',
-                    expired: '&#x26A0;'
-                };
-
                 const redeemRows = data.redeem_status ? `
                     ${data.used_at ? `
                     <div class="query-row">
@@ -1506,7 +1646,7 @@
                     </div>` : ''}
                     <div class="query-row">
                         <span class="q-label">📦 兑换进度</span>
-                        <span class="q-value"><span class="status-pill ${data.redeem_status}">${statusIconMap[data.redeem_status] || ''} ${data.redeem_status_label}</span></span>
+                        <span class="q-value"><span class="status-pill ${data.redeem_status}">${queryStatusIcon(data.redeem_status)} ${data.redeem_status_label}</span></span>
                     </div>
                     ${(data.queue_position !== null && data.queue_position !== undefined) || (data.estimated_wait_seconds !== null && data.estimated_wait_seconds !== undefined) ? `
                     <div class="query-row">
@@ -1517,6 +1657,12 @@
                     <div class="query-row">
                         <span class="q-label">状态说明</span>
                         <span class="q-value" style="color: var(--accent-amber);">${data.redeem_error}</span>
+                    </div>` : ''}
+                    ${data.needs_manual_review ? `
+                    <div style="margin:0 20px 12px; padding: 12px; background: rgba(251, 191, 36, 0.1); border-left: 3px solid #fbbf24; border-radius: 4px; font-size: 13px;">
+                        <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">⚠️ 需人工核验</div>
+                        <div style="color:var(--text-secondary);">此卡密在提交时遇到异常，目前状态不确定。卡密已锁定，请勿重复提交，请联系客服人工查询。</div>
+                        <div style="color:var(--text-secondary);font-size:11px;opacity:0.8;margin-top:4px;">[Diagnostics: ${data.manual_review_stage || 'unknown'} - ${data.manual_review_reason || 'N/A'}]</div>
                     </div>` : ''}
                     ${data.job_id ? `
                     <div class="query-row">
@@ -1531,7 +1677,7 @@
                     <div class="query-result">
                         <div class="query-result-header">
                             <span class="qcode">${data.code}</span>
-                            <span class="status-pill ${data.status}">${statusIconMap[data.status] || ''} ${data.status_label}</span>
+                            <span class="status-pill ${data.status}">${queryStatusIcon(data.status)} ${data.status_label}</span>
                         </div>
                         <div class="query-result-body">
                             <div class="query-row">
@@ -1552,6 +1698,53 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '查&nbsp;询';
+            }
+        }
+
+        async function queryCardsBatch() {
+            const text = document.getElementById('batchQueryInput').value.trim();
+            const btn = document.getElementById('batchQueryBtn');
+            const resultDiv = document.getElementById('batchQueryResult');
+
+            if (!text) {
+                resultDiv.innerHTML = `<div class="query-empty">请输入至少一个卡密</div>`;
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span>';
+
+            try {
+                const res = await fetch('/api/card/query/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    resultDiv.innerHTML = `
+                        <div style="margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
+                            <span>&#10060;</span> ${escapeHtml(data.error || '批量查询失败')}
+                        </div>`;
+                    return;
+                }
+
+                const items = Array.isArray(data.results) ? data.results : [];
+                if (!items.length) {
+                    resultDiv.innerHTML = `<div class="query-empty">没有查询到结果</div>`;
+                    return;
+                }
+
+                resultDiv.innerHTML = `
+                    <div style="margin-top: 16px; color: var(--text-secondary); font-size: 12px;">共查询 ${items.length} 个卡密</div>
+                    ${renderBatchQueryTable(items)}
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="query-empty">网络错误，请检查连接后重试</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '批量查询';
             }
         }
     </script>

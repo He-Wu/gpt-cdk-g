@@ -12,18 +12,22 @@
 | 認證         | Header `X-API-Key`          |
 | Content-Type | `application/json`          |
 
-每個 API key 對 **每個 workflow 各有獨立餘額**(`balances.plus` / `balances.pro`)。提交時 client 必須指定 `workflow`,server 會扣對應 workflow 的餘額;成功扣 1 點,失敗自動退回該 workflow。
+每個 API key 對 **每個 workflow 各有獨立餘額**(`balances.plus` / `balances.plus_1y` / `balances.pro` / `balances.pro_20x`)。提交時 client 必須指定 `workflow`,server 會扣對應 workflow 的餘額;成功扣 1 點,失敗自動退回該 workflow。
 
 ## Workflows
 
-API 提供兩個 workflow,對應不同訂閱方案:
+API 提供四個 workflow,對應不同訂閱方案:
 
-| name   | 用途                       |
-| ------ | -------------------------- |
-| `plus` | 啟用 ChatGPT Plus 訂閱     |
-| `pro`  | 啟用 ChatGPT Pro 訂閱      |
+| name       | 用途                              |
+| ---------- | --------------------------------- |
+| `plus`     | 啟用 ChatGPT Plus 訂閱(1 個月)  |
+| `plus_1y`  | 啟用 ChatGPT Plus 訂閱(1 年)    |
+| `pro`      | 啟用 ChatGPT Pro 訂閱             |
+| `pro_20x`  | 啟用 ChatGPT Pro 訂閱(20x)      |
 
-每個 API Key 對每個 workflow **各有獨立餘額**(`balances.plus` / `balances.pro`)。提交時 `workflow` 為必填。
+`plus` 與 `plus_1y` 啟用的都是 Plus 方案,差別在訂閱期長度;`plus` 為 1 個月,`plus_1y` 為 1 年。請依想開通的訂閱期選擇。
+
+每個 API Key 對每個 workflow **各有獨立餘額**(`balances.plus` / `balances.plus_1y` / `balances.pro` / `balances.pro_20x`)。提交時 `workflow` 為必填。
 
 ---
 
@@ -38,7 +42,8 @@ API 提供兩個 workflow,對應不同訂閱方案:
                                          status = done / failed
 
  [可選] DELETE /job/{job_id} — 取消 pending 的 job,自動退費
- [可選] GET    /balance     — 查 API Key 各 workflow 餘額
+ [可選] GET    /balance      — 查 API Key 各 workflow 餘額
+ [可選] GET    /queue        — 查各 workflow 目前的隊列與預估等待時間
 ```
 
 **建議**: `GET /job/{job_id}?wait=30` 使用 long-polling,伺服端會 block 最多 30 秒直到 job 完成或 timeout,大幅減少輪詢次數。
@@ -55,7 +60,7 @@ API 提供兩個 workflow,對應不同訂閱方案:
 | --------------- | ------ | ---- | --------------------------------------------- |
 | `X-API-Key`     | Header | ✓    | 分配給你的 API key                            |
 | `access_token`  | Body   | ✓    | ChatGPT 使用者的 access token                 |
-| `workflow`      | Body   | ✓    | `"plus"` 或 `"pro"`,決定走哪條訂閱流程       |
+| `workflow`      | Body   | ✓    | `"plus"` / `"plus_1y"` / `"pro"` / `"pro_20x"`,決定走哪條訂閱流程 |
 
 #### Request 範例
 
@@ -72,11 +77,20 @@ API 提供兩個 workflow,對應不同訂閱方案:
 
 ```json
 {
-  "job_id":   "a1b2c3d4e5f6...",
-  "workflow": "pro",
-  "status":   "pending"
+  "job_id":                 "a1b2c3d4e5f6...",
+  "workflow":               "pro",
+  "status":                 "pending",
+  "queue_position":         2,
+  "estimated_wait_seconds": 540.0
 }
 ```
+
+| 欄位                      | 型別         | 說明                                                                |
+| ------------------------- | ------------ | ------------------------------------------------------------------- |
+| `queue_position`          | int \| null  | 該 job 在隊列中的位置。`0` = 立即 processing;`1..N` = pending 隊列中第 N 位 |
+| `estimated_wait_seconds`  | float \| null| 預估到完成(含前面 job + 自己執行)總秒數,依該 workflow 最近 20 個完成 job 的平均 |
+
+> 這兩個欄位為**估算值**,依當前隊列長度與最近平均處理時間計算,僅供顯示進度用。沒有歷史樣本時用 fallback 180 秒。
 
 #### 失敗 — HTTP 4xx / 5xx
 
@@ -117,18 +131,22 @@ GET /job/a1b2c3d4e5f6?wait=30
 
 ### Response — HTTP 200
 
-**仍處理中**:
+**仍處理中**(`pending` / `processing`):
 ```json
 {
-  "job_id":       "a1b2c3d4e5f6...",
-  "status":       "pending",
-  "workflow":     "pro",
-  "created_at":   "2026-04-20T19:00:00+08:00",
-  "completed_at": null,
-  "result":       null,
-  "error":        null
+  "job_id":                 "a1b2c3d4e5f6...",
+  "status":                 "pending",
+  "workflow":               "pro",
+  "created_at":             "2026-04-20T19:00:00+08:00",
+  "completed_at":           null,
+  "result":                 null,
+  "error":                  null,
+  "queue_position":         2,
+  "estimated_wait_seconds": 540.0
 }
 ```
+
+> `queue_position` / `estimated_wait_seconds` 定義同 `POST /submit` 回應。僅在 `status=pending` 或 `processing` 時出現;`done` / `failed` 回應**不包含**這兩個欄位。
 
 **完成成功**:
 ```json
@@ -246,6 +264,76 @@ GET /job/a1b2c3d4e5f6?wait=30
 
 ---
 
+## GET /queue
+
+查各 workflow 目前的隊列狀態與估算等待時間。回傳的是**聚合資料**,不包含其他 client 的 job id 等敏感資訊。
+
+### Request
+
+| 欄位        | 位置   | 必填 | 說明               |
+| ----------- | ------ | ---- | ------------------ |
+| `X-API-Key` | Header | ✓    | 有效的 API key     |
+
+### Response — HTTP 200
+
+```json
+{
+  "queues": {
+    "plus": {
+      "pending":                      3,
+      "processing":                   1,
+      "workers":                      2,
+      "avg_duration_seconds":         205.4,
+      "estimated_next_wait_seconds":  513.5
+    },
+    "plus_1y": {
+      "pending":                      0,
+      "processing":                   0,
+      "workers":                      1,
+      "avg_duration_seconds":         180.0,
+      "estimated_next_wait_seconds":  180.0
+    },
+    "pro": {
+      "pending":                      1,
+      "processing":                   0,
+      "workers":                      1,
+      "avg_duration_seconds":         247.1,
+      "estimated_next_wait_seconds":  494.2
+    },
+    "pro_20x": {
+      "pending":                      0,
+      "processing":                   0,
+      "workers":                      1,
+      "avg_duration_seconds":         180.0,
+      "estimated_next_wait_seconds":  180.0
+    }
+  }
+}
+```
+
+### 欄位說明
+
+| 欄位                          | 型別  | 說明                                                                 |
+| ----------------------------- | ----- | -------------------------------------------------------------------- |
+| `pending`                     | int   | 該 workflow 目前排隊中的 job 數                                       |
+| `processing`                  | int   | 該 workflow 目前正在處理的 job 數(上限 = `workers`)                 |
+| `workers`                     | int   | 該 workflow 的並行處理數量。越大表示同時可處理的 job 越多,ETA 公式也會攤平 |
+| `avg_duration_seconds`        | float | 最近 20 個完成 job 的平均處理秒數(純處理時間,不含隊列等候)。還沒有歷史樣本 → fallback `180.0` |
+| `estimated_next_wait_seconds` | float | 「現在送一個新 job 預估等多久完成」= `ceil((pending + processing + 1) / workers) * avg`。每個 avg 時段為一個 slot,N workers 並行每 slot 消化 N 個 job(不足 N 也佔一整個 slot) |
+
+> 所有欄位皆為快照值,**估算值**僅供顯示用(例如 UI 顯示「plus 目前排隊約 17 分鐘」)。實際處理時間會依當下系統狀況有所變動。
+>
+> 若要知道**自己某個具體 job** 的隊列位置與 ETA,請用 `GET /job/{job_id}`,response 內有 `queue_position` 與 `estimated_wait_seconds`。
+
+### HTTP 狀態碼
+
+| Status | 說明      |
+| ------ | --------- |
+| `200`  | 回隊列快照 |
+| `401`  | 未授權    |
+
+---
+
 ## 注意事項
 
 ### 1. 輪詢策略
@@ -265,14 +353,14 @@ GET /job/a1b2c3d4e5f6?wait=30
 
 - `POST /submit` 回應極快(< 1 秒),一般 timeout 10 秒即可
 - `GET /job/{id}?wait=30` 建議 timeout 40 秒
-- 整個 job 處理最長 **5 分鐘**(300 秒),無需 client 端等這麼久
+- 整個 job 處理最長 **30 分鐘**(1800 秒),超過 server 會將 job 標 `failed` 並自動退款。Client 端 polling 建議用 long-poll(`?wait=30`)而非自己 hold 一個 30 分鐘連線
 
 ### 4. 扣費語意
 
 - `POST /submit` 回 `202`:立即扣 1 點(從 `workflow` 對應的餘額)
 - Job 最終 `status = done`:扣款保留
 - Job 最終 `status = failed`:**自動退款**到原 workflow,client 不需處理
-- Plus 與 Pro 餘額完全獨立,扣 / 退都各自結算
+- 各 workflow (`plus` / `plus_1y` / `pro` / `pro_20x`) 餘額完全獨立,扣 / 退都各自結算
 
 ### 5. 重試策略
 
@@ -281,7 +369,7 @@ GET /job/a1b2c3d4e5f6?wait=30
 | `401`                           | 不要重試,修 API Key                   |
 | `402`                           | 不要重試,儲值對應 workflow 的餘額     |
 | `400 workflow 為必填`           | request body 補上 `workflow`           |
-| `400 未知 workflow`             | 確認用 `"plus"` 或 `"pro"`             |
+| `400 未知 workflow`             | 確認用 `"plus"` / `"plus_1y"` / `"pro"` / `"pro_20x"` |
 | `400` 其它                      | 修正 request body 後才重試             |
 | `503` (submit 時)              | 等 30-60 秒重試                        |
 | Job `status = failed`           | 依 `error` 內容判斷,通常可直接重新 submit |
@@ -292,18 +380,20 @@ GET /job/a1b2c3d4e5f6?wait=30
 
 ### 7. 併發
 
-建議同一 API key **同 workflow 同時在途 job ≤ 5**。Plus 與 Pro 之間互不阻塞。
+建議同一 API key **同 workflow 同時在途 job ≤ 5**。四個 workflow (`plus` / `plus_1y` / `pro` / `pro_20x`) 彼此獨立隊列,互不阻塞。
 
 ### 8. Workflow 選擇
 
-依想啟用的訂閱方案選擇:
+依想啟用的訂閱方案 + 期長選擇:
 
-| 目標訂閱   | 用 workflow |
-| ---------- | ----------- |
-| Plus       | `plus`      |
-| Pro        | `pro`       |
+| 目標訂閱       | 用 workflow |
+| -------------- | ----------- |
+| Plus(1 個月)  | `plus`      |
+| Plus(1 年)    | `plus_1y`   |
+| Pro            | `pro`       |
+| Pro(20x)      | `pro_20x`   |
 
-兩個 workflow 都可直接從免費帳號啟用,Plus 不是 Pro 的前置條件。
+Plus / Pro 都可直接從免費帳號啟用,Plus 不是 Pro 的前置條件。`plus` 與 `plus_1y` 為不同訂閱期的 Plus 方案,`pro` 與 `pro_20x` 為不同變體的 Pro 方案,扣費 / 退款各自結算,請**依你想幫帳號開通的方案**選擇,送錯不會自動轉換。
 
 ---
 
@@ -319,13 +409,16 @@ A. ChatGPT 側 token 通常數小時內有效。建議取得後 1 小時內 subm
 A. 收到 `status = done` 後,以該帳號登入 ChatGPT 檢視 Plus / Pro 狀態。建議等 30 秒再檢查。
 
 **Q. Job 太久才完成怎麼辦?**
-A. 單一 job 最長處理 5 分鐘,超過會 `status = failed` + error `隊列超時,請稍後重試`,此時餘額已自動退回對應 workflow。
+A. 單一 job 最長處理 30 分鐘,超過會 `status = failed` + error `隊列超時,請稍後重試`,此時餘額已自動退回對應 workflow。
+
+**Q. 怎麼知道 job 還要等多久?**
+A. 呼叫 `GET /job/{job_id}`,在 `pending` / `processing` 狀態下 response 會帶 `queue_position` 與 `estimated_wait_seconds`。想看整體隊列狀況可用 `GET /queue`。兩者皆為估算值,實際時間依當下系統狀況可能會有差異。
 
 **Q. `workflow` 可以省略嗎?**
-A. 不可以,`workflow` 為必填欄位,沒有預設值。請依帳號狀態自行決定送 `"plus"` 或 `"pro"`。
+A. 不可以,`workflow` 為必填欄位,沒有預設值。請依帳號狀態自行決定送 `"plus"` / `"plus_1y"` / `"pro"` / `"pro_20x"`。
 
-**Q. 同一個 API key 可以同時用 plus 和 pro 嗎?**
-A. 可以。兩個 workflow 餘額完全獨立,扣費 / 退款也各自結算。透過 `GET /balance` 可查兩個 workflow 目前的餘額。
+**Q. 同一個 API key 可以同時用 plus / plus_1y / pro / pro_20x 嗎?**
+A. 可以。四個 workflow 餘額完全獨立,扣費 / 退款也各自結算。透過 `GET /balance` 可查各 workflow 目前的餘額。
 
 ---
 
@@ -333,6 +426,8 @@ A. 可以。兩個 workflow 餘額完全獨立,扣費 / 退款也各自結算。
 
 | 日期       | 變更                                                                       |
 | ---------- | -------------------------------------------------------------------------- |
+| 2026-04-24 | v5:新增 `pro_20x` workflow(Pro 20x 版本)                                |
+| 2026-04-23 | v4:Job timeout 延長為 30 分鐘;新增 `GET /queue` endpoint;`/submit` 與 `/job/{id}` 回應加上 `queue_position` 與 `estimated_wait_seconds`;`/queue` 回應加上 `workers` (workflow 的並行處理數);文件化 `plus_1y` workflow(Plus 1 年期) |
 | 2026-04-20 | v3:新增 `pro` workflow,`workflow` 為必填,餘額拆成 per-workflow (`balances`) |
 | 2026-04-19 | v2:改為 async job 模式 + 新增 `/balance` endpoint                            |
 | 2026-04-19 | v1:初版(已停用的同步模式)                                                 |
