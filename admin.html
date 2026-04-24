@@ -441,6 +441,7 @@
         .badge-used { background: rgba(100,116,139,0.12); color: var(--text-muted); }
         .badge-disabled { background: rgba(251,113,133,0.12); color: var(--rose); }
         .badge-plus { background: rgba(99,102,241,0.12); color: var(--accent); }
+        .badge-plus_1y { background: rgba(34,211,238,0.12); color: var(--cyan); }
         .badge-pro { background: rgba(167,139,250,0.12); color: var(--purple); }
         .badge-pending { background: rgba(251,191,36,0.12); color: var(--amber); }
         .badge-processing { background: rgba(99,102,241,0.12); color: var(--accent); }
@@ -791,6 +792,7 @@
                         <label>类型</label>
                         <select id="genType">
                             <option value="plus">Plus</option>
+                            <option value="plus_1y">Plus 1 年</option>
                             <option value="pro">Pro</option>
                         </select>
                     </div>
@@ -834,6 +836,7 @@
                             <select id="cardsFilterType" onchange="loadCards()">
                                 <option value="all">全部类型</option>
                                 <option value="plus">Plus</option>
+                                <option value="plus_1y">Plus 1 年</option>
                                 <option value="pro">Pro</option>
                             </select>
                         </div>
@@ -894,8 +897,13 @@
                             <select id="recordsFilterType" onchange="loadRecords()">
                                 <option value="all">全部类型</option>
                                 <option value="plus">Plus</option>
+                                <option value="plus_1y">Plus 1 年</option>
                                 <option value="pro">Pro</option>
                             </select>
+                        </div>
+                        <div class="form-group search-input">
+                            <input type="text" id="recordsSearch" placeholder="搜索卡密 / Job ID / 邮箱 / IP / 错误..."
+                                oninput="debounceRecordsSearch()">
                         </div>
                     </div>
                 </div>
@@ -908,6 +916,7 @@
                                 <th>类型</th>
                                 <th>状态</th>
                                 <th>Job ID</th>
+                                <th>预计等待</th>
                                 <th>IP 地址</th>
                                 <th>时间</th>
                                 <th>错误信息</th>
@@ -1038,6 +1047,7 @@
     let recordsPage = 1;
     let generatedCodes = [];
     let searchTimer = null;
+    let recordsSearchTimer = null;
 
     // ========== 初始化 ==========
     window.onload = () => {
@@ -1170,14 +1180,19 @@
 
             grid.innerHTML = configCard + `
                 <div class="stat-card indigo">
-                    <div class="stat-label">Plus 总数</div>
+                    <div class="stat-label">Plus CDK 总数</div>
                     <div class="stat-value">${stats.plus.total}</div>
-                    <div class="stat-detail">可用 ${stats.plus.unused} · 已用 ${stats.plus.used} · 禁用 ${stats.plus.disabled}</div>
+                    <div class="stat-detail">月卡 ${stats.plus_monthly.total} · 年卡 ${stats.plus_1y.total}</div>
                 </div>
                 <div class="stat-card cyan">
-                    <div class="stat-label">Plus 可用</div>
-                    <div class="stat-value">${stats.plus.unused}</div>
-                    <div class="stat-detail">剩余可兑换</div>
+                    <div class="stat-label">Plus API 可用</div>
+                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'plus')}</div>
+                    <div class="stat-detail">月卡 ${apiBalanceValue(stats.apiBalanceTotal, 'plus_monthly')} · 年卡 ${apiBalanceValue(stats.apiBalanceTotal, 'plus_1y')} · 本地CDK ${stats.plus.unused}</div>
+                </div>
+                <div class="stat-card cyan">
+                    <div class="stat-label">Plus 1 年总数</div>
+                    <div class="stat-value">${stats.plus_1y.total}</div>
+                    <div class="stat-detail">可用 ${stats.plus_1y.unused} · 已用 ${stats.plus_1y.used} · 禁用 ${stats.plus_1y.disabled}</div>
                 </div>
                 <div class="stat-card emerald">
                     <div class="stat-label">Pro 总数</div>
@@ -1185,9 +1200,9 @@
                     <div class="stat-detail">可用 ${stats.pro.unused} · 已用 ${stats.pro.used} · 禁用 ${stats.pro.disabled}</div>
                 </div>
                 <div class="stat-card amber">
-                    <div class="stat-label">Pro 可用</div>
-                    <div class="stat-value">${stats.pro.unused}</div>
-                    <div class="stat-detail">剩余可兑换</div>
+                    <div class="stat-label">Pro API 可用</div>
+                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro')}</div>
+                    <div class="stat-detail">本地CDK ${stats.pro.unused}${stats.apiBalanceError ? ` · 余额查询失败: ${stats.apiBalanceError}` : ''}</div>
                 </div>
                 <div class="stat-card rose">
                     <div class="stat-label">兑换记录</div>
@@ -1283,7 +1298,7 @@
                 tbody.innerHTML = data.cards.map(c => `
                     <tr>
                         <td class="code-cell">${c.code}</td>
-                        <td><span class="badge badge-${c.type}">${c.type.toUpperCase()}</span></td>
+                        <td><span class="badge badge-${c.type}">${typeLabel(c.type)}</span></td>
                         <td><span class="badge badge-${c.status}">${statusLabel(c.status)}</span></td>
                         <td style="color:var(--text-muted);font-size:12px;">${c.created_at || '-'}</td>
                         <td style="color:var(--text-muted);font-size:12px;">${c.used_at || '-'}</td>
@@ -1337,29 +1352,52 @@
         return map[status] || status;
     }
 
+    function typeLabel(type) {
+        const map = { plus: 'Plus', plus_1y: 'Plus 1 年', pro: 'Pro' };
+        return map[type] || String(type || '-').toUpperCase();
+    }
+
+    function apiBalanceValue(balanceTotals, key) {
+        const value = balanceTotals?.[key];
+        return value === null || value === undefined ? '-' : value;
+    }
+
     // ========== 兑换记录 ==========
     async function loadRecords() {
         const status = document.getElementById('recordsFilterStatus').value;
         const type = document.getElementById('recordsFilterType').value;
+        const search = document.getElementById('recordsSearch').value.trim();
 
         const params = new URLSearchParams({ page: recordsPage, pageSize: 15, status, type });
+        if (search) params.set('search', search);
 
         try {
             const res = await adminFetch(`/api/admin/records?${params}`);
-            if (!res.ok) return;
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                if (res.status === 401) {
+                    showToast('登录已失效，请重新登录', 'error');
+                    adminLogout();
+                    return;
+                }
+                showToast(errorData.error || '加载兑换记录失败', 'error');
+                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+                return;
+            }
             const data = await res.json();
 
             const tbody = document.getElementById('recordsTableBody');
             if (data.records.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
             } else {
                 tbody.innerHTML = data.records.map(r => `
                     <tr>
                         <td style="color:var(--text-muted);">${r.id}</td>
                         <td class="code-cell">${r.card_code}</td>
-                        <td><span class="badge badge-${r.card_type}">${r.card_type.toUpperCase()}</span></td>
+                        <td><span class="badge badge-${r.card_type}">${typeLabel(r.card_type)}</span></td>
                         <td><span class="badge badge-${r.status}">${recordStatusLabel(r.status)}</span></td>
                         <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${r.job_id || '-'}</td>
+                        <td style="font-size:12px;color:var(--text-muted);">${formatEstimate(r)}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${r.ip_address || '-'}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${r.created_at || '-'}</td>
                         <td style="font-size:12px;color:var(--rose);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.error_message || ''}">${r.error_message || '-'}</td>
@@ -1379,6 +1417,28 @@
 
     function recordsPagePrev() { if (recordsPage > 1) { recordsPage--; loadRecords(); } }
     function recordsPageNext() { recordsPage++; loadRecords(); }
+
+    function debounceRecordsSearch() {
+        clearTimeout(recordsSearchTimer);
+        recordsSearchTimer = setTimeout(() => {
+            recordsPage = 1;
+            loadRecords();
+        }, 300);
+    }
+
+    function formatEstimate(record) {
+        const parts = [];
+        if (record.queue_position !== null && record.queue_position !== undefined) {
+            parts.push(`排队 ${record.queue_position}`);
+        }
+        if (record.estimated_wait_seconds !== null && record.estimated_wait_seconds !== undefined) {
+            const seconds = Number(record.estimated_wait_seconds);
+            if (Number.isFinite(seconds)) {
+                parts.push(seconds < 60 ? `约 ${Math.ceil(seconds)} 秒` : `约 ${Math.ceil(seconds / 60)} 分钟`);
+            }
+        }
+        return parts.join(' · ') || '-';
+    }
 
     function recordCancelButton(record) {
         if (!record.job_id) {

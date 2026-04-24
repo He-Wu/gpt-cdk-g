@@ -187,11 +187,11 @@ async function configureUpstream(port, token, baseUrl) {
   assert.equal(res.status, 200);
 }
 
-async function generateOneCard(port, token) {
+async function generateOneCard(port, token, type = 'plus') {
   const { res, data } = await requestJson(port, '/api/admin/cards/generate', {
     method: 'POST',
     headers: { 'X-Admin-Token': token },
-    body: JSON.stringify({ count: 1, type: 'plus' })
+    body: JSON.stringify({ count: 1, type })
   });
   assert.equal(res.status, 200);
   return data.codes[0];
@@ -287,6 +287,128 @@ test('server starts without ADMIN_PASSWORD by generating a saved admin password'
       body: JSON.stringify({ password: settings.adminPassword })
     });
     assert.equal(login.res.status, 200);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin stats counts plus total as monthly plus plus one year cards', async () => {
+  const server = await startServer('admin plus aggregate stats', {}, {
+    cards: [
+      { id: 1, code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA', type: 'plus', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'a' },
+      { id: 2, code: 'CDK-PLUS_1Y-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB', type: 'plus_1y', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'b' },
+      { id: 3, code: 'CDK-PLUS_1Y-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC', type: 'plus_1y', status: 'used', created_at: '2026/4/23 12:00:00', used_at: '2026/4/23 12:01:00', used_by: 'hash', batch_id: 'b' },
+      { id: 4, code: 'CDK-PRO-DDDDD-DDDDD-DDDDD-DDDDD-DDDDD', type: 'pro', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'c' }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const { res, data } = await requestJson(server.port, '/api/admin/stats', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(data.plus.total, 3);
+    assert.equal(data.plus.unused, 2);
+    assert.equal(data.plus.used, 1);
+    assert.equal(data.plus_monthly.total, 1);
+    assert.equal(data.plus_1y.total, 2);
+    assert.equal(data.pro.total, 1);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin stats fetches available totals from upstream balance api', async () => {
+  let balanceCalled = 0;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/balance') {
+      balanceCalled++;
+      assert.equal(req.headers['x-api-key'], 'test-api-key');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        balances: {
+          plus: 12,
+          plus_1y: 4,
+          pro: 2
+        }
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('admin stats upstream balances', {}, {
+    cards: [
+      { id: 1, code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA', type: 'plus', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'a' },
+      { id: 2, code: 'CDK-PRO-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB', type: 'pro', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'b' }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const { res, data } = await requestJson(server.port, '/api/admin/stats', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(balanceCalled, 1);
+    assert.deepEqual(data.apiBalances, { plus: 12, plus_1y: 4, pro: 2 });
+    assert.equal(data.apiBalanceTotal.plus, 16);
+    assert.equal(data.apiBalanceTotal.pro, 2);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('admin records can be searched by card code job id email ip or error', async () => {
+  const server = await startServer('admin records search', {}, {
+    records: [
+      {
+        id: 1,
+        card_code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA',
+        card_type: 'plus',
+        email: 'alpha@example.com',
+        job_id: 'job-alpha',
+        status: 'done',
+        error_message: null,
+        created_at: '2026/4/23 12:00:00',
+        ip_address: '203.0.113.10'
+      },
+      {
+        id: 2,
+        card_code: 'CDK-PRO-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB',
+        card_type: 'pro',
+        email: 'beta@example.com',
+        job_id: 'job-beta',
+        status: 'failed',
+        error_message: 'payment rejected',
+        created_at: '2026/4/23 12:01:00',
+        ip_address: '203.0.113.20'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const byJob = await requestJson(server.port, '/api/admin/records?search=job-beta', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(byJob.res.status, 200);
+    assert.equal(byJob.data.total, 1);
+    assert.equal(byJob.data.records[0].id, 2);
+
+    const byEmail = await requestJson(server.port, '/api/admin/records?search=alpha@example.com', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(byEmail.data.total, 1);
+    assert.equal(byEmail.data.records[0].id, 1);
+
+    const byError = await requestJson(server.port, '/api/admin/records?search=rejected', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(byError.data.total, 1);
+    assert.equal(byError.data.records[0].id, 2);
   } finally {
     await server.stop();
   }
@@ -388,6 +510,33 @@ test('admin records expose per-row cancel controls', async () => {
   assert.match(html, /取消/);
 });
 
+test('admin records page exposes a search input wired to records api', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="recordsSearch"/);
+  assert.match(html, /debounceRecordsSearch/);
+  assert.match(html, /params\.set\('search', search\)/);
+  assert.doesNotMatch(html, /const res = await adminFetch\(`\/api\/admin\/records\?\$\{params\}`\);\s*if \(!res\.ok\) return;/);
+  assert.match(html, /登录已失效，请重新登录/);
+});
+
+test('admin and user pages expose plus one year and queue estimates', async () => {
+  const adminHtml = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  const indexHtml = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(adminHtml, /value="plus_1y"/);
+  assert.match(adminHtml, /Plus 1 年/);
+  assert.match(adminHtml, /formatEstimate/);
+  assert.match(indexHtml, /PLUS_1Y/);
+  assert.match(indexHtml, /queue_position/);
+  assert.match(indexHtml, /estimated_wait_seconds/);
+});
+
+test('user page labels plus one year cards as plus one year instead of pro', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /function subscriptionTypeLabel/);
+  assert.match(html, /plus_1y:\s*'ChatGPT Plus 1 年'/);
+  assert.doesNotMatch(html, /data\.type\s*===\s*'plus'\s*\?\s*'ChatGPT Plus'\s*:\s*'ChatGPT Pro'/);
+});
+
 test('newly generated cards use a longer non-legacy format', async () => {
   const server = await startServer('long cdk generation');
 
@@ -398,6 +547,67 @@ test('newly generated cards use a longer non-legacy format', async () => {
     assert.doesNotMatch(code, /^CDK-PLUS-[A-Z0-9]{10}$/);
   } finally {
     await server.stop();
+  }
+});
+
+test('plus one year cards submit the plus_1y workflow and expose queue estimates', async () => {
+  let submittedWorkflow = null;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        submittedWorkflow = JSON.parse(body).workflow;
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          job_id: 'job-plus-1y',
+          workflow: 'plus_1y',
+          status: 'pending',
+          queue_position: 3,
+          estimated_wait_seconds: 540
+        }));
+      });
+      return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/job/job-plus-1y')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: 'job-plus-1y',
+        workflow: 'plus_1y',
+        status: 'processing',
+        queue_position: 1,
+        estimated_wait_seconds: 180,
+        error: null
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('plus 1y workflow with queue estimates');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token, 'plus_1y');
+
+    assert.match(code, /^CDK-PLUS_1Y-[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4}$/);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 200);
+    assert.equal(submittedWorkflow, 'plus_1y');
+    assert.equal(redeem.data.workflow, 'plus_1y');
+    assert.equal(redeem.data.queue_position, 3);
+    assert.equal(redeem.data.estimated_wait_seconds, 540);
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.type, 'plus_1y');
+    assert.equal(query.data.redeem_status, 'processing');
+    assert.equal(query.data.queue_position, 1);
+    assert.equal(query.data.estimated_wait_seconds, 180);
+  } finally {
+    await server.stop();
+    await upstream.stop();
   }
 });
 
@@ -466,7 +676,7 @@ test('trusted proxy mode separates scanner blocks by forwarded client ip', async
 
 test('frontend validation accepts both legacy and strengthened cdk formats', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
-  assert.match(html, /CDK_PATTERN\s*=\s*\/\^CDK-\(PLUS\|PRO\)-\(\?:\[A-Z0-9\]\{10\}\|\[A-Z2-9\]\{5\}/);
+  assert.match(html, /CDK_PATTERN\s*=\s*\/\^CDK-\(PLUS\|PLUS_1Y\|PRO\)-\(\?:\[A-Z0-9\]\{10\}\|\[A-Z2-9\]\{5\}/);
 });
 
 test('user page exposes cancel controls that call the public cancel api', async () => {

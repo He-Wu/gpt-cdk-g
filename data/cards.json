@@ -149,5 +149,15 @@
     "used_at": "2026/4/23 00:02:19",
     "used_by": "bed7b66c364265af",
     "batch_id": "05f5a022"
+  },
+  {
+    "id": 16,
+    "code": "CDK-PLUS_1Y-5LRMZ-6RK9P-3PTJX-LK26Y-F8EXK",
+    "type": "plus_1y",
+    "status": "unused",
+    "created_at": "2026/4/23 20:09:22",
+    "used_at": null,
+    "used_by": null,
+    "batch_id": "16b1c620"
   }
 ]

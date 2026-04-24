@@ -308,6 +308,7 @@ function nowStr() {
 
 const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 503]);
 const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
+const CARD_TYPES = ['plus', 'plus_1y', 'pro'];
 
 function refundCardForRecord(record) {
   const card = cards.find(c => c.code === record.card_code && c.status === 'used');
@@ -326,6 +327,21 @@ function markRecordUncertain(record, message, status = 'unknown') {
   saveRecords(records);
 }
 
+function updateQueueEstimate(record, jobData) {
+  if (!record || !jobData) return;
+  if (jobData.workflow) record.workflow = jobData.workflow;
+  if (Object.prototype.hasOwnProperty.call(jobData, 'queue_position')) {
+    record.queue_position = jobData.queue_position;
+  }
+  if (Object.prototype.hasOwnProperty.call(jobData, 'estimated_wait_seconds')) {
+    record.estimated_wait_seconds = jobData.estimated_wait_seconds;
+  }
+  if (jobData.status === 'done' || jobData.status === 'failed') {
+    record.queue_position = null;
+    record.estimated_wait_seconds = null;
+  }
+}
+
 function applyJobStatus(jobId, jobData) {
   const record = records.find(r => r.job_id === jobId);
   if (!record) return null;
@@ -334,6 +350,7 @@ function applyJobStatus(jobId, jobData) {
     record.status = jobData.status;
   }
   record.error_message = jobData.error || null;
+  updateQueueEstimate(record, jobData);
 
   if (jobData.status === 'failed') {
     refundCardForRecord(record);
@@ -363,6 +380,32 @@ async function refreshRecordFromUpstream(record, wait = 0) {
 
   const jobData = await jobRes.json();
   return applyJobStatus(record.job_id, jobData) || record;
+}
+
+async function fetchUpstreamBalances() {
+  if (!getApiKey() || !getBaseUrl()) {
+    return { balances: null, error: null };
+  }
+
+  try {
+    const balanceRes = await fetch(`${getBaseUrl()}/balance`, {
+      headers: { 'X-API-Key': getApiKey() }
+    });
+    if (!balanceRes.ok) {
+      return { balances: null, error: `HTTP ${balanceRes.status}` };
+    }
+    const data = await balanceRes.json();
+    return { balances: data.balances || null, error: null };
+  } catch (err) {
+    console.error('查询上游余额失败:', err);
+    return { balances: null, error: err.message };
+  }
+}
+
+function numberBalance(balances, key) {
+  const value = balances?.[key];
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
 // ========== 管理员 API ==========
@@ -463,13 +506,37 @@ app.post('/api/admin/maintenance', adminAuth, (req, res) => {
 });
 
 // 统计数据
-app.get('/api/admin/stats', adminAuth, (req, res) => {
+app.get('/api/admin/stats', adminAuth, async (req, res) => {
+  const plusCards = cards.filter(c => c.type === 'plus' || c.type === 'plus_1y');
+  const { balances: apiBalances, error: apiBalanceError } = await fetchUpstreamBalances();
+  const apiBalanceTotal = apiBalances ? {
+    plus: numberBalance(apiBalances, 'plus') + numberBalance(apiBalances, 'plus_1y'),
+    plus_monthly: numberBalance(apiBalances, 'plus'),
+    plus_1y: numberBalance(apiBalances, 'plus_1y'),
+    pro: numberBalance(apiBalances, 'pro')
+  } : null;
+
   const stats = {
+    apiBalances,
+    apiBalanceTotal,
+    apiBalanceError,
     plus: {
+      total: plusCards.length,
+      unused: plusCards.filter(c => c.status === 'unused').length,
+      used: plusCards.filter(c => c.status === 'used').length,
+      disabled: plusCards.filter(c => c.status === 'disabled').length,
+    },
+    plus_monthly: {
       total: cards.filter(c => c.type === 'plus').length,
       unused: cards.filter(c => c.type === 'plus' && c.status === 'unused').length,
       used: cards.filter(c => c.type === 'plus' && c.status === 'used').length,
       disabled: cards.filter(c => c.type === 'plus' && c.status === 'disabled').length,
+    },
+    plus_1y: {
+      total: cards.filter(c => c.type === 'plus_1y').length,
+      unused: cards.filter(c => c.type === 'plus_1y' && c.status === 'unused').length,
+      used: cards.filter(c => c.type === 'plus_1y' && c.status === 'used').length,
+      disabled: cards.filter(c => c.type === 'plus_1y' && c.status === 'disabled').length,
     },
     pro: {
       total: cards.filter(c => c.type === 'pro').length,
@@ -494,8 +561,8 @@ app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
   if (!count || !Number.isInteger(count) || count < 1 || count > 500) {
     return res.status(400).json({ error: '数量必须是 1-500 的整数' });
   }
-  if (!['plus', 'pro'].includes(type)) {
-    return res.status(400).json({ error: '类型必须是 plus 或 pro' });
+  if (!CARD_TYPES.includes(type)) {
+    return res.status(400).json({ error: '类型必须是 plus、plus_1y 或 pro' });
   }
 
   const batchId = uuidv4().substring(0, 8);
@@ -571,7 +638,7 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
 
 // 查看兑换记录
 app.get('/api/admin/records', adminAuth, (req, res) => {
-  const { page = 1, pageSize = 20, status, type } = req.query;
+  const { page = 1, pageSize = 20, status, type, search } = req.query;
   const pg = Math.max(1, parseInt(page) || 1);
   const ps = Math.min(Math.max(1, parseInt(pageSize) || 20), 100); // 上限 100
 
@@ -582,6 +649,21 @@ app.get('/api/admin/records', adminAuth, (req, res) => {
   }
   if (type && type !== 'all') {
     filtered = filtered.filter(r => r.card_type === type);
+  }
+  if (search) {
+    const q = String(search).trim().toLowerCase();
+    if (q) {
+      filtered = filtered.filter(r => [
+        r.card_code,
+        r.card_type,
+        r.status,
+        r.job_id,
+        r.email,
+        r.ip_address,
+        r.error_message,
+        r.created_at
+      ].some(value => String(value || '').toLowerCase().includes(q)));
+    }
   }
 
   filtered.sort((a, b) => b.id - a.id);
@@ -745,6 +827,9 @@ app.post('/api/card/redeem', async (req, res) => {
     job_id: null,
     status: 'pending',
     error_message: null,
+    workflow: card.type,
+    queue_position: null,
+    estimated_wait_seconds: null,
     created_at: nowStr(),
     ip_address: clientIP
   };
@@ -803,15 +888,19 @@ app.post('/api/card/redeem', async (req, res) => {
       });
     }
 
-    record.status = 'processing';
+    record.status = ['pending', 'processing'].includes(jobData.status) ? jobData.status : 'processing';
     record.job_id = jobData.job_id;
+    updateQueueEstimate(record, jobData);
     saveRecords(records);
 
     res.json({
       success: true,
       job_id: jobData.job_id,
       type: card.type,
+      workflow: jobData.workflow || card.type,
       status: jobData.status,
+      queue_position: record.queue_position,
+      estimated_wait_seconds: record.estimated_wait_seconds,
       message: '兑换已提交，正在处理中...'
     });
 
@@ -980,7 +1069,9 @@ app.get('/api/card/query', async (req, res) => {
     redeem_status: record ? record.status : null,
     redeem_status_label: record ? redeemStatusLabelMap[record.status] || record.status : null,
     redeem_error: record ? record.error_message : null,
-    needs_manual_review: record ? record.needs_manual_review === true : false
+    needs_manual_review: record ? record.needs_manual_review === true : false,
+    queue_position: record ? record.queue_position ?? null : null,
+    estimated_wait_seconds: record ? record.estimated_wait_seconds ?? null : null
   });
 });
 

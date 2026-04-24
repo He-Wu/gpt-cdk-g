@@ -334,6 +334,11 @@
             color: var(--accent-indigo);
         }
 
+        .type-badge.plus_1y {
+            background: rgba(6, 182, 212, 0.15);
+            color: #22d3ee;
+        }
+
         .type-badge.pro {
             background: rgba(139, 92, 246, 0.15);
             color: #a78bfa;
@@ -867,6 +872,10 @@
                     <span class="label">当前状态</span>
                     <span class="value" id="jobStatusText">等候中...</span>
                 </div>
+                <div class="job-info-row hidden" id="jobQueueRow">
+                    <span class="label">排队进度</span>
+                    <span class="value" id="jobQueueText">-</span>
+                </div>
             </div>
             <div class="progress-bar" id="progressBar">
                 <div class="fill"></div>
@@ -953,7 +962,7 @@
 
         // ========== 卡密验证 ==========
         // ========== 前置校验工具函数 ==========
-        const CDK_PATTERN = /^CDK-(PLUS|PRO)-(?:[A-Z0-9]{10}|[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4})$/;
+        const CDK_PATTERN = /^CDK-(PLUS|PLUS_1Y|PRO)-(?:[A-Z0-9]{10}|[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4})$/;
 
         function validateCodeFormat(value) {
             const errEl = document.getElementById('codeError');
@@ -967,8 +976,8 @@
                 let hint = '';
                 if (!value.startsWith('CDK-')) {
                     hint = '卡密必须以 CDK- 开头';
-                } else if (!/^CDK-(PLUS|PRO)-/.test(value)) {
-                    hint = '类型错误，应为 CDK-PLUS-… 或 CDK-PRO-…';
+                } else if (!/^CDK-(PLUS|PLUS_1Y|PRO)-/.test(value)) {
+                    hint = '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-… 或 CDK-PRO-…';
                 } else {
                     hint = '卡密格式不正确，请输入旧版 10 位码，或新版 5 组安全码';
                 }
@@ -1073,7 +1082,7 @@
                     <div class="result-icon">✅</div>
                     <div class="result-text">卡密有效</div>
                     <div class="result-detail">
-                        类型: <span class="type-badge ${data.type}">${data.type.toUpperCase()}</span>
+                        类型: <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span>
                     </div>
                 `;
 
@@ -1082,7 +1091,7 @@
                 step2.classList.remove('hidden');
                 const badge = document.getElementById('cardTypeBadge');
                 badge.className = `type-badge ${data.type}`;
-                badge.textContent = data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro';
+                badge.textContent = subscriptionTypeLabel(data.type);
 
                 // 锁定卡密输入
                 document.getElementById('cardCodeInput').readOnly = true;
@@ -1156,7 +1165,7 @@
 
                 // 成功提交
                 currentJobId = data.job_id;
-                showJobStatus({ job_id: data.job_id, status: data.status });
+                showJobStatus(data);
 
                 // 隐藏前两步
                 document.getElementById('step1Card').classList.add('hidden');
@@ -1179,6 +1188,11 @@
 
             document.getElementById('jobIdDisplay').textContent = job.job_id || '-';
             document.getElementById('jobStatusText').textContent = getStatusDesc(job.status);
+            const queueRow = document.getElementById('jobQueueRow');
+            const queueText = document.getElementById('jobQueueText');
+            const queueInfo = formatQueueEstimate(job);
+            queueRow.classList.toggle('hidden', !queueInfo);
+            queueText.textContent = queueInfo || '-';
 
             const badge = document.getElementById('jobBadge');
             badge.textContent = job.status?.toUpperCase() || 'PENDING';
@@ -1235,6 +1249,29 @@
                 expired: '已过期待核验'
             };
             return map[status] || status;
+        }
+
+        function formatQueueEstimate(job) {
+            const parts = [];
+            if (job.queue_position !== null && job.queue_position !== undefined) {
+                parts.push(`排队位置 ${job.queue_position}`);
+            }
+            if (job.estimated_wait_seconds !== null && job.estimated_wait_seconds !== undefined) {
+                const seconds = Number(job.estimated_wait_seconds);
+                if (Number.isFinite(seconds)) {
+                    parts.push(seconds < 60 ? `预计 ${Math.ceil(seconds)} 秒` : `预计 ${Math.ceil(seconds / 60)} 分钟`);
+                }
+            }
+            return parts.join(' · ');
+        }
+
+        function subscriptionTypeLabel(type) {
+            const map = {
+                plus: 'ChatGPT Plus',
+                plus_1y: 'ChatGPT Plus 1 年',
+                pro: 'ChatGPT Pro'
+            };
+            return map[type] || String(type || '-').toUpperCase();
         }
 
         async function cancelTaskByJobId(jobId, button) {
@@ -1381,12 +1418,12 @@
                 verifyResult.innerHTML = `
                     <div class="result-icon">✅</div>
                     <div class="result-text">卡密有效（重试）</div>
-                    <div class="result-detail">类型: <span class="type-badge ${data.type}">${data.type.toUpperCase()}</span></div>
+                    <div class="result-detail">类型: <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></div>
                 `;
 
                 // 显示 step2，自动恢复兑换按钮
                 cardTypeBadge.className = `type-badge ${data.type}`;
-                cardTypeBadge.textContent = data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro';
+                cardTypeBadge.textContent = subscriptionTypeLabel(data.type);
                 const redeemBtn = document.getElementById('redeemBtn');
                 redeemBtn.disabled = false;
                 redeemBtn.textContent = '🚀 重试兑换';
@@ -1465,6 +1502,11 @@
                         <span class="q-label">📦 兑换进度</span>
                         <span class="q-value"><span class="status-pill ${data.redeem_status}">${statusIconMap[data.redeem_status] || ''} ${data.redeem_status_label}</span></span>
                     </div>
+                    ${(data.queue_position !== null && data.queue_position !== undefined) || (data.estimated_wait_seconds !== null && data.estimated_wait_seconds !== undefined) ? `
+                    <div class="query-row">
+                        <span class="q-label">⏳ 排队预估</span>
+                        <span class="q-value">${formatQueueEstimate(data)}</span>
+                    </div>` : ''}
                     ${data.redeem_error ? `
                     <div class="query-row">
                         <span class="q-label">状态说明</span>
@@ -1488,7 +1530,7 @@
                         <div class="query-result-body">
                             <div class="query-row">
                                 <span class="q-label">🏷️ 订阅类型</span>
-                                <span class="q-value"><span class="type-badge ${data.type}">${data.type === 'plus' ? 'ChatGPT Plus' : 'ChatGPT Pro'}</span></span>
+                                <span class="q-value"><span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></span>
                             </div>
                             <div class="query-row">
                                 <span class="q-label">📅 生成时间</span>
