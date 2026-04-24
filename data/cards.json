@@ -159,5 +159,27 @@
     "used_at": null,
     "used_by": null,
     "batch_id": "16b1c620"
+  },
+  {
+    "id": 17,
+    "code": "CDK-PRO_20X-K9VUK-39W7H-K7QN9-QHN22-R7MEN",
+    "type": "pro_20x",
+    "status": "used",
+    "created_at": "2026/4/24 13:16:29",
+    "used_at": "2026/4/24 13:16:53",
+    "used_by": "999612ce3daf6a62",
+    "batch_id": "2eb4ec9c",
+    "used_email": "rickyhawaii1983@gmail.com"
+  },
+  {
+    "id": 18,
+    "code": "CDK-PRO_20X-UTUX6-U8P2G-ECGPP-GEYZ9-AZCGF",
+    "type": "pro_20x",
+    "status": "used",
+    "created_at": "2026/4/24 14:03:38",
+    "used_at": "2026/4/24 14:04:25",
+    "used_by": "88d15d91850aea2d",
+    "batch_id": "a7d8f8b7",
+    "used_email": "MargareteTurnerhilv@outlook.com"
   }
 ]

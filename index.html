@@ -344,6 +344,11 @@
             color: #a78bfa;
         }
 
+        .type-badge.pro_20x {
+            background: rgba(244, 114, 182, 0.15);
+            color: #f472b6;
+        }
+
         /* 任务状态 */
         .job-section {
             display: none;
@@ -962,7 +967,7 @@
 
         // ========== 卡密验证 ==========
         // ========== 前置校验工具函数 ==========
-        const CDK_PATTERN = /^CDK-(PLUS|PLUS_1Y|PRO)-(?:[A-Z0-9]{10}|[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4})$/;
+        const CDK_PATTERN = /^CDK-(PLUS|PLUS_1Y|PRO|PRO_20X)-(?:[A-Z0-9]{10}|[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4})$/;
 
         function validateCodeFormat(value) {
             const errEl = document.getElementById('codeError');
@@ -976,8 +981,8 @@
                 let hint = '';
                 if (!value.startsWith('CDK-')) {
                     hint = '卡密必须以 CDK- 开头';
-                } else if (!/^CDK-(PLUS|PLUS_1Y|PRO)-/.test(value)) {
-                    hint = '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-… 或 CDK-PRO-…';
+                } else if (!/^CDK-(PLUS|PLUS_1Y|PRO|PRO_20X)-/.test(value)) {
+                    hint = '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-…、CDK-PRO-… 或 CDK-PRO_20X-…';
                 } else {
                     hint = '卡密格式不正确，请输入旧版 10 位码，或新版 5 组安全码';
                 }
@@ -1269,7 +1274,8 @@
             const map = {
                 plus: 'ChatGPT Plus',
                 plus_1y: 'ChatGPT Plus 1 年',
-                pro: 'ChatGPT Pro'
+                pro: 'ChatGPT Pro 5X',
+                pro_20x: 'ChatGPT Pro 20X'
             };
             return map[type] || String(type || '-').toUpperCase();
         }

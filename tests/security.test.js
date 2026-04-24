@@ -298,7 +298,8 @@ test('admin stats counts plus total as monthly plus plus one year cards', async 
       { id: 1, code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA', type: 'plus', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'a' },
       { id: 2, code: 'CDK-PLUS_1Y-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB', type: 'plus_1y', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'b' },
       { id: 3, code: 'CDK-PLUS_1Y-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC', type: 'plus_1y', status: 'used', created_at: '2026/4/23 12:00:00', used_at: '2026/4/23 12:01:00', used_by: 'hash', batch_id: 'b' },
-      { id: 4, code: 'CDK-PRO-DDDDD-DDDDD-DDDDD-DDDDD-DDDDD', type: 'pro', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'c' }
+      { id: 4, code: 'CDK-PRO-DDDDD-DDDDD-DDDDD-DDDDD-DDDDD', type: 'pro', status: 'unused', created_at: '2026/4/23 12:00:00', used_at: null, used_by: null, batch_id: 'c' },
+      { id: 5, code: 'CDK-PRO_20X-EEEEE-EEEEE-EEEEE-EEEEE-EEEEE', type: 'pro_20x', status: 'used', created_at: '2026/4/23 12:00:00', used_at: '2026/4/23 12:02:00', used_by: 'hash2', batch_id: 'd' }
     ]
   });
 
@@ -314,6 +315,10 @@ test('admin stats counts plus total as monthly plus plus one year cards', async 
     assert.equal(data.plus_monthly.total, 1);
     assert.equal(data.plus_1y.total, 2);
     assert.equal(data.pro.total, 1);
+    assert.equal(data.pro_20x.total, 1);
+    assert.equal(data.pro_total.total, 2);
+    assert.equal(data.pro_total.unused, 1);
+    assert.equal(data.pro_total.used, 1);
   } finally {
     await server.stop();
   }
@@ -519,13 +524,37 @@ test('admin records page exposes a search input wired to records api', async () 
   assert.match(html, /登录已失效，请重新登录/);
 });
 
+test('admin page exposes mobile navigation controls for switching pages on phones', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="mobileTopbar"/);
+  assert.match(html, /id="mobileMenuBtn"/);
+  assert.match(html, /id="mobileNavOverlay"/);
+  assert.match(html, /id="mobileNavDrawer"/);
+  assert.match(html, /toggleMobileNav/);
+  assert.match(html, /closeMobileNav/);
+  assert.match(html, /setMobileNavOpen/);
+});
+
+test('admin page includes responsive mobile layout rules for filters tables and pagination', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /@media \(max-width: 768px\)/);
+  assert.match(html, /mobile-topbar/);
+  assert.match(html, /table-wrapper[\s\S]*min-width:/);
+  assert.match(html, /pagination[\s\S]*flex-direction:\s*column/);
+  assert.match(html, /filter-bar[\s\S]*width:\s*100%/);
+});
+
 test('admin and user pages expose plus one year and queue estimates', async () => {
   const adminHtml = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   const indexHtml = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
   assert.match(adminHtml, /value="plus_1y"/);
+  assert.match(adminHtml, /value="pro_20x"/);
   assert.match(adminHtml, /Plus 1 年/);
+  assert.match(adminHtml, /Pro 20X/);
+  assert.match(adminHtml, /Pro 合计/);
   assert.match(adminHtml, /formatEstimate/);
   assert.match(indexHtml, /PLUS_1Y/);
+  assert.match(indexHtml, /PRO_20X/);
   assert.match(indexHtml, /queue_position/);
   assert.match(indexHtml, /estimated_wait_seconds/);
 });
@@ -534,6 +563,7 @@ test('user page labels plus one year cards as plus one year instead of pro', asy
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
   assert.match(html, /function subscriptionTypeLabel/);
   assert.match(html, /plus_1y:\s*'ChatGPT Plus 1 年'/);
+  assert.match(html, /pro_20x:\s*'ChatGPT Pro 20X'/);
   assert.doesNotMatch(html, /data\.type\s*===\s*'plus'\s*\?\s*'ChatGPT Plus'\s*:\s*'ChatGPT Pro'/);
 });
 
@@ -611,6 +641,69 @@ test('plus one year cards submit the plus_1y workflow and expose queue estimates
   }
 });
 
+test('pro 20x cards submit the pro_20x workflow and remain distinct from legacy pro', async () => {
+  let submittedWorkflow = null;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        submittedWorkflow = JSON.parse(body).workflow;
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          job_id: 'job-pro-20x',
+          workflow: 'pro_20x',
+          status: 'pending',
+          queue_position: 2,
+          estimated_wait_seconds: 300
+        }));
+      });
+      return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/job/job-pro-20x')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: 'job-pro-20x',
+        workflow: 'pro_20x',
+        status: 'processing',
+        queue_position: 1,
+        estimated_wait_seconds: 120,
+        error: null
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('pro 20x workflow with queue estimates');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token, 'pro_20x');
+
+    assert.match(code, /^CDK-PRO_20X-[A-Z2-9]{5}(?:-[A-Z2-9]{5}){4}$/);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 200);
+    assert.equal(submittedWorkflow, 'pro_20x');
+    assert.equal(redeem.data.type, 'pro_20x');
+    assert.equal(redeem.data.workflow, 'pro_20x');
+    assert.equal(redeem.data.queue_position, 2);
+    assert.equal(redeem.data.estimated_wait_seconds, 300);
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.type, 'pro_20x');
+    assert.equal(query.data.redeem_status, 'processing');
+    assert.equal(query.data.workflow, 'pro_20x');
+    assert.equal(query.data.queue_position, 1);
+    assert.equal(query.data.estimated_wait_seconds, 120);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
 test('legacy card format remains valid after strengthening new codes', async () => {
   const legacyCode = 'CDK-PLUS-ABCDEFGHJK';
   const server = await startServer('legacy cdk remains valid', {}, {
@@ -676,7 +769,7 @@ test('trusted proxy mode separates scanner blocks by forwarded client ip', async
 
 test('frontend validation accepts both legacy and strengthened cdk formats', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
-  assert.match(html, /CDK_PATTERN\s*=\s*\/\^CDK-\(PLUS\|PLUS_1Y\|PRO\)-\(\?:\[A-Z0-9\]\{10\}\|\[A-Z2-9\]\{5\}/);
+  assert.match(html, /CDK_PATTERN\s*=\s*\/\^CDK-\(PLUS\|PLUS_1Y\|PRO\|PRO_20X\)-\(\?:\[A-Z0-9\]\{10\}\|\[A-Z2-9\]\{5\}/);
 });
 
 test('user page exposes cancel controls that call the public cancel api', async () => {

@@ -308,7 +308,7 @@ function nowStr() {
 
 const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 503]);
 const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
-const CARD_TYPES = ['plus', 'plus_1y', 'pro'];
+const CARD_TYPES = ['plus', 'plus_1y', 'pro', 'pro_20x'];
 
 function refundCardForRecord(record) {
   const card = cards.find(c => c.code === record.card_code && c.status === 'used');
@@ -508,12 +508,15 @@ app.post('/api/admin/maintenance', adminAuth, (req, res) => {
 // 统计数据
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   const plusCards = cards.filter(c => c.type === 'plus' || c.type === 'plus_1y');
+  const proCards = cards.filter(c => c.type === 'pro' || c.type === 'pro_20x');
   const { balances: apiBalances, error: apiBalanceError } = await fetchUpstreamBalances();
   const apiBalanceTotal = apiBalances ? {
     plus: numberBalance(apiBalances, 'plus') + numberBalance(apiBalances, 'plus_1y'),
     plus_monthly: numberBalance(apiBalances, 'plus'),
     plus_1y: numberBalance(apiBalances, 'plus_1y'),
-    pro: numberBalance(apiBalances, 'pro')
+    pro_total: numberBalance(apiBalances, 'pro') + numberBalance(apiBalances, 'pro_20x'),
+    pro: numberBalance(apiBalances, 'pro'),
+    pro_20x: numberBalance(apiBalances, 'pro_20x')
   } : null;
 
   const stats = {
@@ -538,11 +541,23 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       used: cards.filter(c => c.type === 'plus_1y' && c.status === 'used').length,
       disabled: cards.filter(c => c.type === 'plus_1y' && c.status === 'disabled').length,
     },
+    pro_total: {
+      total: proCards.length,
+      unused: proCards.filter(c => c.status === 'unused').length,
+      used: proCards.filter(c => c.status === 'used').length,
+      disabled: proCards.filter(c => c.status === 'disabled').length,
+    },
     pro: {
       total: cards.filter(c => c.type === 'pro').length,
       unused: cards.filter(c => c.type === 'pro' && c.status === 'unused').length,
       used: cards.filter(c => c.type === 'pro' && c.status === 'used').length,
       disabled: cards.filter(c => c.type === 'pro' && c.status === 'disabled').length,
+    },
+    pro_20x: {
+      total: cards.filter(c => c.type === 'pro_20x').length,
+      unused: cards.filter(c => c.type === 'pro_20x' && c.status === 'unused').length,
+      used: cards.filter(c => c.type === 'pro_20x' && c.status === 'used').length,
+      disabled: cards.filter(c => c.type === 'pro_20x' && c.status === 'disabled').length,
     },
     redeemRecords: {
       total: records.length,
@@ -562,7 +577,7 @@ app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
     return res.status(400).json({ error: '数量必须是 1-500 的整数' });
   }
   if (!CARD_TYPES.includes(type)) {
-    return res.status(400).json({ error: '类型必须是 plus、plus_1y 或 pro' });
+    return res.status(400).json({ error: '类型必须是 plus、plus_1y、pro 或 pro_20x' });
   }
 
   const batchId = uuidv4().substring(0, 8);
@@ -1066,6 +1081,7 @@ app.get('/api/card/query', async (req, res) => {
     used_at: usedAt,
     email: usedEmail,
     job_id: record && isValidJobId(record.job_id) ? record.job_id : null,
+    workflow: record ? record.workflow || record.card_type || card.type : null,
     redeem_status: record ? record.status : null,
     redeem_status_label: record ? redeemStatusLabelMap[record.status] || record.status : null,
     redeem_error: record ? record.error_message : null,

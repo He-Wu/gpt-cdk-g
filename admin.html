@@ -238,6 +238,168 @@
             color: var(--rose);
         }
 
+        .mobile-topbar,
+        .mobile-nav-overlay,
+        .mobile-nav-drawer {
+            display: none;
+        }
+
+        .mobile-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 140;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px;
+            margin: -20px -16px 20px;
+            background: rgba(12, 13, 20, 0.9);
+            backdrop-filter: blur(18px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .mobile-topbar .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .mobile-topbar .brand-icon {
+            width: 34px;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: var(--gradient);
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .mobile-topbar .brand-copy {
+            min-width: 0;
+        }
+
+        .mobile-topbar .brand-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mobile-topbar .brand-subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .mobile-menu-btn {
+            width: 42px;
+            height: 42px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.03);
+            color: var(--text-primary);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .mobile-menu-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--border-hover);
+        }
+
+        .mobile-nav-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 180;
+            background: rgba(7, 8, 13, 0.58);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s ease;
+        }
+
+        .mobile-nav-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 190;
+            width: min(320px, 88vw);
+            padding: 20px 16px 18px;
+            background: rgba(12, 13, 20, 0.98);
+            border-left: 1px solid var(--border);
+            transform: translateX(100%);
+            transition: transform 0.22s ease;
+            overflow-y: auto;
+            box-shadow: -18px 0 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .mobile-nav-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .mobile-nav-title {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .mobile-nav-close {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .mobile-nav-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .mobile-nav-list .nav-item {
+            border: 1px solid transparent;
+            border-radius: 12px;
+            padding: 12px 14px;
+            border-left-width: 1px;
+        }
+
+        .mobile-nav-list .nav-item.active {
+            border-color: rgba(129, 140, 248, 0.18);
+        }
+
+        .mobile-nav-footer {
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        body.mobile-nav-open {
+            overflow: hidden;
+        }
+
+        body.mobile-nav-open .mobile-nav-overlay {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        body.mobile-nav-open .mobile-nav-drawer {
+            transform: translateX(0);
+        }
+
         /* 主内容区 */
         .main-content {
             flex: 1;
@@ -443,6 +605,7 @@
         .badge-plus { background: rgba(99,102,241,0.12); color: var(--accent); }
         .badge-plus_1y { background: rgba(34,211,238,0.12); color: var(--cyan); }
         .badge-pro { background: rgba(167,139,250,0.12); color: var(--purple); }
+        .badge-pro_20x { background: rgba(244,114,182,0.14); color: #f472b6; }
         .badge-pending { background: rgba(251,191,36,0.12); color: var(--amber); }
         .badge-processing { background: rgba(99,102,241,0.12); color: var(--accent); }
         .badge-done { background: rgba(52,211,153,0.12); color: var(--emerald); }
@@ -688,10 +851,41 @@
         @media (max-width: 768px) {
             .sidebar { display: none; }
             .main-content { margin-left: 0; padding: 20px 16px; }
+            .mobile-topbar,
+            .mobile-nav-overlay,
+            .mobile-nav-drawer { display: flex; }
+            .mobile-nav-overlay { display: block; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .form-row { flex-direction: column; }
-            .filter-bar { flex-direction: column; }
-            .filter-bar .form-group { width: 100%; }
+            .form-row > div,
+            .form-row .form-group,
+            .filter-bar,
+            .filter-bar .form-group,
+            .filter-bar .search-input,
+            .pagination-btns,
+            .generated-codes-header,
+            .generated-codes-header > div { width: 100%; }
+            .filter-bar,
+            .panel-header,
+            .pagination,
+            .generated-codes-header { flex-direction: column; align-items: stretch; }
+            .pagination { gap: 12px; flex-direction: column; }
+            .pagination-btns { display: grid; grid-template-columns: 1fr 1fr; }
+            .panel { padding: 18px 16px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .stat-card .stat-value { font-size: 24px; }
+            .table-wrapper {
+                margin: 0 -16px;
+                padding: 0 16px 6px;
+                -webkit-overflow-scrolling: touch;
+            }
+            .table-wrapper table { min-width: 720px; }
+            th, td { padding: 10px 12px; }
+            .code-cell { font-size: 11px; }
+            .btn { min-height: 44px; }
+            .btn-sm { min-height: 40px; padding: 8px 12px; }
+            .logout-btn { min-height: 44px; }
+            .page-header { margin-bottom: 20px; }
         }
 
         /* 空状态 */
@@ -761,8 +955,49 @@
         </div>
     </aside>
 
+    <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
+    <aside class="mobile-nav-drawer" id="mobileNavDrawer" aria-hidden="true">
+        <div class="mobile-nav-header">
+            <div class="mobile-nav-title">后台菜单</div>
+            <button class="mobile-nav-close" type="button" onclick="closeMobileNav()" aria-label="关闭菜单">✕</button>
+        </div>
+        <nav class="mobile-nav-list">
+            <div class="nav-item active" onclick="switchPage('dashboard')" data-page="dashboard">
+                <span class="nav-icon">📊</span> 仪表盘
+            </div>
+            <div class="nav-item" onclick="switchPage('generate')" data-page="generate">
+                <span class="nav-icon">📝</span> 生成卡密
+            </div>
+            <div class="nav-item" onclick="switchPage('cards')" data-page="cards">
+                <span class="nav-icon">🗂️</span> 卡密管理
+            </div>
+            <div class="nav-item" onclick="switchPage('records')" data-page="records">
+                <span class="nav-icon">🔍</span> 兑换记录
+            </div>
+            <div class="nav-item" onclick="switchPage('settings')" data-page="settings">
+                <span class="nav-icon">⚙️</span> 系统设置
+                <span class="maintenance-badge off" id="mobileMaintBadge" style="margin-left:auto;">正常</span>
+            </div>
+        </nav>
+        <div class="mobile-nav-footer">
+            <button class="logout-btn" onclick="adminLogout()">
+                <span>🚪</span> 退出登录
+            </button>
+        </div>
+    </aside>
+
     <!-- 主内容 -->
     <main class="main-content">
+        <div class="mobile-topbar" id="mobileTopbar">
+            <div class="brand">
+                <div class="brand-icon">⚡</div>
+                <div class="brand-copy">
+                    <div class="brand-title">喵喵GPT源头</div>
+                    <div class="brand-subtitle" id="mobilePageTitle">仪表盘</div>
+                </div>
+            </div>
+            <button class="mobile-menu-btn" id="mobileMenuBtn" type="button" onclick="toggleMobileNav()" aria-label="打开菜单">☰</button>
+        </div>
 
         <!-- ===== 仪表盘页 ===== -->
         <div class="page active" id="page-dashboard">
@@ -793,7 +1028,8 @@
                         <select id="genType">
                             <option value="plus">Plus</option>
                             <option value="plus_1y">Plus 1 年</option>
-                            <option value="pro">Pro</option>
+                            <option value="pro">Pro 5X</option>
+                            <option value="pro_20x">Pro 20X</option>
                         </select>
                     </div>
                     <div style="flex: 0 0 auto;">
@@ -837,7 +1073,8 @@
                                 <option value="all">全部类型</option>
                                 <option value="plus">Plus</option>
                                 <option value="plus_1y">Plus 1 年</option>
-                                <option value="pro">Pro</option>
+                                <option value="pro">Pro 5X</option>
+                                <option value="pro_20x">Pro 20X</option>
                             </select>
                         </div>
                         <div class="form-group search-input">
@@ -898,7 +1135,8 @@
                                 <option value="all">全部类型</option>
                                 <option value="plus">Plus</option>
                                 <option value="plus_1y">Plus 1 年</option>
-                                <option value="pro">Pro</option>
+                                <option value="pro">Pro 5X</option>
+                                <option value="pro_20x">Pro 20X</option>
                             </select>
                         </div>
                         <div class="form-group search-input">
@@ -1048,13 +1286,29 @@
     let generatedCodes = [];
     let searchTimer = null;
     let recordsSearchTimer = null;
+    const PAGE_TITLES = {
+        dashboard: '仪表盘',
+        generate: '生成卡密',
+        cards: '卡密管理',
+        records: '兑换记录',
+        settings: '系统设置'
+    };
 
     // ========== 初始化 ==========
     window.onload = () => {
+        updateMobilePageTitle('dashboard');
         if (adminToken) {
             checkAuth();
         }
     };
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) closeMobileNav();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeMobileNav();
+    });
 
     async function checkAuth() {
         try {
@@ -1130,6 +1384,7 @@
         adminFetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
         adminToken = '';
         localStorage.removeItem('admin_token');
+        setMobileNavOpen(false);
         document.getElementById('appLayout').classList.remove('active');
         document.getElementById('loginPage').style.display = 'flex';
         document.getElementById('loginPassword').value = '';
@@ -1138,7 +1393,27 @@
     function showApp() {
         document.getElementById('loginPage').style.display = 'none';
         document.getElementById('appLayout').classList.add('active');
+        updateMobilePageTitle('dashboard');
         loadStats();
+    }
+
+    function setMobileNavOpen(open) {
+        document.body.classList.toggle('mobile-nav-open', !!open);
+        const drawer = document.getElementById('mobileNavDrawer');
+        if (drawer) drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+
+    function toggleMobileNav() {
+        setMobileNavOpen(!document.body.classList.contains('mobile-nav-open'));
+    }
+
+    function closeMobileNav() {
+        setMobileNavOpen(false);
+    }
+
+    function updateMobilePageTitle(page) {
+        const title = document.getElementById('mobilePageTitle');
+        if (title) title.textContent = PAGE_TITLES[page] || '管理后台';
     }
 
     // ========== 页面切换 ==========
@@ -1146,7 +1421,9 @@
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         document.getElementById(`page-${page}`).classList.add('active');
-        document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+        document.querySelectorAll(`.nav-item[data-page="${page}"]`).forEach(n => n.classList.add('active'));
+        updateMobilePageTitle(page);
+        closeMobileNav();
 
         if (page === 'dashboard') loadStats();
         if (page === 'cards') loadCards();
@@ -1195,14 +1472,34 @@
                     <div class="stat-detail">可用 ${stats.plus_1y.unused} · 已用 ${stats.plus_1y.used} · 禁用 ${stats.plus_1y.disabled}</div>
                 </div>
                 <div class="stat-card emerald">
-                    <div class="stat-label">Pro 总数</div>
+                    <div class="stat-label">Pro 合计总数</div>
+                    <div class="stat-value">${stats.pro_total.total}</div>
+                    <div class="stat-detail">5X ${stats.pro.total} · 20X ${stats.pro_20x.total} · 可用 ${stats.pro_total.unused}</div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-label">Pro 合计 API 可用</div>
+                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro_total')}</div>
+                    <div class="stat-detail">5X ${apiBalanceValue(stats.apiBalanceTotal, 'pro')} · 20X ${apiBalanceValue(stats.apiBalanceTotal, 'pro_20x')} · 本地CDK ${stats.pro_total.unused}</div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-label">Pro 5X 总数</div>
                     <div class="stat-value">${stats.pro.total}</div>
                     <div class="stat-detail">可用 ${stats.pro.unused} · 已用 ${stats.pro.used} · 禁用 ${stats.pro.disabled}</div>
                 </div>
                 <div class="stat-card amber">
-                    <div class="stat-label">Pro API 可用</div>
+                    <div class="stat-label">Pro 5X API 可用</div>
                     <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro')}</div>
                     <div class="stat-detail">本地CDK ${stats.pro.unused}${stats.apiBalanceError ? ` · 余额查询失败: ${stats.apiBalanceError}` : ''}</div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-label">Pro 20X 总数</div>
+                    <div class="stat-value">${stats.pro_20x.total}</div>
+                    <div class="stat-detail">可用 ${stats.pro_20x.unused} · 已用 ${stats.pro_20x.used} · 禁用 ${stats.pro_20x.disabled}</div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-label">Pro 20X API 可用</div>
+                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro_20x')}</div>
+                    <div class="stat-detail">本地CDK ${stats.pro_20x.unused}${stats.apiBalanceError ? ` · 余额查询失败: ${stats.apiBalanceError}` : ''}</div>
                 </div>
                 <div class="stat-card rose">
                     <div class="stat-label">兑换记录</div>
@@ -1353,7 +1650,7 @@
     }
 
     function typeLabel(type) {
-        const map = { plus: 'Plus', plus_1y: 'Plus 1 年', pro: 'Pro' };
+        const map = { plus: 'Plus', plus_1y: 'Plus 1 年', pro: 'Pro 5X', pro_20x: 'Pro 20X' };
         return map[type] || String(type || '-').toUpperCase();
     }
 
@@ -1553,17 +1850,21 @@
 
     function updateMaintUI(enabled) {
         const desc = document.getElementById('maintStatusDesc');
-        const badge = document.getElementById('sidebarMaintBadge');
+        const badges = [document.getElementById('sidebarMaintBadge'), document.getElementById('mobileMaintBadge')].filter(Boolean);
         if (enabled) {
             desc.textContent = '当前：🔴 维护中 — 用户将看到维护页面';
             desc.style.color = '#f87171';
-            badge.textContent = '维护中';
-            badge.className = 'maintenance-badge on';
+            badges.forEach(badge => {
+                badge.textContent = '维护中';
+                badge.className = 'maintenance-badge on';
+            });
         } else {
             desc.textContent = '当前：正常运行中';
             desc.style.color = '';
-            badge.textContent = '正常';
-            badge.className = 'maintenance-badge off';
+            badges.forEach(badge => {
+                badge.textContent = '正常';
+                badge.className = 'maintenance-badge off';
+            });
         }
     }
 
