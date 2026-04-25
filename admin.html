@@ -527,6 +527,30 @@
         }
 
         /* 面板 */
+        .stats-range-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .stats-range-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stats-range-copy p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .stats-range-select {
+            min-width: 150px;
+        }
+
         .panel {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -999,6 +1023,9 @@
             <div class="nav-item" onclick="switchPage('records')" data-page="records">
                 <span class="nav-icon">📋</span> 兑换记录
             </div>
+            <div class="nav-item" onclick="switchPage('job-status')" data-page="job-status" data-permission="manage_settings">
+                <span class="nav-icon">🔎</span> 任务查询
+            </div>
             <div class="nav-item" onclick="switchPage('accounts')" data-page="accounts" data-permission="manage_accounts">
                 <span class="nav-icon">👥</span> 账号管理
             </div>
@@ -1032,6 +1059,9 @@
             </div>
             <div class="nav-item" onclick="switchPage('records')" data-page="records">
                 <span class="nav-icon">🔍</span> 兑换记录
+            </div>
+            <div class="nav-item" onclick="switchPage('job-status')" data-page="job-status" data-permission="manage_settings">
+                <span class="nav-icon">🔎</span> 任务查询
             </div>
             <div class="nav-item" onclick="switchPage('accounts')" data-page="accounts" data-permission="manage_accounts">
                 <span class="nav-icon">👥</span> 账号管理
@@ -1070,9 +1100,27 @@
             <div class="stats-grid" id="statsGrid">
                 <!-- 动态填充 -->
             </div>
+            <div class="panel" id="redeemSummaryPanel">
+                <div class="stats-range-toolbar">
+                    <div class="stats-range-copy">
+                        <div class="panel-title">兑换统计概览</div>
+                        <p>按时间范围查看成功与失败数量，以及各类型成功兑换数量。</p>
+                    </div>
+                    <div class="form-group stats-range-select" style="margin:0;">
+                        <select id="statsRangeSelect" onchange="setStatsRange(this.value)">
+                            <option value="30m">30 分钟内</option>
+                            <option value="1h" selected>1 小时内</option>
+                            <option value="1d">1 天内</option>
+                            <option value="all">全部</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="stats-grid" id="redeemSummaryGrid"></div>
+            </div>
         </div>
 
         <!-- ===== 生成卡密页 ===== -->
+        
         <div class="page" id="page-generate">
             <div class="page-header">
                 <h2>生成卡密</h2>
@@ -1251,12 +1299,16 @@
                                 oninput="debounceRecordsSearch()">
                         </div>
                     </div>
-                    <button class="btn btn-ghost btn-sm" type="button" id="recordsRefreshBtn" onclick="loadRecords()">刷新记录</button>
+                    <div class="bulk-action-buttons">
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkCancelSelectedRecordsBtn" onclick="applyBulkRecordCancel()">批量取消</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="recordsRefreshBtn" onclick="loadRecords()">刷新记录</button>
+                    </div>
                 </div>
                 <div class="table-wrapper">
                     <table>
                         <thead>
                             <tr>
+                                <th class="table-check-cell"><input type="checkbox" id="recordsSelectAll" onchange="toggleAllRecordSelections(this.checked)"></th>
                                 <th>ID</th>
                                 <th>卡密</th>
                                 <th>类型</th>
@@ -1279,6 +1331,43 @@
                     <div class="pagination-btns">
                         <button class="btn btn-ghost btn-sm" id="recordsPrev" onclick="recordsPagePrev()">← 上一页</button>
                         <button class="btn btn-ghost btn-sm" id="recordsNext" onclick="recordsPageNext()">下一页 →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ===== 任务查询页 ===== -->
+        <div class="page" id="page-job-status" data-permission="manage_settings">
+            <div class="page-header">
+                <h2>任务查询</h2>
+                <p>通过上游 API 按 Job ID 查询任务状态，不读取本地兑换记录</p>
+            </div>
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom: 20px;">🔎 Job ID 状态查询</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="adminJobStatusInput">Job ID</label>
+                        <input type="text" id="adminJobStatusInput" placeholder="输入要查询的 Job ID" autocomplete="off"
+                            onkeydown="if(event.key==='Enter') loadAdminJobStatus()">
+                    </div>
+                    <div class="form-group" style="flex:0 0 160px;">
+                        <label for="adminJobStatusWait">等待秒数</label>
+                        <select id="adminJobStatusWait">
+                            <option value="0" selected>0 秒</option>
+                            <option value="5">5 秒</option>
+                            <option value="15">15 秒</option>
+                            <option value="30">30 秒</option>
+                        </select>
+                    </div>
+                    <div style="flex: 0 0 auto;">
+                        <button class="btn btn-primary" type="button" id="adminJobStatusBtn" onclick="loadAdminJobStatus()" style="height: 42px;">
+                            查询状态
+                        </button>
+                    </div>
+                </div>
+                <div id="adminJobStatusResult" style="margin-top: 18px;">
+                    <div class="empty-state">
+                        <div class="icon">🛰️</div>
+                        <p>输入 Job ID 后即可查看上游原始 JSON 响应</p>
                     </div>
                 </div>
             </div>
@@ -1449,6 +1538,8 @@
     let currentSubAdmins = [];
     let currentCards = [];
     let selectedCardCodes = new Set();
+    let selectedRecordIds = new Set();
+    let selectedStatsRange = '1h';
     let typedMaintenance = {};
     const MAINTENANCE_TYPES = [
         { key: 'plus', label: 'Plus 月卡', domId: 'maint-type-plus' },
@@ -1461,9 +1552,11 @@
         generate: '生成卡密',
         cards: '卡密管理',
         records: '兑换记录',
+        'job-status': '任务查询',
         accounts: '账号管理',
         settings: '系统设置'
     };
+    const RECORD_CANCELABLE_STATUSES = new Set(['pending', 'processing', 'unknown', 'expired']);
 
     function defaultTypedMaintenance() {
         return Object.fromEntries(MAINTENANCE_TYPES.map(({ key }) => [key, { enabled: false, message: '' }]));
@@ -1736,18 +1829,78 @@
         if (page === 'dashboard') loadStats();
         if (page === 'cards') loadCards();
         if (page === 'records') loadRecords();
+        if (page === 'job-status') resetAdminJobStatusResult();
         if (page === 'accounts') loadSubAdmins();
         if (page === 'settings') { loadSettingsPage(); loadMaintenancePage(); }
     }
 
     // ========== 仪表盘 ==========
+    function formatStatsRangeLabel(range) {
+        const map = {
+            '30m': '30 分钟内',
+            '1h': '1 小时内',
+            '1d': '1 天内',
+            all: '全部'
+        };
+        return map[range] || '1 小时内';
+    }
+
+    function renderRedeemSummary(summary) {
+        const grid = document.getElementById('redeemSummaryGrid');
+        const select = document.getElementById('statsRangeSelect');
+        if (select && select.value !== selectedStatsRange) {
+            select.value = selectedStatsRange;
+        }
+        if (!grid || !summary) return;
+
+        const successByType = summary.success_by_type || {};
+        const rangeLabel = formatStatsRangeLabel(summary.range || selectedStatsRange);
+        grid.innerHTML = `
+            <div class="stat-card emerald">
+                <div class="stat-label">${rangeLabel} 成功总数</div>
+                <div class="stat-value">${summary.done ?? 0}</div>
+                <div class="stat-detail">该时间段内成功兑换总数</div>
+            </div>
+            <div class="stat-card rose">
+                <div class="stat-label">${rangeLabel} 失败总数</div>
+                <div class="stat-value">${summary.failed ?? 0}</div>
+                <div class="stat-detail">该时间段内失败兑换总数</div>
+            </div>
+            <div class="stat-card indigo">
+                <div class="stat-label">Plus 成功</div>
+                <div class="stat-value">${successByType.plus ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Plus 成功数量</div>
+            </div>
+            <div class="stat-card cyan">
+                <div class="stat-label">Plus 1 年成功</div>
+                <div class="stat-value">${successByType.plus_1y ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Plus 年卡成功数量</div>
+            </div>
+            <div class="stat-card amber">
+                <div class="stat-label">Pro 5X 成功</div>
+                <div class="stat-value">${successByType.pro ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Pro 5X 成功数量</div>
+            </div>
+            <div class="stat-card emerald">
+                <div class="stat-label">Pro 20X 成功</div>
+                <div class="stat-value">${successByType.pro_20x ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Pro 20X 成功数量</div>
+            </div>
+        `;
+    }
+
+    function setStatsRange(range) {
+        selectedStatsRange = range || '1h';
+        loadStats();
+    }
+
     async function loadStats() {
         try {
             const settingsPromise = hasPermission('manage_settings')
                 ? adminFetch('/api/admin/settings')
                 : Promise.resolve(null);
             const [statsRes, settingsRes] = await Promise.all([
-                adminFetch('/api/admin/stats'),
+                adminFetch(`/api/admin/stats?range=${encodeURIComponent(selectedStatsRange)}`),
                 settingsPromise
             ]);
             if (!statsRes.ok) return;
@@ -1831,6 +1984,7 @@
                     <div class="stat-detail">成功 ${stats.redeemRecords.done} · 失败 ${stats.redeemRecords.failed} · 处理中 ${stats.redeemRecords.pending}</div>
                 </div>
             `;
+            renderRedeemSummary(stats.redeemSummary);
         } catch (err) {
             console.error('加载统计数据失败:', err);
         }
@@ -2365,18 +2519,36 @@
                     return;
                 }
                 showToast(errorData.error || '加载兑换记录失败', 'error');
-                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+                currentRecords = [];
+                selectedRecordIds.clear();
+                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="12"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+                updateBulkRecordCancelButton();
                 return;
             }
             const data = await res.json();
-            currentRecords = Array.isArray(data.records) ? data.records : [];
+            currentRecords = Array.isArray(data.records)
+                ? data.records.map((record) => ({
+                    ...record,
+                    status: normalizeAdminRecordStatus(record.status)
+                }))
+                : [];
+            selectedRecordIds = new Set(
+                Array.from(selectedRecordIds).filter((recordId) => {
+                    const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+                    return canCancelRecord(record);
+                })
+            );
 
             const tbody = document.getElementById('recordsTableBody');
             if (currentRecords.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
             } else {
                 tbody.innerHTML = currentRecords.map(r => `
                     <tr>
+                        <td class="table-check-cell">${canCancelRecord(r)
+                            ? `<input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(Number(r.id)) ? 'checked' : ''} onchange="toggleRecordSelection(${Number(r.id)}, this.checked)">`
+                            : '-'
+                        }</td>
                         <td style="color:var(--text-muted);">${r.id}</td>
                         <td class="code-cell">${r.card_code}</td>
                         <td><span class="badge badge-${r.card_type}">${typeLabel(r.card_type)}</span></td>
@@ -2391,6 +2563,7 @@
                     </tr>
                 `).join('');
             }
+            updateBulkRecordCancelButton();
 
             const totalPages = Math.ceil(data.total / data.pageSize) || 1;
             document.getElementById('recordsPagInfo').textContent = `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
@@ -2398,6 +2571,9 @@
             document.getElementById('recordsNext').disabled = data.page >= totalPages;
         } catch (err) {
             console.error('加载记录失败:', err);
+            currentRecords = [];
+            selectedRecordIds.clear();
+            updateBulkRecordCancelButton();
         }
     }
 
@@ -2435,11 +2611,74 @@
         return `<div style="display:flex;gap:8px;flex-wrap:wrap;">${actions.join('')}</div>`;
     }
 
-    function recordCancelButton(record) {
+    function normalizeAdminRecordStatus(status) {
+        const normalized = String(status || '').trim().toLowerCase();
+        if (normalized === 'cancelled' || normalized === 'canceled') return 'failed';
+        return normalized || status;
+    }
+
+    function canCancelRecord(record) {
+        if (!record) return false;
         const isManualReviewWithoutJobId = !record.job_id && record.needs_manual_review === true;
-        if (!record.job_id && !isManualReviewWithoutJobId) {
-            return `<button class="btn btn-ghost btn-sm" disabled title="该记录还没有 Job ID">取消</button>`;
+        if (isManualReviewWithoutJobId) return true;
+        return !!record.job_id && RECORD_CANCELABLE_STATUSES.has(normalizeAdminRecordStatus(record.status));
+    }
+
+    function getCurrentPageCancelableRecordIds() {
+        return currentRecords
+            .filter((item) => canCancelRecord(item))
+            .map((item) => Number(item.id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+    }
+
+    function updateRecordSelectAllState() {
+        const selectAll = document.getElementById('recordsSelectAll');
+        if (!selectAll) return;
+        const selectableIds = getCurrentPageCancelableRecordIds();
+        if (!selectableIds.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            selectAll.disabled = true;
+            return;
         }
+        selectAll.disabled = false;
+        const selectedCount = selectableIds.filter((id) => selectedRecordIds.has(id)).length;
+        selectAll.checked = selectedCount === selectableIds.length;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < selectableIds.length;
+    }
+
+    function updateBulkRecordCancelButton() {
+        const button = document.getElementById('bulkCancelSelectedRecordsBtn');
+        if (button) {
+            button.disabled = selectedRecordIds.size === 0;
+        }
+        updateRecordSelectAllState();
+    }
+
+    function toggleRecordSelection(recordId, checked) {
+        const numericId = Number(recordId);
+        if (!Number.isInteger(numericId) || numericId <= 0) return;
+        if (checked) selectedRecordIds.add(numericId);
+        else selectedRecordIds.delete(numericId);
+        updateBulkRecordCancelButton();
+    }
+
+    function toggleAllRecordSelections(checked) {
+        getCurrentPageCancelableRecordIds().forEach((recordId) => {
+            if (checked) selectedRecordIds.add(recordId);
+            else selectedRecordIds.delete(recordId);
+        });
+        document.querySelectorAll('.record-select-checkbox').forEach((node) => {
+            node.checked = !!checked;
+        });
+        updateBulkRecordCancelButton();
+    }
+
+    function recordCancelButton(record) {
+        if (!canCancelRecord(record)) {
+            return `<button class="btn btn-ghost btn-sm" disabled title="该记录当前不可取消">取消</button>`;
+        }
+        const isManualReviewWithoutJobId = !record.job_id && record.needs_manual_review === true;
         const jobId = record.job_id ? String(record.job_id).replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
         const recordId = Number(record.id) || 0;
         const title = isManualReviewWithoutJobId
@@ -2468,6 +2707,27 @@
         alert(details.join('\n'));
     }
 
+    async function requestRecordCancel(payload, options = {}) {
+        const { silent = false } = options;
+        const res = await adminFetch('/api/admin/job/cancel', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (!silent) {
+                showToast(data.error || '取消失败', 'error');
+            }
+            return { ok: false, data };
+        }
+
+        if (!silent) {
+            showToast(data.message || '取消请求已提交', 'success');
+        }
+        return { ok: true, data };
+    }
+
     async function cancelRecordJob(jobId, recordId, button) {
         const hasJobId = !!jobId;
         const hasRecordId = Number(recordId) > 0;
@@ -2476,8 +2736,8 @@
             return;
         }
         const confirmText = hasJobId
-            ? `确认取消任务 ${jobId}？`
-            : `该记录没有 Job ID，将直接人工取消并退回卡密，确认继续吗？`;
+            ? ('\u786e\u8ba4\u53d6\u6d88\u4efb\u52a1 ' + jobId + ' \u5417\uff1f')
+            : '\u8be5\u8bb0\u5f55\u6ca1\u6709 Job ID\uff0c\u5c06\u76f4\u63a5\u4eba\u5de5\u53d6\u6d88\u5e76\u9000\u56de\u5361\u5bc6\uff0c\u786e\u8ba4\u7ee7\u7eed\u5417\uff1f';
         if (!confirm(confirmText)) return;
 
         const originalText = button ? button.textContent : '';
@@ -2487,18 +2747,12 @@
         }
 
         try {
-            const res = await adminFetch('/api/admin/job/cancel', {
-                method: 'POST',
-                body: JSON.stringify(hasJobId ? { job_id: jobId } : { record_id: recordId })
-            });
-            const data = await res.json().catch(() => ({}));
-
-            if (!res.ok) {
-                showToast(data.error || '取消失败', 'error');
+            const result = await requestRecordCancel(
+                hasJobId ? { job_id: jobId } : { record_id: recordId }
+            );
+            if (!result.ok) {
                 return;
             }
-
-            showToast(data.message || '取消请求已提交', 'success');
             loadRecords();
             loadStats();
         } catch (err) {
@@ -2511,9 +2765,134 @@
         }
     }
 
+    async function applyBulkRecordCancel() {
+        const selectedIds = Array.from(selectedRecordIds).filter((recordId) => {
+            const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+            return canCancelRecord(record);
+        });
+
+        if (!selectedIds.length) {
+            showToast('请先选择可取消的记录', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        if (!confirm('\u786e\u8ba4\u6279\u91cf\u53d6\u6d88\u9009\u4e2d\u7684 ' + selectedIds.length + ' \u6761\u8bb0\u5f55\u5417\uff1f')) return;
+        const button = document.getElementById('bulkCancelSelectedRecordsBtn');
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '批量取消中...';
+        }
+
+        let successCount = 0;
+        let failureCount = 0;
+
+        try {
+            for (const recordId of selectedIds) {
+                const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+                if (!canCancelRecord(record)) {
+                    failureCount++;
+                    selectedRecordIds.delete(recordId);
+                    continue;
+                }
+
+                const payload = record?.job_id ? { job_id: record.job_id } : { record_id: recordId };
+                const result = await requestRecordCancel(payload, { silent: true });
+                if (result.ok) {
+                    successCount++;
+                    selectedRecordIds.delete(recordId);
+                } else {
+                    failureCount++;
+                }
+            }
+
+            if (successCount > 0 && failureCount === 0) {
+                showToast('\u5df2\u6279\u91cf\u53d6\u6d88 ' + successCount + ' \u6761\u8bb0\u5f55', 'success');
+            } else if (successCount > 0) {
+                showToast('\u5df2\u53d6\u6d88 ' + successCount + ' \u6761\uff0c\u5931\u8d25 ' + failureCount + ' \u6761', 'success');
+            } else {
+                showToast('\u6279\u91cf\u53d6\u6d88\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5', 'error');
+            }
+            loadRecords();
+            loadStats();
+        } catch (err) {
+            showToast('批量取消失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.textContent = originalText || '批量取消';
+            }
+            updateBulkRecordCancelButton();
+        }
+    }
+
     function recordStatusLabel(status) {
+        const normalized = normalizeAdminRecordStatus(status);
         const map = { pending: '排队中', processing: '处理中', done: '成功', failed: '失败', unknown: '待人工核验', expired: '已过期待核验' };
-        return map[status] || status;
+        return map[normalized] || normalized;
+    }
+
+    function resetAdminJobStatusResult() {
+        const box = document.getElementById('adminJobStatusResult');
+        if (!box) return;
+        box.innerHTML = `<div class="empty-state"><div class="icon">🛰️</div><p>输入 Job ID 后即可查看上游原始 JSON 响应</p></div>`;
+    }
+
+    function renderAdminJobStatusResult(statusCode, payload, isError = false) {
+        const box = document.getElementById('adminJobStatusResult');
+        if (!box) return;
+        const pretty = JSON.stringify(payload ?? {}, null, 2);
+        box.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+                <div class="panel-title" style="margin:0;">上游响应</div>
+                <span class="badge badge-${isError ? 'failed' : 'processing'}">HTTP ${statusCode}</span>
+            </div>
+            <pre style="margin:0;padding:16px 18px;background:#0b1020;border:1px solid var(--border);border-radius:12px;color:${isError ? '#fda4af' : 'var(--text-primary)'};font-size:12px;line-height:1.6;font-family:'JetBrains Mono', monospace;white-space:pre-wrap;word-break:break-word;overflow:auto;">${escapeHtml(pretty)}</pre>
+        `;
+    }
+
+    async function loadAdminJobStatus() {
+        const input = document.getElementById('adminJobStatusInput');
+        const waitSelect = document.getElementById('adminJobStatusWait');
+        const button = document.getElementById('adminJobStatusBtn');
+        const jobId = input?.value.trim();
+        const wait = Number.parseInt(waitSelect?.value || '0', 10) || 0;
+
+        if (!jobId) {
+            showToast('请输入 Job ID', 'error');
+            input?.focus();
+            return;
+        }
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = '查询中...';
+        }
+
+        try {
+            const res = await adminFetch(`/api/admin/job-status/${encodeURIComponent(jobId)}?wait=${wait}`);
+            const text = await res.text();
+            let data = {};
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch {
+                data = { error: text || '响应不是合法 JSON' };
+            }
+
+            renderAdminJobStatusResult(res.status, data, !res.ok);
+            if (!res.ok) {
+                showToast(data.error || '查询任务状态失败', 'error');
+                return;
+            }
+            showToast('任务状态查询成功', 'success');
+        } catch (err) {
+            renderAdminJobStatusResult(0, { error: err.message || '网络错误，请稍后重试' }, true);
+            showToast('查询任务状态失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = '查询状态';
+            }
+        }
     }
 
     // ========== 工具 ==========

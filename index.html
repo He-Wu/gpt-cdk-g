@@ -349,6 +349,116 @@
             color: #f472b6;
         }
 
+        .queue-summary-card {
+            margin-bottom: 16px;
+            padding: 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(99, 102, 241, 0.16);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(6, 182, 212, 0.08));
+        }
+
+        .queue-summary-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .queue-summary-title {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .queue-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .queue-summary-item {
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(10, 10, 15, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .queue-summary-label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .queue-summary-value {
+            display: block;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .home-queue-section {
+            overflow: hidden;
+        }
+
+        .home-queue-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .home-queue-tip {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .home-queue-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .home-queue-item {
+            padding: 14px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .home-queue-item .type-badge {
+            margin-bottom: 10px;
+        }
+
+        .home-queue-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .home-queue-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .home-queue-meta-row strong {
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .home-queue-empty {
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
         /* 任务状态 */
         .job-section {
             display: none;
@@ -470,6 +580,8 @@
             .container { padding: 30px 16px 40px; }
             .card { padding: 20px; }
             .header h1 { font-size: 24px; }
+            .queue-summary-grid { grid-template-columns: 1fr; }
+            .home-queue-grid { grid-template-columns: 1fr; }
         }
 
         /* Footer */
@@ -869,6 +981,18 @@
         </div>
 
         <!-- 第一步：输入卡密 -->
+        <section class="card home-queue-section" id="homeQueueSection">
+            <div class="home-queue-top">
+                <div class="card-title" style="margin-bottom: 0;">
+                    <span class="icon">⏱</span>
+                    实时排队
+                </div>
+                <span class="home-queue-tip">每 30 秒自动刷新</span>
+            </div>
+            <div class="home-queue-grid" id="homeQueueGrid"></div>
+            <div class="home-queue-empty hidden" id="homeQueueEmpty">暂时还没拿到最新队列信息，请稍后自动刷新。</div>
+        </section>
+
         <section class="card" id="step1Card">
             <div class="card-title">
                 <span class="step-badge">1</span>
@@ -897,6 +1021,22 @@
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 16px; background: rgba(99,102,241,0.08); border-radius: 10px;">
                 <span style="font-size: 13px; color: var(--text-secondary);">订阅类型:</span>
                 <span class="type-badge" id="cardTypeBadge"></span>
+            </div>
+            <div class="queue-summary-card hidden" id="queueSummaryCard">
+                <div class="queue-summary-header">
+                    <div class="queue-summary-title">当前排队预估</div>
+                    <span class="type-badge" id="queueSummaryWorkflow">-</span>
+                </div>
+                <div class="queue-summary-grid">
+                    <div class="queue-summary-item">
+                        <span class="queue-summary-label">当前队伍数量</span>
+                        <span class="queue-summary-value" id="queueSummaryCount">-</span>
+                    </div>
+                    <div class="queue-summary-item">
+                        <span class="queue-summary-label">预计等待时间</span>
+                        <span class="queue-summary-value" id="queueSummaryEta">-</span>
+                    </div>
+                </div>
             </div>
             <div class="input-group">
                 <label for="accessTokenInput">ChatGPT Session 数据</label>
@@ -1041,6 +1181,8 @@
             }
         }
         checkMaintenanceStatus();
+        refreshHomeQueueSummary();
+        setInterval(refreshHomeQueueSummary, 30000);
 
         // ========== 卡密验证 ==========
         // ========== 前置校验工具函数 ==========
@@ -1086,6 +1228,130 @@
             const ta = document.getElementById('accessTokenInput');
             errEl.style.display = 'none';
             ta.style.borderColor = '';
+        }
+
+        function clearQueueSummary() {
+            const summaryCard = document.getElementById('queueSummaryCard');
+            const workflowBadge = document.getElementById('queueSummaryWorkflow');
+            document.getElementById('queueSummaryCount').textContent = '-';
+            document.getElementById('queueSummaryEta').textContent = '-';
+            workflowBadge.className = 'type-badge';
+            workflowBadge.textContent = '-';
+            summaryCard.classList.add('hidden');
+        }
+
+        function formatQueueSummaryEta(seconds) {
+            const value = Number(seconds);
+            if (!Number.isFinite(value) || value < 0) return '-';
+            if (value < 60) return `${Math.ceil(value)} 秒`;
+            if (value < 3600) return `${Math.ceil(value / 60)} 分钟`;
+            return `${(value / 3600).toFixed(value >= 7200 ? 0 : 1)} 小时`;
+        }
+
+        async function loadQueueSummary(workflow) {
+            if (!workflow) {
+                clearQueueSummary();
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/card/queue?workflow=${encodeURIComponent(workflow)}`);
+                if (!res.ok) {
+                    clearQueueSummary();
+                    return;
+                }
+
+                const data = await res.json();
+                const queue = data.queue;
+                if (!queue || queue.pending === undefined || queue.estimated_next_wait_seconds === undefined) {
+                    clearQueueSummary();
+                    return;
+                }
+
+                const summaryCard = document.getElementById('queueSummaryCard');
+                const workflowBadge = document.getElementById('queueSummaryWorkflow');
+                document.getElementById('queueSummaryCount').textContent = String(Number(queue.pending) || 0);
+                document.getElementById('queueSummaryEta').textContent = formatQueueSummaryEta(queue.estimated_next_wait_seconds);
+                workflowBadge.className = `type-badge ${workflow}`;
+                workflowBadge.textContent = subscriptionTypeLabel(workflow);
+                summaryCard.classList.remove('hidden');
+            } catch (err) {
+                clearQueueSummary();
+            }
+        }
+
+        function selectHomeQueueSummary(queues) {
+            const order = ['plus', 'plus_1y', 'pro', 'pro_20x'];
+            const candidates = order
+                .filter((workflow) => queues && queues[workflow])
+                .map((workflow) => ({
+                    workflow,
+                    queue: queues[workflow],
+                    eta: Number(queues[workflow].estimated_next_wait_seconds),
+                    pending: Number(queues[workflow].pending)
+                }));
+
+            if (!candidates.length) {
+                return null;
+            }
+
+            candidates.sort((a, b) => {
+                const etaA = Number.isFinite(a.eta) ? a.eta : -1;
+                const etaB = Number.isFinite(b.eta) ? b.eta : -1;
+                if (etaB !== etaA) return etaB - etaA;
+
+                const pendingA = Number.isFinite(a.pending) ? a.pending : -1;
+                const pendingB = Number.isFinite(b.pending) ? b.pending : -1;
+                return pendingB - pendingA;
+            });
+
+            return candidates[0];
+        }
+
+        function renderHomeQueueSummary(queues) {
+            const grid = document.getElementById('homeQueueGrid');
+            const empty = document.getElementById('homeQueueEmpty');
+            const summary = selectHomeQueueSummary(queues);
+
+            if (!summary) {
+                grid.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+
+            const pending = Number(summary.queue.pending);
+            const eta = formatQueueSummaryEta(summary.queue.estimated_next_wait_seconds);
+            grid.innerHTML = `
+                <div class="home-queue-item">
+                    <span class="type-badge ${summary.workflow}">${subscriptionTypeLabel(summary.workflow)}</span>
+                    <div class="home-queue-meta">
+                        <div class="home-queue-meta-row">
+                            <span>当前队伍</span>
+                            <strong>${Number.isFinite(pending) ? pending : 0}</strong>
+                        </div>
+                        <div class="home-queue-meta-row">
+                            <span>预计等待</span>
+                            <strong>${eta}</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+            empty.classList.add('hidden');
+        }
+
+        async function refreshHomeQueueSummary() {
+            try {
+                const res = await fetch('/api/card/queue');
+                if (!res.ok) {
+                    renderHomeQueueSummary(null);
+                    return;
+                }
+
+                const data = await res.json();
+                renderHomeQueueSummary(data.queues || null);
+            } catch (err) {
+                renderHomeQueueSummary(null);
+            }
         }
 
         // 校验 Session 数据，返回 { ok, token, error }
@@ -1174,6 +1440,7 @@
                 const badge = document.getElementById('cardTypeBadge');
                 badge.className = `type-badge ${data.type}`;
                 badge.textContent = subscriptionTypeLabel(data.type);
+                loadQueueSummary(data.type);
 
                 // 锁定卡密输入
                 document.getElementById('cardCodeInput').readOnly = true;
@@ -1442,6 +1709,7 @@
             verifiedCard = null;
             currentJobId = null;
             isPolling = false;
+            clearQueueSummary();
 
             document.getElementById('cardCodeInput').value = '';
             document.getElementById('cardCodeInput').readOnly = false;
@@ -1515,6 +1783,7 @@
                 // 显示 step2，自动恢复兑换按钮
                 cardTypeBadge.className = `type-badge ${data.type}`;
                 cardTypeBadge.textContent = subscriptionTypeLabel(data.type);
+                loadQueueSummary(data.type);
                 const redeemBtn = document.getElementById('redeemBtn');
                 redeemBtn.disabled = false;
                 redeemBtn.textContent = '🚀 重试兑换';
