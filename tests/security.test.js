@@ -288,6 +288,17 @@ async function adminCancelRecord(port, token, recordId) {
   });
 }
 
+async function adminQueryJobStatus(port, token, jobId, wait = 0) {
+  return requestJson(port, `/api/admin/job-status/${encodeURIComponent(jobId)}?wait=${wait}`, {
+    headers: { 'X-Admin-Token': token }
+  });
+}
+
+async function queryQueue(port, workflow) {
+  const suffix = workflow ? `?workflow=${encodeURIComponent(workflow)}` : '';
+  return requestJson(port, `/api/card/queue${suffix}`);
+}
+
 test('admin.html is not directly accessible but the configured admin path is', async () => {
   const server = await startServer('admin page routing');
 
@@ -754,6 +765,52 @@ test('card query refreshes in-flight job status from upstream', async () => {
   }
 });
 
+test('failed job refresh keeps a visible failure reason even when upstream omits error', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: 'job-query-failed-no-error', status: 'pending' }));
+      return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/job/job-query-failed-no-error')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: 'job-query-failed-no-error',
+        status: 'failed',
+        result: null,
+        error: null
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('query refresh keeps fallback failed error');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 200);
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.redeem_status, 'failed');
+    assert.match(query.data.redeem_error || '', /未提供原因|failed/i);
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records[0].status, 'failed');
+    assert.match(recordsRes.data.records[0].error_message || '', /未提供原因|failed/i);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
 test('admin records support inclusive date range filtering', async () => {
   const server = await startServer('admin records date range', {}, {
     records: [
@@ -993,6 +1050,16 @@ test('admin records expose per-row cancel controls', async () => {
   assert.match(html, /取消/);
 });
 
+test('admin records page exposes bulk cancel selection controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /recordsSelectAll/);
+  assert.match(html, /selectedRecordIds/);
+  assert.match(html, /toggleAllRecordSelections/);
+  assert.match(html, /toggleRecordSelection/);
+  assert.match(html, /applyBulkRecordCancel/);
+  assert.match(html, /批量取消/);
+});
+
 test('admin records keep cancel available for manual-review rows without job id', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /record\.needs_manual_review === true/);
@@ -1038,6 +1105,170 @@ test('admin cancel proxies job id cancellation through the admin-only endpoint',
     assert.equal(query.data.status, 'unused');
     assert.equal(query.data.redeem_status, 'failed');
     assert.equal(query.data.redeem_error, 'cancelled');
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('super admin job status query proxies upstream json through an admin-only endpoint', async () => {
+  let getCalled = 0;
+  let receivedHeaders = null;
+  const upstreamPayload = {
+    job_id: 'job-admin-status',
+    status: 'processing',
+    workflow: 'pro',
+    queue_position: 2,
+    estimated_wait_seconds: 321.5,
+    result: null,
+    error: null
+  };
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/job/job-admin-status?wait=15') {
+      getCalled += 1;
+      receivedHeaders = req.headers;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(upstreamPayload));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('admin job status query');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+
+    const queried = await adminQueryJobStatus(server.port, token, 'job-admin-status', 15);
+    assert.equal(queried.res.status, 200);
+    assert.deepEqual(queried.data, upstreamPayload);
+    assert.equal(getCalled, 1);
+    assert.equal(receivedHeaders['x-api-key'], 'test-api-key');
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('sub admin cannot query admin job status endpoint', async () => {
+  const server = await startServer('sub admin blocked from job status');
+
+  try {
+    const adminToken = await loginAdmin(server.port);
+    const created = await createSubAdmin(server.port, adminToken, 'status_reader', 'sub-admin-pass-123');
+    assert.equal(created.res.status, 200);
+
+    const subLogin = await loginSubAdmin(server.port, 'status_reader', 'sub-admin-pass-123');
+    assert.equal(subLogin.res.status, 200);
+
+    const queried = await adminQueryJobStatus(server.port, subLogin.data.token, 'job-admin-status', 0);
+    assert.equal(queried.res.status, 403);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin job status query does not update local records', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/job/job-admin-status-no-sync?wait=0') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: 'job-admin-status-no-sync',
+        status: 'done',
+        workflow: 'plus',
+        result: { ok: true },
+        error: null
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('admin job status no local sync', {}, {
+    records: [{
+      id: 91,
+      card_code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA',
+      card_type: 'plus',
+      created_by_username: null,
+      created_by_role: null,
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-admin-status-no-sync',
+      status: 'pending',
+      error_message: null,
+      workflow: 'plus',
+      queue_position: 4,
+      estimated_wait_seconds: 480,
+      created_at: '2026/4/25 10:00:00'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+
+    const queried = await adminQueryJobStatus(server.port, token, 'job-admin-status-no-sync', 0);
+    assert.equal(queried.res.status, 200);
+    assert.equal(queried.data.status, 'done');
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?search=job-admin-status-no-sync', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records.length, 1);
+    assert.equal(recordsRes.data.records[0].status, 'pending');
+    assert.equal(recordsRes.data.records[0].queue_position, 4);
+    assert.equal(recordsRes.data.records[0].estimated_wait_seconds, 480);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('card queue endpoint proxies upstream queue data for the requested workflow', async () => {
+  let getCalled = 0;
+  let receivedHeaders = null;
+  const upstreamPayload = {
+    queues: {
+      plus: {
+        pending: 3,
+        processing: 1,
+        workers: 2,
+        avg_duration_seconds: 205.4,
+        estimated_next_wait_seconds: 513.5
+      },
+      pro_20x: {
+        pending: 6,
+        processing: 1,
+        workers: 2,
+        avg_duration_seconds: 180,
+        estimated_next_wait_seconds: 720
+      }
+    }
+  };
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/queue') {
+      getCalled += 1;
+      receivedHeaders = req.headers;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(upstreamPayload));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('card queue proxy');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+
+    const queried = await queryQueue(server.port, 'pro_20x');
+    assert.equal(queried.res.status, 200);
+    assert.deepEqual(queried.data, {
+      workflow: 'pro_20x',
+      queue: upstreamPayload.queues.pro_20x
+    });
+    assert.equal(getCalled, 1);
+    assert.equal(receivedHeaders['x-api-key'], 'test-api-key');
   } finally {
     await server.stop();
     await upstream.stop();
@@ -1252,6 +1483,15 @@ test('admin page exposes username login and sub admin account management ui', as
   assert.match(html, /\/api\/admin\/me/);
 });
 
+test('admin page exposes a super-admin job status page', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /page-job-status/);
+  assert.match(html, /switchPage\('job-status'\)/);
+  assert.match(html, /loadAdminJobStatus/);
+  assert.match(html, /\/api\/admin\/job-status\//);
+  assert.match(html, /data-page="job-status"[\s\S]*data-permission="manage_settings"|data-permission="manage_settings"[\s\S]*data-page="job-status"/);
+});
+
 test('admin page script parses so login handlers are actually defined', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   const match = html.match(/<script>([\s\S]*)<\/script>\s*<\/body>/);
@@ -1311,6 +1551,34 @@ test('user page labels plus one year cards as plus one year instead of pro', asy
   assert.match(html, /plus_1y:\s*'ChatGPT Plus 1 骞?/);
   assert.match(html, /pro_20x:\s*'ChatGPT Pro 20X'/);
   assert.doesNotMatch(html, /data\.type\s*===\s*'plus'\s*\?\s*'ChatGPT Plus'\s*:\s*'ChatGPT Pro'/);
+});
+
+test('user page exposes queue summary hooks for current queue size and estimated wait time', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /queueSummaryCard/);
+  assert.match(html, /queueSummaryCount/);
+  assert.match(html, /queueSummaryEta/);
+  assert.match(html, /\/api\/card\/queue\?workflow=/);
+  assert.match(html, /estimated_next_wait_seconds/);
+  assert.match(html, /pending/);
+});
+
+test('user homepage loads visible live queue data on page load and refreshes it automatically', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /homeQueueSection/);
+  assert.match(html, /homeQueueGrid/);
+  assert.match(html, /refreshHomeQueueSummary/);
+  assert.match(html, /fetch\('\/api\/card\/queue'\)/);
+  assert.match(html, /refreshHomeQueueSummary\(\);/);
+  assert.match(html, /setInterval\(refreshHomeQueueSummary,\s*30000\)/);
+  assert.match(html, /homeQueueEmpty/);
+});
+
+test('user homepage collapses live queue display down to one latest summary block', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /function selectHomeQueueSummary/);
+  assert.match(html, /const summary = selectHomeQueueSummary\(queues\)/);
+  assert.match(html, /grid\.innerHTML = `[\s\S]*home-queue-item/);
 });
 
 test('newly generated cards use a longer non-legacy format', async () => {
@@ -1543,6 +1811,52 @@ test('public cancel refunds the pending job by job id without admin auth', async
     assert.equal(redeem.res.status, 200);
 
     const cancelled = await cancelJob(server.port, 'job-cancel-ok');
+    assert.equal(cancelled.res.status, 200);
+    assert.equal(cancelled.data.status, 'failed');
+    assert.equal(deleteCalled, 1);
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.data.status, 'unused');
+    assert.equal(query.data.redeem_status, 'failed');
+    assert.equal(query.data.redeem_error, 'cancelled');
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('public cancel normalizes cancelled upstream statuses into a terminal failed state', async () => {
+  let deleteCalled = 0;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: 'job-cancelled-status', status: 'pending' }));
+      return;
+    }
+    if (req.method === 'DELETE' && req.url === '/job/job-cancelled-status') {
+      deleteCalled++;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: 'job-cancelled-status', status: 'cancelled', error: 'cancelled' }));
+      return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/job/job-cancelled-status')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: 'job-cancelled-status', status: 'cancelled', error: 'cancelled' }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('public cancel normalizes cancelled status');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 200);
+
+    const cancelled = await cancelJob(server.port, 'job-cancelled-status');
     assert.equal(cancelled.res.status, 200);
     assert.equal(cancelled.data.status, 'failed');
     assert.equal(deleteCalled, 1);
