@@ -1475,36 +1475,27 @@ test('legacy card format remains valid after strengthening new codes', async () 
   }
 });
 
-test('invalid card scanning is blocked before normal verify rate limit', async () => {
+test('invalid card scans keep returning normal not-found responses', async () => {
   const server = await startServer('invalid cdk scan block');
 
   try {
-    let last;
-    for (let i = 0; i < 8; i += 1) {
-      last = await verifyCard(server.port, `CDK-PLUS-NOTREAL${i}AA`);
+    for (let i = 0; i < 10; i += 1) {
+      const result = await verifyCard(server.port, `CDK-PLUS-NOTREAL${i}AA`);
+      assert.equal(result.res.status, 404);
     }
-
-    assert.equal(last.res.status, 404);
-
-    const blocked = await verifyCard(server.port, 'CDK-PLUS-NOTREAL9AA');
-    assert.equal(blocked.res.status, 429);
-    assert.match(blocked.data.error, /尝试次数过多|扫描|稍后/);
   } finally {
     await server.stop();
   }
 });
 
-test('trusted proxy mode separates scanner blocks by forwarded client ip', async () => {
+test('trusted proxy mode still returns normal not-found responses for repeated invalid cards', async () => {
   const server = await startServer('trusted proxy scan block', { TRUST_PROXY: '1' });
 
   try {
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       const res = await verifyCardFromIp(server.port, `CDK-PLUS-NOTREAL${i}AA`, '198.51.100.10');
       assert.equal(res.res.status, 404);
     }
-
-    const blockedScanner = await verifyCardFromIp(server.port, 'CDK-PLUS-NOTREAL9AA', '198.51.100.10');
-    assert.equal(blockedScanner.res.status, 429);
 
     const otherClient = await verifyCardFromIp(server.port, 'CDK-PLUS-NOTREALXAA', '198.51.100.11');
     assert.equal(otherClient.res.status, 404);

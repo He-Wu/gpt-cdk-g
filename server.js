@@ -300,43 +300,6 @@ function checkCancelRate(ip) {
   return rec.count;
 }
 
-// 无效卡密扫描防护：同一客户端 10 分钟内错 8 次后封禁 30 分钟
-const invalidCardAttempts = new Map();
-const INVALID_CARD_WINDOW_MS = 10 * 60 * 1000;
-const INVALID_CARD_BLOCK_MS = 30 * 60 * 1000;
-const INVALID_CARD_MAX_ATTEMPTS = 8;
-
-function getInvalidCardBlock(ip) {
-  const now = Date.now();
-  const rec = invalidCardAttempts.get(ip);
-  if (!rec) return 0;
-  if (rec.blockedUntil && rec.blockedUntil > now) return rec.blockedUntil - now;
-  if (now > rec.resetAt) {
-    invalidCardAttempts.delete(ip);
-  }
-  return 0;
-}
-
-function recordInvalidCardAttempt(ip) {
-  const now = Date.now();
-  const rec = invalidCardAttempts.get(ip) || { count: 0, resetAt: now + INVALID_CARD_WINDOW_MS, blockedUntil: 0 };
-  if (now > rec.resetAt) {
-    rec.count = 0;
-    rec.resetAt = now + INVALID_CARD_WINDOW_MS;
-    rec.blockedUntil = 0;
-  }
-  rec.count++;
-  if (rec.count >= INVALID_CARD_MAX_ATTEMPTS) {
-    rec.blockedUntil = now + INVALID_CARD_BLOCK_MS;
-  }
-  invalidCardAttempts.set(ip, rec);
-  return rec;
-}
-
-function clearInvalidCardAttempts(ip) {
-  invalidCardAttempts.delete(ip);
-}
-
 // ========== 管理员 Session 管理 ==========
 const adminSessions = new Map();
 
@@ -411,24 +374,6 @@ function generateCardCode(type) {
 
 function normalizeCardCode(code) {
   return String(code || '').trim().toUpperCase();
-}
-
-function isCardLookupBlocked(req, res) {
-  const blockedMs = getInvalidCardBlock(getClientIP(req));
-  if (blockedMs <= 0) return false;
-  res.status(429).json({
-    error: `卡密尝试次数过多，请 ${Math.ceil(blockedMs / 60000)} 分钟后再试`
-  });
-  return true;
-}
-
-function recordCardLookupResult(req, found) {
-  const ip = getClientIP(req);
-  if (found) {
-    clearInvalidCardAttempts(ip);
-  } else {
-    recordInvalidCardAttempt(ip);
-  }
 }
 
 function findCancelableRecordByJobId(jobId, session = null) {
@@ -1212,8 +1157,6 @@ app.post('/api/card/verify', (req, res) => {
     return res.status(503).json({ error: '系统维护中，暂停兑换。' + getMaintenanceMessage(), maintenance: true });
   }
 
-  if (isCardLookupBlocked(req, res)) return;
-
   const { code } = req.body;
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ error: '请输入卡密' });
@@ -1223,10 +1166,8 @@ app.post('/api/card/verify', (req, res) => {
   const card = cards.find(c => c.code === cardCode);
 
   if (!card) {
-    recordCardLookupResult(req, false);
     return res.status(404).json({ error: '卡密不存在或不可用' });
   }
-  recordCardLookupResult(req, true);
   if (card.status === 'used') {
     return res.status(410).json({ error: '该卡密已被使用' });
   }
@@ -1252,7 +1193,6 @@ app.post('/api/card/redeem', async (req, res) => {
   if (checkRedeemRate(clientIP) > 5) {
     return res.status(429).json({ error: '操作过于频繁，请 1 分钟后重试' });
   }
-  if (isCardLookupBlocked(req, res)) return;
 
   const { code } = req.body;
   let access_token = req.body.access_token;
@@ -1287,10 +1227,8 @@ app.post('/api/card/redeem', async (req, res) => {
   // 查找并标记卡密（原子性：通过 find 锁定）
   const card = cards.find(c => c.code === cardCode && c.status === 'unused');
   if (!card) {
-    recordCardLookupResult(req, false);
     return res.status(400).json({ error: '卡密不存在或不可用' });
   }
-  recordCardLookupResult(req, true);
 
   // 立即标记为已使用（防止并发）
   const typeMaintenanceBlock = getTypeMaintenanceBlock(card.type);
@@ -1632,7 +1570,6 @@ app.get('/api/card/query', async (req, res) => {
   if (checkQueryRate(clientIP) > 20) {
     return res.status(429).json({ error: '查询过于频繁，请稍后重试' });
   }
-  if (isCardLookupBlocked(req, res)) return;
 
   const { code } = req.query;
   if (!code || typeof code !== 'string') {
@@ -1640,7 +1577,6 @@ app.get('/api/card/query', async (req, res) => {
   }
 
   const result = await buildCardQueryPayload(code);
-  recordCardLookupResult(req, result.found);
   res.status(result.statusCode).json(result.found ? result.body : { error: result.body.error });
 });
 
@@ -1649,7 +1585,6 @@ app.post('/api/card/query/batch', async (req, res) => {
   if (checkQueryRate(clientIP) > 20) {
     return res.status(429).json({ error: '查询过于频繁，请稍后重试' });
   }
-  if (isCardLookupBlocked(req, res)) return;
 
   const parsed = parseBatchCardCodes(req.body, 20);
   if (parsed.error) {
@@ -1657,7 +1592,6 @@ app.post('/api/card/query/batch', async (req, res) => {
   }
 
   const results = await Promise.all(parsed.codes.map((code) => buildCardQueryPayload(code)));
-  recordCardLookupResult(req, results.every((item) => item.found));
   res.json({
     total: results.length,
     results: results.map((item) => item.body)
