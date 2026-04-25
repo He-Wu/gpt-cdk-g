@@ -170,7 +170,7 @@ function buildViewer(session) {
     permissions: {
       manage_settings: isSuperAdmin,
       manage_accounts: isSuperAdmin,
-      manage_cards: isSuperAdmin,
+      manage_cards: true,
       generate_cards: true,
       view_all_cards: isSuperAdmin,
       view_all_records: isSuperAdmin
@@ -348,6 +348,16 @@ function cardBelongsToSession(card, session) {
   if (!card) return false;
   if (!isScopedSubAdmin(session)) return true;
   return card.created_by_username === session.username;
+}
+
+function findManageableCardByCode(code, session, expectedStatus) {
+  const normalizedCode = String(code || '').trim();
+  if (!normalizedCode) return null;
+  return cards.find((card) => (
+    card.code === normalizedCode
+    && card.status === expectedStatus
+    && cardBelongsToSession(card, session)
+  )) || null;
 }
 
 function recordBelongsToSession(record, session) {
@@ -1188,9 +1198,6 @@ app.get('/api/admin/records', adminAuth, (req, res) => {
 
 // 禁用卡密
 app.post('/api/admin/cards/disable', adminAuth, (req, res) => {
-  if (isScopedSubAdmin(req.admin)) {
-    return res.status(403).json({ error: '子管理员不能管理卡密状态' });
-  }
   const { codes: codesToDisable } = req.body;
   if (!Array.isArray(codesToDisable) || codesToDisable.length === 0) {
     return res.status(400).json({ error: '请提供要禁用的卡密列表' });
@@ -1201,7 +1208,7 @@ app.post('/api/admin/cards/disable', adminAuth, (req, res) => {
 
   let count = 0;
   for (const code of codesToDisable) {
-    const card = cards.find(c => c.code === code && c.status === 'unused');
+    const card = findManageableCardByCode(code, req.admin, 'unused');
     if (card) {
       card.status = 'disabled';
       count++;
@@ -1214,9 +1221,6 @@ app.post('/api/admin/cards/disable', adminAuth, (req, res) => {
 
 // 启用卡密
 app.post('/api/admin/cards/enable', adminAuth, (req, res) => {
-  if (isScopedSubAdmin(req.admin)) {
-    return res.status(403).json({ error: '子管理员不能管理卡密状态' });
-  }
   const { codes: codesToEnable } = req.body;
   if (!Array.isArray(codesToEnable) || codesToEnable.length === 0) {
     return res.status(400).json({ error: '请提供要启用的卡密列表' });
@@ -1227,7 +1231,7 @@ app.post('/api/admin/cards/enable', adminAuth, (req, res) => {
 
   let count = 0;
   for (const code of codesToEnable) {
-    const card = cards.find(c => c.code === code && c.status === 'disabled');
+    const card = findManageableCardByCode(code, req.admin, 'disabled');
     if (card) {
       card.status = 'unused';
       count++;

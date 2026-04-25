@@ -1247,6 +1247,120 @@ test('super admin job status query proxies upstream json through an admin-only e
   }
 });
 
+test('sub admins can disable and enable only their own cards', async () => {
+  const server = await startServer('sub admin own card status actions', {}, {
+    settings: {
+      adminPassword: 'correct horse battery staple',
+      apiKey: '',
+      baseUrl: '',
+      subAdmins: [
+        {
+          id: 'sub-1',
+          username: 'alice_ops',
+          passwordHash: 'plain:sub-admin-pass-123',
+          status: 'active',
+          created_at: '2026/4/24 10:00:00'
+        }
+      ]
+    },
+    cards: [
+      {
+        id: 1,
+        code: 'CDK-PLUS-OWNDIS-AAAAA-AAAAA-AAAAA-AAAAA',
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:10:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'sub-a',
+        created_by_username: 'alice_ops',
+        created_by_role: 'sub_admin'
+      },
+      {
+        id: 2,
+        code: 'CDK-PRO-OWNENA-BBBBB-BBBBB-BBBBB-BBBBB',
+        type: 'pro',
+        status: 'disabled',
+        created_at: '2026/4/24 10:11:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'sub-b',
+        created_by_username: 'alice_ops',
+        created_by_role: 'sub_admin'
+      },
+      {
+        id: 3,
+        code: 'CDK-PLUS-ROOTUN-CCCCC-CCCCC-CCCCC-CCCCC',
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:12:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'root-a',
+        created_by_username: 'super_admin',
+        created_by_role: 'super_admin'
+      },
+      {
+        id: 4,
+        code: 'CDK-PRO-ROOTDIS-DDDDD-DDDDD-DDDDD-DDDDD',
+        type: 'pro',
+        status: 'disabled',
+        created_at: '2026/4/24 10:13:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'root-b',
+        created_by_username: 'super_admin',
+        created_by_role: 'super_admin'
+      }
+    ]
+  });
+
+  try {
+    const subLogin = await loginSubAdmin(server.port, 'alice_ops', 'sub-admin-pass-123');
+    assert.equal(subLogin.res.status, 200);
+
+    const disabled = await requestJson(server.port, '/api/admin/cards/disable', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': subLogin.data.token },
+      body: JSON.stringify({
+        codes: [
+          'CDK-PLUS-OWNDIS-AAAAA-AAAAA-AAAAA-AAAAA',
+          'CDK-PLUS-ROOTUN-CCCCC-CCCCC-CCCCC-CCCCC'
+        ]
+      })
+    });
+    assert.equal(disabled.res.status, 200);
+    assert.equal(disabled.data.disabled, 1);
+
+    const enabled = await requestJson(server.port, '/api/admin/cards/enable', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': subLogin.data.token },
+      body: JSON.stringify({
+        codes: [
+          'CDK-PRO-OWNENA-BBBBB-BBBBB-BBBBB-BBBBB',
+          'CDK-PRO-ROOTDIS-DDDDD-DDDDD-DDDDD-DDDDD'
+        ]
+      })
+    });
+    assert.equal(enabled.res.status, 200);
+    assert.equal(enabled.data.enabled, 1);
+
+    const adminToken = await loginAdmin(server.port);
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?page=1&pageSize=10', {
+      headers: { 'X-Admin-Token': adminToken }
+    });
+    assert.equal(cardsRes.res.status, 200);
+
+    const statuses = new Map(cardsRes.data.cards.map((card) => [card.code, card.status]));
+    assert.equal(statuses.get('CDK-PLUS-OWNDIS-AAAAA-AAAAA-AAAAA-AAAAA'), 'disabled');
+    assert.equal(statuses.get('CDK-PRO-OWNENA-BBBBB-BBBBB-BBBBB-BBBBB'), 'unused');
+    assert.equal(statuses.get('CDK-PLUS-ROOTUN-CCCCC-CCCCC-CCCCC-CCCCC'), 'unused');
+    assert.equal(statuses.get('CDK-PRO-ROOTDIS-DDDDD-DDDDD-DDDDD-DDDDD'), 'disabled');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('sub admin cannot query admin job status endpoint', async () => {
   const server = await startServer('sub admin blocked from job status');
 
