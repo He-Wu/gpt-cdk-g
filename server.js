@@ -554,6 +554,24 @@ function parseRecordCreatedAt(value) {
   return Date.UTC(year, month - 1, day, hours, minutes, seconds, 0);
 }
 
+function parseStatsRange(range) {
+  const normalized = String(range || '1h').trim().toLowerCase();
+  if (normalized === '30m') return { key: '30m', windowMs: 30 * 60 * 1000 };
+  if (normalized === '1h') return { key: '1h', windowMs: 60 * 60 * 1000 };
+  if (normalized === '1d') return { key: '1d', windowMs: 24 * 60 * 60 * 1000 };
+  if (normalized === 'all') return { key: 'all', windowMs: null };
+  return { key: '1h', windowMs: 60 * 60 * 1000 };
+}
+
+function filterRecordsByStatsRange(sourceRecords, rangeConfig) {
+  if (!rangeConfig || rangeConfig.windowMs === null) return sourceRecords;
+  const threshold = Date.now() - rangeConfig.windowMs;
+  return sourceRecords.filter((record) => {
+    const createdAtTs = parseRecordCreatedAt(record.created_at);
+    return createdAtTs !== null && createdAtTs >= threshold;
+  });
+}
+
 const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 503]);
 const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
 
@@ -929,6 +947,8 @@ app.post('/api/admin/maintenance', adminAuth, requireSuperAdmin, (req, res) => {
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   const visibleCards = cards.filter(card => cardBelongsToSession(card, req.admin));
   const visibleRecords = records.filter(record => recordBelongsToSession(record, req.admin));
+  const statsRange = parseStatsRange(req.query.range);
+  const rangedRecords = filterRecordsByStatsRange(visibleRecords, statsRange);
   const plusCards = visibleCards.filter(c => c.type === 'plus' || c.type === 'plus_1y');
   const proCards = visibleCards.filter(c => c.type === 'pro' || c.type === 'pro_20x');
   const upstreamBalance = isScopedSubAdmin(req.admin)
@@ -990,6 +1010,18 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       done: visibleRecords.filter(r => r.status === 'done').length,
       failed: visibleRecords.filter(r => r.status === 'failed').length,
       pending: visibleRecords.filter(r => r.status === 'pending' || r.status === 'processing').length,
+    },
+    redeemSummary: {
+      range: statsRange.key,
+      total: rangedRecords.length,
+      done: rangedRecords.filter(r => normalizeJobStatus(r.status) === 'done').length,
+      failed: rangedRecords.filter(r => normalizeJobStatus(r.status) === 'failed').length,
+      success_by_type: {
+        plus: rangedRecords.filter(r => r.card_type === 'plus' && normalizeJobStatus(r.status) === 'done').length,
+        plus_1y: rangedRecords.filter(r => r.card_type === 'plus_1y' && normalizeJobStatus(r.status) === 'done').length,
+        pro: rangedRecords.filter(r => r.card_type === 'pro' && normalizeJobStatus(r.status) === 'done').length,
+        pro_20x: rangedRecords.filter(r => r.card_type === 'pro_20x' && normalizeJobStatus(r.status) === 'done').length
+      }
     }
   };
   res.json(stats);

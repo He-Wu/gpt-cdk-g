@@ -527,6 +527,30 @@
         }
 
         /* 面板 */
+        .stats-range-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .stats-range-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stats-range-copy p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .stats-range-select {
+            min-width: 150px;
+        }
+
         .panel {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -1076,9 +1100,27 @@
             <div class="stats-grid" id="statsGrid">
                 <!-- 动态填充 -->
             </div>
+            <div class="panel" id="redeemSummaryPanel">
+                <div class="stats-range-toolbar">
+                    <div class="stats-range-copy">
+                        <div class="panel-title">兑换统计概览</div>
+                        <p>按时间范围查看成功与失败数量，以及各类型成功兑换数量。</p>
+                    </div>
+                    <div class="form-group stats-range-select" style="margin:0;">
+                        <select id="statsRangeSelect" onchange="setStatsRange(this.value)">
+                            <option value="30m">30 分钟内</option>
+                            <option value="1h" selected>1 小时内</option>
+                            <option value="1d">1 天内</option>
+                            <option value="all">全部</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="stats-grid" id="redeemSummaryGrid"></div>
+            </div>
         </div>
 
         <!-- ===== 生成卡密页 ===== -->
+        
         <div class="page" id="page-generate">
             <div class="page-header">
                 <h2>生成卡密</h2>
@@ -1497,6 +1539,7 @@
     let currentCards = [];
     let selectedCardCodes = new Set();
     let selectedRecordIds = new Set();
+    let selectedStatsRange = '1h';
     let typedMaintenance = {};
     const MAINTENANCE_TYPES = [
         { key: 'plus', label: 'Plus 月卡', domId: 'maint-type-plus' },
@@ -1792,13 +1835,72 @@
     }
 
     // ========== 仪表盘 ==========
+    function formatStatsRangeLabel(range) {
+        const map = {
+            '30m': '30 分钟内',
+            '1h': '1 小时内',
+            '1d': '1 天内',
+            all: '全部'
+        };
+        return map[range] || '1 小时内';
+    }
+
+    function renderRedeemSummary(summary) {
+        const grid = document.getElementById('redeemSummaryGrid');
+        const select = document.getElementById('statsRangeSelect');
+        if (select && select.value !== selectedStatsRange) {
+            select.value = selectedStatsRange;
+        }
+        if (!grid || !summary) return;
+
+        const successByType = summary.success_by_type || {};
+        const rangeLabel = formatStatsRangeLabel(summary.range || selectedStatsRange);
+        grid.innerHTML = `
+            <div class="stat-card emerald">
+                <div class="stat-label">${rangeLabel} 成功总数</div>
+                <div class="stat-value">${summary.done ?? 0}</div>
+                <div class="stat-detail">该时间段内成功兑换总数</div>
+            </div>
+            <div class="stat-card rose">
+                <div class="stat-label">${rangeLabel} 失败总数</div>
+                <div class="stat-value">${summary.failed ?? 0}</div>
+                <div class="stat-detail">该时间段内失败兑换总数</div>
+            </div>
+            <div class="stat-card indigo">
+                <div class="stat-label">Plus 成功</div>
+                <div class="stat-value">${successByType.plus ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Plus 成功数量</div>
+            </div>
+            <div class="stat-card cyan">
+                <div class="stat-label">Plus 1 年成功</div>
+                <div class="stat-value">${successByType.plus_1y ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Plus 年卡成功数量</div>
+            </div>
+            <div class="stat-card amber">
+                <div class="stat-label">Pro 5X 成功</div>
+                <div class="stat-value">${successByType.pro ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Pro 5X 成功数量</div>
+            </div>
+            <div class="stat-card emerald">
+                <div class="stat-label">Pro 20X 成功</div>
+                <div class="stat-value">${successByType.pro_20x ?? 0}</div>
+                <div class="stat-detail">${rangeLabel}内 Pro 20X 成功数量</div>
+            </div>
+        `;
+    }
+
+    function setStatsRange(range) {
+        selectedStatsRange = range || '1h';
+        loadStats();
+    }
+
     async function loadStats() {
         try {
             const settingsPromise = hasPermission('manage_settings')
                 ? adminFetch('/api/admin/settings')
                 : Promise.resolve(null);
             const [statsRes, settingsRes] = await Promise.all([
-                adminFetch('/api/admin/stats'),
+                adminFetch(`/api/admin/stats?range=${encodeURIComponent(selectedStatsRange)}`),
                 settingsPromise
             ]);
             if (!statsRes.ok) return;
@@ -1882,6 +1984,7 @@
                     <div class="stat-detail">成功 ${stats.redeemRecords.done} · 失败 ${stats.redeemRecords.failed} · 处理中 ${stats.redeemRecords.pending}</div>
                 </div>
             `;
+            renderRedeemSummary(stats.redeemSummary);
         } catch (err) {
             console.error('加载统计数据失败:', err);
         }

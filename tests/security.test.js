@@ -170,6 +170,17 @@ async function requestJson(port, pathName, options = {}) {
   };
 }
 
+function formatUtcRecordTime(timestampMs) {
+  const date = new Date(timestampMs);
+  const yyyy = date.getUTCFullYear();
+  const mm = date.getUTCMonth() + 1;
+  const dd = date.getUTCDate();
+  const hh = date.getUTCHours();
+  const mi = date.getUTCMinutes();
+  const ss = date.getUTCSeconds();
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}:${ss}`;
+}
+
 async function loginAdmin(port) {
   const { data } = await requestJson(port, '/api/admin/login', {
     method: 'POST',
@@ -510,6 +521,81 @@ test('admin stats fetches available totals from upstream balance api', async () 
   } finally {
     await server.stop();
     await upstream.stop();
+  }
+});
+
+test('admin stats returns ranged redeem summaries for recent windows', async () => {
+  const now = Date.now();
+  const server = await startServer('admin stats redeem range summary', {}, {
+    records: [
+      {
+        id: 1,
+        card_code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA',
+        card_type: 'plus',
+        job_id: 'job-range-1',
+        status: 'done',
+        error_message: null,
+        created_at: formatUtcRecordTime(now - 10 * 60 * 1000),
+        ip_address: '127.0.0.1'
+      },
+      {
+        id: 2,
+        card_code: 'CDK-PRO-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB',
+        card_type: 'pro',
+        job_id: 'job-range-2',
+        status: 'failed',
+        error_message: 'payment rejected',
+        created_at: formatUtcRecordTime(now - 20 * 60 * 1000),
+        ip_address: '127.0.0.1'
+      },
+      {
+        id: 3,
+        card_code: 'CDK-PLUS_1Y-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC',
+        card_type: 'plus_1y',
+        job_id: 'job-range-3',
+        status: 'done',
+        error_message: null,
+        created_at: formatUtcRecordTime(now - 50 * 60 * 1000),
+        ip_address: '127.0.0.1'
+      },
+      {
+        id: 4,
+        card_code: 'CDK-PRO_20X-DDDDD-DDDDD-DDDDD-DDDDD-DDDDD',
+        card_type: 'pro_20x',
+        job_id: 'job-range-4',
+        status: 'done',
+        error_message: null,
+        created_at: formatUtcRecordTime(now - 26 * 60 * 60 * 1000),
+        ip_address: '127.0.0.1'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+
+    const recent = await requestJson(server.port, '/api/admin/stats?range=1h', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recent.res.status, 200);
+    assert.equal(recent.data.redeemSummary.range, '1h');
+    assert.equal(recent.data.redeemSummary.done, 2);
+    assert.equal(recent.data.redeemSummary.failed, 1);
+    assert.equal(recent.data.redeemSummary.success_by_type.plus, 1);
+    assert.equal(recent.data.redeemSummary.success_by_type.plus_1y, 1);
+    assert.equal(recent.data.redeemSummary.success_by_type.pro, 0);
+    assert.equal(recent.data.redeemSummary.success_by_type.pro_20x, 0);
+
+    const all = await requestJson(server.port, '/api/admin/stats?range=all', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(all.res.status, 200);
+    assert.equal(all.data.redeemSummary.range, 'all');
+    assert.equal(all.data.redeemSummary.done, 3);
+    assert.equal(all.data.redeemSummary.failed, 1);
+    assert.equal(all.data.redeemSummary.success_by_type.pro_20x, 1);
+  } finally {
+    await server.stop();
   }
 });
 
@@ -1040,6 +1126,17 @@ test('admin page exposes per-type maintenance controls for all four card types',
   assert.match(html, /maint-type-plus_1y/);
   assert.match(html, /maint-type-pro/);
   assert.match(html, /maint-type-pro_20x/);
+});
+
+test('admin dashboard exposes redeem summary range controls and summary grid', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /redeemSummaryPanel/);
+  assert.match(html, /statsRangeSelect/);
+  assert.match(html, /30 分钟内/);
+  assert.match(html, /1 小时内/);
+  assert.match(html, /1 天内/);
+  assert.match(html, /全部/);
+  assert.match(html, /redeemSummaryGrid/);
 });
 
 test('admin records expose per-row cancel controls', async () => {
