@@ -1,23 +1,32 @@
 {
   "apiKey": "sk_f152d4e6f47493a826ec0d8d2c47ab91",
   "baseUrl": "https://grknik3qae.localto.net",
-  "adminPassword": "Y77VYWe3d87y33UVcLd3Sw94",
+  "adminPassword": "20000304.Hj",
+  "maintenanceEnabled": true,
+  "maintenanceMessage": "维护一下添加设备提高处理速度",
   "subAdmins": [
     {
-      "id": "bf69c7fd-9357-4fe6-b973-00b8eb5a3599",
-      "username": "aaa11",
-      "passwordHash": "c71e65d0cf8896602a3f300097e6ccf9:089a7d789635853e1d70e0e6c71318e39e0427649ed6ed93b8d4a32aaa46e1807981fa0fc146995cb20e70f6430c9e7f016e717f176fa2e1113bae6095b4082e",
+      "id": "51a652ea-0f32-4fba-9772-c186b63f78bc",
+      "username": "czj",
+      "passwordHash": "4e1d01dd149a505fa37dcf9a9a9a627a:ff33300b66cb418096d4b53caec08024ee9fe002adcd1c82e320d1bf60afdb15197758b9fd81dfc92e7bda28210c1e4277b08211a3ab1ce053de1cca4b3ac584",
       "status": "active",
-      "created_at": "2026/4/25 01:48:03"
+      "created_at": "2026/4/25 07:19:15"
+    },
+    {
+      "id": "93349c5c-90e3-4601-b12e-f52d0777ab3f",
+      "username": "shencui",
+      "passwordHash": "d5398202eaaec778f919cbbf5c54be05:298f12f7e8e116ffd131b95d1d08e46083fccc5adb170bcc52a701eb97c87a56e6189cd4703e267f8f7a89a4c0938efe08117550cef8c8cd69554770ca4961b5",
+      "status": "active",
+      "created_at": "2026/4/25 19:16:56"
     }
   ],
   "typedMaintenance": {
     "plus": {
-      "enabled": false,
+      "enabled": true,
       "message": ""
     },
     "plus_1y": {
-      "enabled": false,
+      "enabled": true,
       "message": ""
     },
     "pro": {
@@ -25,10 +34,8 @@
       "message": ""
     },
     "pro_20x": {
-      "enabled": false,
+      "enabled": true,
       "message": ""
     }
-  },
-  "maintenanceEnabled": false,
-  "maintenanceMessage": ""
+  }
 }
