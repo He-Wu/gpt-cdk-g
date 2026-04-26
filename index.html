@@ -1074,6 +1074,10 @@
                     <span class="label">当前状态</span>
                     <span class="value" id="jobStatusText">等候中...</span>
                 </div>
+                <div class="job-info-row hidden" id="jobEmailRow">
+                    <span class="label">兑换邮箱</span>
+                    <span class="value" id="jobEmailText">-</span>
+                </div>
                 <div class="job-info-row hidden" id="jobQueueRow">
                     <span class="label">排队进度</span>
                     <span class="value" id="jobQueueText">-</span>
@@ -1161,6 +1165,7 @@
         // 状态
         let verifiedCard = null;
         let currentJobId = null;
+        let currentSubmittedEmail = null;
         let isPolling = false;
         let maintenanceActive = false;
 
@@ -1281,31 +1286,14 @@
         }
 
         function selectHomeQueueSummary(queues) {
-            const order = ['plus', 'plus_1y', 'pro', 'pro_20x'];
-            const candidates = order
-                .filter((workflow) => queues && queues[workflow])
-                .map((workflow) => ({
-                    workflow,
-                    queue: queues[workflow],
-                    eta: Number(queues[workflow].estimated_next_wait_seconds),
-                    pending: Number(queues[workflow].pending)
-                }));
-
-            if (!candidates.length) {
+            if (!queues?.plus) {
                 return null;
             }
 
-            candidates.sort((a, b) => {
-                const etaA = Number.isFinite(a.eta) ? a.eta : -1;
-                const etaB = Number.isFinite(b.eta) ? b.eta : -1;
-                if (etaB !== etaA) return etaB - etaA;
-
-                const pendingA = Number.isFinite(a.pending) ? a.pending : -1;
-                const pendingB = Number.isFinite(b.pending) ? b.pending : -1;
-                return pendingB - pendingA;
-            });
-
-            return candidates[0];
+            return {
+                workflow: 'plus',
+                queue: queues.plus
+            };
         }
 
         function renderHomeQueueSummary(queues) {
@@ -1480,6 +1468,7 @@
 
             const raw = document.getElementById('accessTokenInput').value.trim();
             const btn = document.getElementById('redeemBtn');
+            currentSubmittedEmail = null;
 
             // 前置校验 Session 数据
             const validation = validateSessionInput(raw);
@@ -1507,11 +1496,15 @@
 
                 if (!res.ok) {
                     if (data.status && ['unknown', 'expired'].includes(data.status)) {
+                        currentSubmittedEmail = data.email || null;
                         showJobStatus({ 
                             job_id: data.job_id || 'unknown', 
                             status: data.status, 
+                            email: data.email,
                             error: data.error || '状态不确定，请联系管理员人工核验。' 
                         });
+                        document.getElementById('step1Card').classList.add('hidden');
+                        document.getElementById('step2Card').classList.add('hidden');
                         return;
                     }
                     showTokenError(data.error || '兑换失败，请稍后重试');
@@ -1522,6 +1515,7 @@
 
                 // 成功提交
                 currentJobId = data.job_id;
+                currentSubmittedEmail = data.email || null;
                 showJobStatus(data);
 
                 // 隐藏前两步
@@ -1545,6 +1539,10 @@
 
             document.getElementById('jobIdDisplay').textContent = job.job_id || '-';
             document.getElementById('jobStatusText').textContent = getStatusDesc(job.status);
+            const jobEmailRow = document.getElementById('jobEmailRow');
+            const jobEmailText = document.getElementById('jobEmailText');
+            jobEmailRow.classList.toggle('hidden', !(job.email || currentSubmittedEmail));
+            jobEmailText.textContent = job.email || currentSubmittedEmail || '-';
             const queueRow = document.getElementById('jobQueueRow');
             const queueText = document.getElementById('jobQueueText');
             const queueInfo = formatQueueEstimate(job);
@@ -1708,6 +1706,7 @@
         function resetForm() {
             verifiedCard = null;
             currentJobId = null;
+            currentSubmittedEmail = null;
             isPolling = false;
             clearQueueSummary();
 
@@ -1848,6 +1847,7 @@
                                 <th>类型</th>
                                 <th>卡密状态</th>
                                 <th>兑换状态</th>
+                                <th>兑换邮箱</th>
                                 <th>Job ID</th>
                                 <th>错误信息</th>
                             </tr>
@@ -1865,6 +1865,7 @@
                                         <td>${item.type ? `<span class="type-badge ${escapeHtml(item.type)}">${escapeHtml(subscriptionTypeLabel(item.type))}</span>` : '-'}</td>
                                         <td><span class="status-pill ${cardStatusClass}">${queryStatusIcon(item.status)} ${escapeHtml(item.status_label || item.status || '未知')}</span></td>
                                         <td>${redeemStatus}</td>
+                                        <td class="mono-cell">${escapeHtml(item.email || '-')}</td>
                                         <td class="mono-cell">${escapeHtml(item.job_id || '-')}</td>
                                         <td class="error-cell">${escapeHtml(errorText)}</td>
                                     </tr>
@@ -1911,7 +1912,7 @@
                     ${data.email ? `
                     <div class="query-row">
                         <span class="q-label">📧 兑换邮箱</span>
-                        <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${data.email}</span>
+                        <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${escapeHtml(data.email)}</span>
                     </div>` : ''}
                     <div class="query-row">
                         <span class="q-label">📦 兑换进度</span>

@@ -170,8 +170,8 @@ async function requestJson(port, pathName, options = {}) {
   };
 }
 
-function formatUtcRecordTime(timestampMs) {
-  const date = new Date(timestampMs);
+function formatShanghaiRecordTime(timestampMs) {
+  const date = new Date(timestampMs + 8 * 60 * 60 * 1000);
   const yyyy = date.getUTCFullYear();
   const mm = date.getUTCMonth() + 1;
   const dd = date.getUTCDate();
@@ -237,6 +237,20 @@ async function redeemCard(port, code) {
     body: JSON.stringify({
       code,
       access_token: `eyJ.${'a'.repeat(120)}.${'b'.repeat(40)}`
+    })
+  });
+}
+
+async function redeemCardWithSessionJson(port, code, email) {
+  return requestJson(port, '/api/card/redeem', {
+    method: 'POST',
+    body: JSON.stringify({
+      code,
+      access_token: JSON.stringify({
+        user: { id: 'user-test', email },
+        expires: '2099-01-01T00:00:00.000Z',
+        accessToken: `eyJ.${'s'.repeat(120)}.${'t'.repeat(40)}`
+      })
     })
   });
 }
@@ -535,7 +549,7 @@ test('admin stats returns ranged redeem summaries for recent windows', async () 
         job_id: 'job-range-1',
         status: 'done',
         error_message: null,
-        created_at: formatUtcRecordTime(now - 10 * 60 * 1000),
+        created_at: formatShanghaiRecordTime(now - 10 * 60 * 1000),
         ip_address: '127.0.0.1'
       },
       {
@@ -545,7 +559,7 @@ test('admin stats returns ranged redeem summaries for recent windows', async () 
         job_id: 'job-range-2',
         status: 'failed',
         error_message: 'payment rejected',
-        created_at: formatUtcRecordTime(now - 20 * 60 * 1000),
+        created_at: formatShanghaiRecordTime(now - 20 * 60 * 1000),
         ip_address: '127.0.0.1'
       },
       {
@@ -555,7 +569,7 @@ test('admin stats returns ranged redeem summaries for recent windows', async () 
         job_id: 'job-range-3',
         status: 'done',
         error_message: null,
-        created_at: formatUtcRecordTime(now - 50 * 60 * 1000),
+        created_at: formatShanghaiRecordTime(now - 50 * 60 * 1000),
         ip_address: '127.0.0.1'
       },
       {
@@ -565,7 +579,7 @@ test('admin stats returns ranged redeem summaries for recent windows', async () 
         job_id: 'job-range-4',
         status: 'done',
         error_message: null,
-        created_at: formatUtcRecordTime(now - 26 * 60 * 60 * 1000),
+        created_at: formatShanghaiRecordTime(now - 26 * 60 * 60 * 1000),
         ip_address: '127.0.0.1'
       }
     ]
@@ -594,6 +608,49 @@ test('admin stats returns ranged redeem summaries for recent windows', async () 
     assert.equal(all.data.redeemSummary.done, 3);
     assert.equal(all.data.redeemSummary.failed, 1);
     assert.equal(all.data.redeemSummary.success_by_type.pro_20x, 1);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin stats thirty minute window parses stored shanghai timestamps correctly', async () => {
+  const now = Date.now();
+  const server = await startServer('admin stats thirty minute shanghai window', {}, {
+    records: [
+      {
+        id: 1,
+        card_code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA',
+        card_type: 'plus',
+        job_id: 'job-29-minutes',
+        status: 'done',
+        error_message: null,
+        created_at: formatShanghaiRecordTime(now - 29 * 60 * 1000),
+        ip_address: '127.0.0.1'
+      },
+      {
+        id: 2,
+        card_code: 'CDK-PRO-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB',
+        card_type: 'pro',
+        job_id: 'job-31-minutes',
+        status: 'done',
+        error_message: null,
+        created_at: formatShanghaiRecordTime(now - 31 * 60 * 1000),
+        ip_address: '127.0.0.1'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const recent = await requestJson(server.port, '/api/admin/stats?range=30m', {
+      headers: { 'X-Admin-Token': token }
+    });
+
+    assert.equal(recent.res.status, 200);
+    assert.equal(recent.data.redeemSummary.range, '30m');
+    assert.equal(recent.data.redeemSummary.done, 1);
+    assert.equal(recent.data.redeemSummary.success_by_type.plus, 1);
+    assert.equal(recent.data.redeemSummary.success_by_type.pro, 0);
   } finally {
     await server.stop();
   }
@@ -812,6 +869,35 @@ test('uncertain submit success keeps card locked for manual review instead of re
   }
 });
 
+test('redeem submit and user card query responses include the full session email', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: 'job-email-display', status: 'pending' }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('redeem submit returns full email');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await redeemCardWithSessionJson(server.port, code, 'redeemer@example.com');
+    assert.equal(redeem.res.status, 200);
+    assert.equal(redeem.data.email, 'redeemer@example.com');
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.email, 'redeemer@example.com');
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
 test('card query refreshes in-flight job status from upstream', async () => {
   const upstream = await startMockUpstream((req, res) => {
     if (req.method === 'POST' && req.url === '/submit') {
@@ -1012,6 +1098,7 @@ test('public batch card query returns mixed card states for multiple codes', asy
     assert.equal(data.results.length, 3);
     assert.equal(data.results[0].status, 'unused');
     assert.equal(data.results[1].redeem_status, 'done');
+    assert.equal(data.results[1].email, 'user@example.com');
     assert.equal(data.results[2].status, 'not_found');
     assert.match(data.results[2].error || '', /不存在|不可用/);
   } finally {
@@ -1088,6 +1175,8 @@ test('user page exposes batch card query controls and results table', async () =
   assert.match(html, /queryCardsBatch\(/);
   assert.match(html, /\/api\/card\/query\/batch/);
   assert.match(html, /id="batchQueryResult"/);
+  assert.match(html, /<th>兑换邮箱<\/th>/);
+  assert.match(html, /escapeHtml\(item\.email \|\| '-'\)/);
 });
 
 test('user page treats unknown redeem submit responses as locked terminal state', async () => {
@@ -1096,6 +1185,14 @@ test('user page treats unknown redeem submit responses as locked terminal state'
   assert.match(html, /if\s*\(!res\.ok\)\s*{[\s\S]{0,800}step1Card'\)\.classList\.add\('hidden'\)/);
   assert.match(html, /if\s*\(!res\.ok\)\s*{[\s\S]{0,1000}step2Card'\)\.classList\.add\('hidden'\)/);
   assert.match(html, /if\s*\(!res\.ok\)\s*{[\s\S]{0,1200}showJobStatus\(\{/);
+});
+
+test('user job status panel shows the submitted session email without masking', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /id="jobEmailRow"/);
+  assert.match(html, /id="jobEmailText"/);
+  assert.match(html, /jobEmailRow[\s\S]{0,500}job\.email/);
+  assert.match(html, /jobEmailText\.textContent\s*=\s*job\.email/);
 });
 
 test('user query page exposes manual review diagnostics and no-retry guidance', async () => {
@@ -1137,6 +1234,30 @@ test('admin dashboard exposes redeem summary range controls and summary grid', a
   assert.match(html, /1 天内/);
   assert.match(html, /全部/);
   assert.match(html, /redeemSummaryGrid/);
+});
+
+test('admin dashboard exposes api stock warning thresholds', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /apiStockWarningPanel/);
+  assert.match(html, /apiStockWarningList/);
+  assert.match(html, /API 库存预警/);
+  assert.match(html, /API_STOCK_WARNING_RULES/);
+  assert.match(html, /key:\s*'plus_monthly'[\s\S]{0,120}threshold:\s*100/);
+  assert.match(html, /key:\s*'plus_1y'[\s\S]{0,120}threshold:\s*5/);
+  assert.match(html, /key:\s*'pro'[\s\S]{0,120}threshold:\s*5/);
+  assert.match(html, /key:\s*'pro_20x'[\s\S]{0,120}threshold:\s*5/);
+  assert.match(html, /renderApiStockWarnings\(stats\)/);
+});
+
+test('admin dashboard groups operational signals into focused sections', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /dashboard-kpi-grid/);
+  assert.match(html, /dashboardInventoryPanel/);
+  assert.match(html, /dashboardInventoryBoard/);
+  assert.match(html, /inventory-row/);
+  assert.match(html, /renderDashboardInventory\(stats\)/);
+  assert.match(html, /运行状态/);
+  assert.match(html, /库存总览/);
 });
 
 test('admin records expose per-row cancel controls', async () => {
@@ -1790,6 +1911,12 @@ test('user homepage collapses live queue display down to one latest summary bloc
   assert.match(html, /function selectHomeQueueSummary/);
   assert.match(html, /const summary = selectHomeQueueSummary\(queues\)/);
   assert.match(html, /grid\.innerHTML = `[\s\S]*home-queue-item/);
+});
+
+test('user homepage live queue only shows the monthly plus queue', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /function selectHomeQueueSummary\(queues\)\s*{[\s\S]{0,500}queues\?\.plus/);
+  assert.doesNotMatch(html, /const order = \['plus', 'plus_1y', 'pro', 'pro_20x'\]/);
 });
 
 test('newly generated cards use a longer non-legacy format', async () => {

@@ -526,6 +526,139 @@
             margin-top: 4px;
         }
 
+        .dashboard-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .dashboard-kpi-card {
+            min-height: 132px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .dashboard-kpi-card.primary {
+            border-color: rgba(129, 140, 248, 0.28);
+            background:
+                linear-gradient(135deg, rgba(99,102,241,0.16), rgba(34,211,238,0.06)),
+                var(--bg-card);
+        }
+
+        .dashboard-kpi-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .dashboard-kpi-value {
+            margin-top: 10px;
+            font-size: 30px;
+            line-height: 1;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .dashboard-kpi-detail {
+            margin-top: 10px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .dashboard-kpi-card.good .dashboard-kpi-value { color: var(--emerald); }
+        .dashboard-kpi-card.warn .dashboard-kpi-value { color: var(--amber); }
+        .dashboard-kpi-card.danger .dashboard-kpi-value { color: var(--rose); }
+
+        .dashboard-focus-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .dashboard-panel {
+            background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.018));
+        }
+
+        .dashboard-section-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .dashboard-section-title {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .dashboard-section-note {
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .inventory-board {
+            display: grid;
+            gap: 10px;
+        }
+
+        .inventory-row {
+            display: grid;
+            grid-template-columns: minmax(120px, 1.15fr) repeat(3, minmax(86px, 0.8fr));
+            gap: 12px;
+            align-items: center;
+            padding: 13px 14px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.025);
+        }
+
+        .inventory-row.low {
+            border-color: rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.06);
+        }
+
+        .inventory-name {
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .inventory-sub {
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+
+        .inventory-metric {
+            min-width: 0;
+        }
+
+        .inventory-metric span {
+            display: block;
+            color: var(--text-muted);
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+
+        .inventory-metric strong {
+            display: block;
+            font-size: 18px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+        }
+
         /* 面板 */
         .stats-range-toolbar {
             display: flex;
@@ -569,6 +702,40 @@
         .panel-title {
             font-size: 15px;
             font-weight: 600;
+        }
+
+        .stock-warning-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .stock-warning-item {
+            border: 1px solid rgba(251, 191, 36, 0.22);
+            background: rgba(251, 191, 36, 0.08);
+            border-radius: 12px;
+            padding: 14px 16px;
+        }
+
+        .stock-warning-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .stock-warning-value {
+            margin-top: 8px;
+            color: var(--amber);
+            font-size: 22px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stock-warning-detail {
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-size: 12px;
         }
 
         /* 表格 */
@@ -930,6 +1097,9 @@
             .mobile-nav-drawer { display: flex; }
             .mobile-nav-overlay { display: block; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .dashboard-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .dashboard-focus-grid { grid-template-columns: 1fr; }
+            .inventory-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
             .form-row { flex-direction: column; }
             .form-row > div,
             .form-row .form-group,
@@ -947,6 +1117,8 @@
             .pagination-btns { display: grid; grid-template-columns: 1fr 1fr; }
             .panel { padding: 18px 16px; }
             .stats-grid { grid-template-columns: 1fr; }
+            .dashboard-kpi-grid { grid-template-columns: 1fr; }
+            .inventory-row { grid-template-columns: 1fr; }
             .stat-card .stat-value { font-size: 24px; }
             .table-wrapper {
                 margin: 0 -16px;
@@ -1097,10 +1269,30 @@
                 <h2>仪表盘</h2>
                 <p>系统数据总览</p>
             </div>
-            <div class="stats-grid" id="statsGrid">
+            <div class="dashboard-kpi-grid" id="statsGrid">
                 <!-- 动态填充 -->
             </div>
-            <div class="panel" id="redeemSummaryPanel">
+            <div class="dashboard-focus-grid">
+                <div class="panel dashboard-panel" id="dashboardInventoryPanel">
+                    <div class="dashboard-section-heading">
+                        <div>
+                            <div class="dashboard-section-title">库存总览</div>
+                            <div class="dashboard-section-note">API 库存和本地可兑换 CDK 分开看，低库存会高亮。</div>
+                        </div>
+                    </div>
+                    <div class="inventory-board" id="dashboardInventoryBoard"></div>
+                </div>
+                <div class="panel hidden dashboard-panel" id="apiStockWarningPanel">
+                    <div class="dashboard-section-heading">
+                        <div>
+                            <div class="dashboard-section-title">API 库存预警</div>
+                            <div class="dashboard-section-note">低于安全线时在这里提示，优先处理这些类型。</div>
+                        </div>
+                    </div>
+                    <div class="stock-warning-list" id="apiStockWarningList"></div>
+                </div>
+            </div>
+            <div class="panel dashboard-panel" id="redeemSummaryPanel">
                 <div class="stats-range-toolbar">
                     <div class="stats-range-copy">
                         <div class="panel-title">兑换统计概览</div>
@@ -1547,6 +1739,12 @@
         { key: 'pro', label: 'Pro 5X', domId: 'maint-type-pro' },
         { key: 'pro_20x', label: 'Pro 20X', domId: 'maint-type-pro_20x' }
     ];
+    const API_STOCK_WARNING_RULES = [
+        { key: 'plus_monthly', label: 'Plus 月卡', threshold: 100 },
+        { key: 'plus_1y', label: 'Plus 年卡', threshold: 5 },
+        { key: 'pro', label: 'Pro 5X', threshold: 5 },
+        { key: 'pro_20x', label: 'Pro 20X', threshold: 5 }
+    ];
     const PAGE_TITLES = {
         dashboard: '仪表盘',
         generate: '生成卡密',
@@ -1914,76 +2112,68 @@
                 : { configured: false };
 
             const grid = document.getElementById('statsGrid');
-            const configCard = hasPermission('manage_settings') && cfg.configured
-                ? `<div class="stat-card emerald">
-                    <div class="stat-label">接口状态</div>
-                    <div class="stat-value" style="font-size:18px;padding-top:4px">✅ 已就绪</div>
-                    <div class="stat-detail">${cfg.baseUrl || ''}</div>
+            const plus = stats.plus || {};
+            const proTotal = stats.pro_total || {};
+            const summary = stats.redeemSummary || {};
+            const apiWarnings = getApiStockWarnings(stats);
+            const apiTotal = stats.apiBalanceTotal
+                ? API_STOCK_WARNING_RULES.reduce((sum, rule) => sum + (Number(stats.apiBalanceTotal?.[rule.key]) || 0), 0)
+                : null;
+            const localUnused = Number(plus.unused || 0) + Number(proTotal.unused || 0);
+            const warningText = stats.apiBalanceError
+                ? '余额查询失败'
+                : apiWarnings.length
+                ? `低库存 ${apiWarnings.length} 项`
+                : '库存正常';
+            const statusCard = hasPermission('manage_settings') && cfg.configured
+                ? `<div class="dashboard-kpi-card primary good">
+                    <div>
+                        <div class="dashboard-kpi-label">运行状态</div>
+                        <div class="dashboard-kpi-value">已就绪</div>
+                    </div>
+                    <div class="dashboard-kpi-detail">${escapeHtml(cfg.baseUrl || '接口已配置')}</div>
                    </div>`
                 : hasPermission('manage_settings')
-                ? `<div class="stat-card rose" style="cursor:pointer" onclick="switchPage('settings')">
-                    <div class="stat-label">接口状态</div>
-                    <div class="stat-value" style="font-size:18px;padding-top:4px">⚠️ 未配置</div>
-                    <div class="stat-detail">点击前往设置页面配置</div>
+                ? `<div class="dashboard-kpi-card primary danger" style="cursor:pointer" onclick="switchPage('settings')">
+                    <div>
+                        <div class="dashboard-kpi-label">运行状态</div>
+                        <div class="dashboard-kpi-value">未配置</div>
+                    </div>
+                    <div class="dashboard-kpi-detail">点击前往设置页面配置</div>
                    </div>`
-                : `<div class="stat-card indigo">
-                    <div class="stat-label">当前账号</div>
-                    <div class="stat-value" style="font-size:18px;padding-top:4px">${escapeHtml(currentViewer?.username || 'sub_admin')}</div>
-                    <div class="stat-detail">子管理员视角，仅展示自己创建的数据</div>
+                : `<div class="dashboard-kpi-card primary">
+                    <div>
+                        <div class="dashboard-kpi-label">运行状态</div>
+                        <div class="dashboard-kpi-value">${escapeHtml(currentViewer?.username || 'sub_admin')}</div>
+                    </div>
+                    <div class="dashboard-kpi-detail">子管理员视角，仅展示自己创建的数据</div>
                    </div>`;
 
-            grid.innerHTML = configCard + `
-                <div class="stat-card indigo">
-                    <div class="stat-label">Plus CDK 总数</div>
-                    <div class="stat-value">${stats.plus.total}</div>
-                    <div class="stat-detail">月卡 ${stats.plus_monthly.total} · 年卡 ${stats.plus_1y.total}</div>
+            grid.innerHTML = statusCard + `
+                <div class="dashboard-kpi-card ${apiWarnings.length || stats.apiBalanceError ? 'warn' : 'good'}">
+                    <div>
+                        <div class="dashboard-kpi-label">API 库存</div>
+                        <div class="dashboard-kpi-value">${apiTotal === null ? '-' : apiTotal}</div>
+                    </div>
+                    <div class="dashboard-kpi-detail">${warningText} · Plus ${apiBalanceValue(stats.apiBalanceTotal, 'plus_monthly')}/${apiBalanceValue(stats.apiBalanceTotal, 'plus_1y')} · Pro ${apiBalanceValue(stats.apiBalanceTotal, 'pro')}/${apiBalanceValue(stats.apiBalanceTotal, 'pro_20x')}</div>
                 </div>
-                <div class="stat-card cyan">
-                    <div class="stat-label">Plus API 可用</div>
-                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'plus')}</div>
-                    <div class="stat-detail">月卡 ${apiBalanceValue(stats.apiBalanceTotal, 'plus_monthly')} · 年卡 ${apiBalanceValue(stats.apiBalanceTotal, 'plus_1y')} · 本地CDK ${stats.plus.unused}</div>
+                <div class="dashboard-kpi-card">
+                    <div>
+                        <div class="dashboard-kpi-label">本地可兑换</div>
+                        <div class="dashboard-kpi-value">${localUnused}</div>
+                    </div>
+                    <div class="dashboard-kpi-detail">Plus ${plus.unused || 0} · Pro 合计 ${proTotal.unused || 0}</div>
                 </div>
-                <div class="stat-card cyan">
-                    <div class="stat-label">Plus 1 年总数</div>
-                    <div class="stat-value">${stats.plus_1y.total}</div>
-                    <div class="stat-detail">可用 ${stats.plus_1y.unused} · 已用 ${stats.plus_1y.used} · 禁用 ${stats.plus_1y.disabled}</div>
-                </div>
-                <div class="stat-card emerald">
-                    <div class="stat-label">Pro 合计总数</div>
-                    <div class="stat-value">${stats.pro_total.total}</div>
-                    <div class="stat-detail">5X ${stats.pro.total} · 20X ${stats.pro_20x.total} · 可用 ${stats.pro_total.unused}</div>
-                </div>
-                <div class="stat-card amber">
-                    <div class="stat-label">Pro 合计 API 可用</div>
-                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro_total')}</div>
-                    <div class="stat-detail">5X ${apiBalanceValue(stats.apiBalanceTotal, 'pro')} · 20X ${apiBalanceValue(stats.apiBalanceTotal, 'pro_20x')} · 本地CDK ${stats.pro_total.unused}</div>
-                </div>
-                <div class="stat-card emerald">
-                    <div class="stat-label">Pro 5X 总数</div>
-                    <div class="stat-value">${stats.pro.total}</div>
-                    <div class="stat-detail">可用 ${stats.pro.unused} · 已用 ${stats.pro.used} · 禁用 ${stats.pro.disabled}</div>
-                </div>
-                <div class="stat-card amber">
-                    <div class="stat-label">Pro 5X API 可用</div>
-                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro')}</div>
-                    <div class="stat-detail">本地CDK ${stats.pro.unused}${stats.apiBalanceError ? ` · 余额查询失败: ${stats.apiBalanceError}` : ''}</div>
-                </div>
-                <div class="stat-card emerald">
-                    <div class="stat-label">Pro 20X 总数</div>
-                    <div class="stat-value">${stats.pro_20x.total}</div>
-                    <div class="stat-detail">可用 ${stats.pro_20x.unused} · 已用 ${stats.pro_20x.used} · 禁用 ${stats.pro_20x.disabled}</div>
-                </div>
-                <div class="stat-card amber">
-                    <div class="stat-label">Pro 20X API 可用</div>
-                    <div class="stat-value">${apiBalanceValue(stats.apiBalanceTotal, 'pro_20x')}</div>
-                    <div class="stat-detail">本地CDK ${stats.pro_20x.unused}${stats.apiBalanceError ? ` · 余额查询失败: ${stats.apiBalanceError}` : ''}</div>
-                </div>
-                <div class="stat-card rose">
-                    <div class="stat-label">兑换记录</div>
-                    <div class="stat-value">${stats.redeemRecords.total}</div>
-                    <div class="stat-detail">成功 ${stats.redeemRecords.done} · 失败 ${stats.redeemRecords.failed} · 处理中 ${stats.redeemRecords.pending}</div>
+                <div class="dashboard-kpi-card ${Number(summary.failed || 0) > 0 ? 'warn' : 'good'}">
+                    <div>
+                        <div class="dashboard-kpi-label">兑换概览</div>
+                        <div class="dashboard-kpi-value">${summary.done || 0}</div>
+                    </div>
+                    <div class="dashboard-kpi-detail">${formatStatsRangeLabel(summary.range || selectedStatsRange)} · 失败 ${summary.failed || 0} · 处理中 ${stats.redeemRecords?.pending || 0}</div>
                 </div>
             `;
+            renderDashboardInventory(stats);
+            renderApiStockWarnings(stats);
             renderRedeemSummary(stats.redeemSummary);
         } catch (err) {
             console.error('加载统计数据失败:', err);
@@ -2494,6 +2684,92 @@
     function apiBalanceValue(balanceTotals, key) {
         const value = balanceTotals?.[key];
         return value === null || value === undefined ? '-' : value;
+    }
+
+    function getApiStockWarnings(stats) {
+        const balanceTotals = stats?.apiBalanceTotal;
+        if (!balanceTotals) return [];
+        return API_STOCK_WARNING_RULES
+            .map((rule) => ({ ...rule, value: Number(balanceTotals?.[rule.key]) }))
+            .filter((rule) => Number.isFinite(rule.value) && rule.value < rule.threshold);
+    }
+
+    function getTypeStats(stats, key) {
+        return stats?.[key] || { total: 0, unused: 0, used: 0, disabled: 0 };
+    }
+
+    function renderDashboardInventory(stats) {
+        const board = document.getElementById('dashboardInventoryBoard');
+        if (!board) return;
+
+        const balanceTotals = stats?.apiBalanceTotal || {};
+        board.innerHTML = API_STOCK_WARNING_RULES.map((rule) => {
+            const typeStats = getTypeStats(stats, rule.key);
+            const numericApiValue = Number(balanceTotals?.[rule.key]);
+            const isLow = Number.isFinite(numericApiValue) && numericApiValue < rule.threshold;
+            return `
+                <div class="inventory-row ${isLow ? 'low' : ''}">
+                    <div>
+                        <div class="inventory-name">${escapeHtml(rule.label)}</div>
+                        <div class="inventory-sub">安全线 ${rule.threshold}</div>
+                    </div>
+                    <div class="inventory-metric">
+                        <span>API 库存</span>
+                        <strong>${apiBalanceValue(balanceTotals, rule.key)}</strong>
+                    </div>
+                    <div class="inventory-metric">
+                        <span>本地可用 CDK</span>
+                        <strong>${typeStats.unused || 0}</strong>
+                    </div>
+                    <div class="inventory-metric">
+                        <span>本地总量</span>
+                        <strong>${typeStats.total || 0}</strong>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderApiStockWarnings(stats) {
+        const panel = document.getElementById('apiStockWarningPanel');
+        const list = document.getElementById('apiStockWarningList');
+        if (!panel || !list) return;
+
+        if (stats?.apiBalanceError) {
+            panel.classList.remove('hidden');
+            list.innerHTML = `
+                <div class="stock-warning-item">
+                    <div class="stock-warning-label">余额查询失败</div>
+                    <div class="stock-warning-value">--</div>
+                    <div class="stock-warning-detail">${escapeHtml(stats.apiBalanceError)}</div>
+                </div>
+            `;
+            return;
+        }
+
+        const balanceTotals = stats?.apiBalanceTotal;
+        if (!balanceTotals) {
+            panel.classList.add('hidden');
+            list.innerHTML = '';
+            return;
+        }
+
+        const warnings = getApiStockWarnings(stats);
+
+        if (!warnings.length) {
+            panel.classList.add('hidden');
+            list.innerHTML = '';
+            return;
+        }
+
+        panel.classList.remove('hidden');
+        list.innerHTML = warnings.map((item) => `
+            <div class="stock-warning-item">
+                <div class="stock-warning-label">${escapeHtml(item.label)}</div>
+                <div class="stock-warning-value">${item.value}</div>
+                <div class="stock-warning-detail">低于 ${item.threshold}，请及时补充库存</div>
+            </div>
+        `).join('');
     }
 
     // ========== 兑换记录 ==========

@@ -101767,5 +101767,27 @@
     "created_at": "2026/4/26 02:05:39",
     "ip_address": "::ffff:172.22.0.1",
     "needs_manual_review": false
+  },
+  {
+    "id": 5260,
+    "card_code": "CDK-PLUS-PTVJM-AB7DM-CBYMW-CUWKX-VH396",
+    "card_type": "plus",
+    "created_by_username": "super_admin",
+    "created_by_role": "super_admin",
+    "email": "hejukang0304@gmail.com",
+    "access_token_hash": "cbeaf49ac02f06f4",
+    "job_id": "2de3486b14ad4e138561e32f8a539e76",
+    "status": "done",
+    "error_message": null,
+    "workflow": "plus",
+    "queue_position": null,
+    "estimated_wait_seconds": null,
+    "manual_review_reason": null,
+    "manual_review_stage": null,
+    "upstream_status_code": null,
+    "upstream_detail": null,
+    "created_at": "2026/4/26 03:36:44",
+    "ip_address": "::ffff:127.0.0.1",
+    "needs_manual_review": false
   }
 ]

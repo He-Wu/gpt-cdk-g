@@ -522,6 +522,8 @@ function nowStr() {
   return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 }
 
+const SHANGHAI_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
+
 function parseDateInputBoundary(value, endOfDay = false) {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -537,9 +539,9 @@ function parseDateInputBoundary(value, endOfDay = false) {
   }
 
   if (endOfDay) {
-    return Date.UTC(year, month - 1, day, 23, 59, 59, 999);
+    return Date.UTC(year, month - 1, day, 23, 59, 59, 999) - SHANGHAI_UTC_OFFSET_MS;
   }
-  return Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  return Date.UTC(year, month - 1, day, 0, 0, 0, 0) - SHANGHAI_UTC_OFFSET_MS;
 }
 
 function parseRecordCreatedAt(value) {
@@ -561,7 +563,7 @@ function parseRecordCreatedAt(value) {
     return null;
   }
 
-  return Date.UTC(year, month - 1, day, hours, minutes, seconds, 0);
+  return Date.UTC(year, month - 1, day, hours, minutes, seconds, 0) - SHANGHAI_UTC_OFFSET_MS;
 }
 
 function parseStatsRange(range) {
@@ -1418,7 +1420,8 @@ app.post('/api/card/redeem', async (req, res) => {
       });
       return res.status(502).json({
         error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
-        status: 'unknown'
+        status: 'unknown',
+        email: sessionEmail || null
       });
     }
 
@@ -1432,7 +1435,8 @@ app.post('/api/card/redeem', async (req, res) => {
       });
       return res.status(502).json({
         error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
-        status: 'unknown'
+        status: 'unknown',
+        email: sessionEmail || null
       });
     }
 
@@ -1445,7 +1449,8 @@ app.post('/api/card/redeem', async (req, res) => {
       });
       return res.status(502).json({
         error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
-        status: 'unknown'
+        status: 'unknown',
+        email: sessionEmail || null
       });
     }
 
@@ -1462,6 +1467,7 @@ app.post('/api/card/redeem', async (req, res) => {
       status: jobData.status,
       queue_position: record.queue_position,
       estimated_wait_seconds: record.estimated_wait_seconds,
+      email: sessionEmail || null,
       message: '兑换已提交，正在处理中...'
     });
 
@@ -1474,7 +1480,8 @@ app.post('/api/card/redeem', async (req, res) => {
     });
     res.status(502).json({
       error: '兑换提交状态不确定，卡密已锁定，请联系管理员人工核验',
-      status: 'unknown'
+      status: 'unknown',
+      email: sessionEmail || null
     });
   }
 });
@@ -1578,7 +1585,7 @@ app.get('/api/admin/job-status/:jobId', adminAuth, requireSuperAdmin, async (req
 });
 
 // ========== 公开卡密查询 API ==========
-// 用户可查询自己卡密的状态，邮箱脱敏显示
+// 用户可查询自己卡密的状态，兑换邮箱按完整值显示
 app.get('/api/card/queue', async (req, res) => {
   if (!getApiKey() || !getBaseUrl()) {
     return res.status(503).json({ error: '服务未配置' });
@@ -1633,13 +1640,6 @@ function checkQueryRate(ip) {
   rec.count++;
   queryAttempts.set(ip, rec);
   return rec.count;
-}
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return null;
-  const [local, domain] = email.split('@');
-  if (local.length <= 2) return local[0] + '***@' + domain;
-  return local[0] + '*'.repeat(Math.min(local.length - 2, 4)) + local[local.length - 1] + '@' + domain;
 }
 
 async function buildCardQueryPayload(code) {
@@ -1703,7 +1703,7 @@ async function buildCardQueryPayload(code) {
   // used_at 仅在卡密当前状态为 used 时返回，防止退回后新一轮兑换时间与旧记录状态混显
   const redeemStatus = record ? normalizeJobStatus(record.status) : null;
   const usedAt = card.status === 'used' ? (card.used_at || null) : null;
-  const usedEmail = card.status === 'used' ? (card.used_email ? maskEmail(card.used_email) : null) : null;
+  const usedEmail = card.status === 'used' ? (card.used_email || null) : null;
 
   return {
     found: true,
