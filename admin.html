@@ -1750,6 +1750,33 @@
                             <option value="pro_20x">Pro 20X</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label>生成场景</label>
+                        <select id="genIssueType" onchange="handleGenerateIssueTypeChange()">
+                            <option value="normal">正常售卖</option>
+                            <option value="compensation">补卡（亏损）</option>
+                        </select>
+                    </div>
+                    <div class="form-group hidden" id="genOriginalCodeGroup">
+                        <label>旧卡密（必须已使用）</label>
+                        <input type="text" id="genOriginalCode" maxlength="120" placeholder="输入已使用且需要补卡的旧卡密" oninput="this.value = this.value.toUpperCase()">
+                    </div>
+                    <div class="form-group" id="genRemarkGroup">
+                        <label>备注</label>
+                        <input type="text" id="genRemark" maxlength="200" placeholder="例如：4月退款补发">
+                    </div>
+                    <div class="form-group hidden" id="genCompensationReasonGroup">
+                        <label>补卡原因</label>
+                        <input type="text" id="genCompensationReason" maxlength="200" value="充值未到账补卡" placeholder="例如：充值未到账补卡">
+                    </div>
+                    <div class="form-group" id="genCostGroup">
+                        <label>成本</label>
+                        <input type="number" id="genCost" min="0" step="0.01" value="10" placeholder="默认成本">
+                    </div>
+                    <div class="form-group" id="genSalePriceGroup">
+                        <label>卖价</label>
+                        <input type="number" id="genSalePrice" min="0" step="0.01" placeholder="实际卖价">
+                    </div>
                     <div style="flex: 0 0 auto;">
                         <button class="btn btn-primary" id="genBtn" onclick="generateCards()" style="height: 42px;">
                             🔑 生成卡密
@@ -1808,6 +1835,25 @@
                     </div>
                 </div>
             </div>
+            <div class="panel" data-permission="manage_cards">
+                <div class="panel-title">批量替换</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-top:8px;margin-bottom:16px;line-height:1.6;">
+                    退款后可粘贴客户原卡密批量替换。系统会先检查所有卡密，存在已使用卡密则整体失败；全部未使用时生成同类型新卡，并禁用旧卡。
+                </p>
+                <div class="form-group">
+                    <label for="bulkCardReplaceInput">输入要替换的旧卡密</label>
+                    <textarea id="bulkCardReplaceInput" rows="5" placeholder="每行一个卡密，或使用逗号分隔&#10;只允许替换未使用卡密"
+                        spellcheck="false"
+                        oninput="this.value = this.value.toUpperCase()"></textarea>
+                </div>
+                <div class="bulk-action-toolbar">
+                    <div class="batch-query-helper">替换成功后，新卡会在下方展示；旧卡会自动变为已禁用，避免退款后二次使用。</div>
+                    <div class="bulk-action-buttons">
+                        <button class="btn btn-primary btn-sm" type="button" id="bulkReplaceBtn" onclick="applyBulkCardReplace()">批量替换</button>
+                    </div>
+                </div>
+                <div id="bulkCardReplaceResult"></div>
+            </div>
             <div class="panel">
                 <div class="panel-header">
                     <div class="filter-bar">
@@ -1862,6 +1908,9 @@
                                 <th>卡密</th>
                                 <th>类型</th>
                                 <th>状态</th>
+                                <th>备注</th>
+                                <th>成本</th>
+                                <th>卖价</th>
                                 <th>生成人</th>
                                 <th>创建时间</th>
                                 <th>使用时间</th>
@@ -2128,6 +2177,24 @@
             <!-- 配置状态提示 -->
             <div id="settingsStatusBanner" style="display:none; margin-bottom:20px; padding:14px 18px; border-radius:12px; font-size:13px;"></div>
 
+            <div class="panel" id="cardFinanceSettingsPanel">
+                <div class="panel-title" style="margin-bottom:4px;">💰 卡密财务配置</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
+                    配置批量生成卡密时默认带出的成本。后续阶段性成本变化时，在这里修改即可。
+                </p>
+                <div style="display:flex; flex-direction:column; gap:16px; max-width:360px;">
+                    <div class="form-group">
+                        <label>默认成本</label>
+                        <input type="number" id="settingsDefaultCost" min="0" step="0.01" value="10" placeholder="默认 10">
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="saveDefaultCostBtn" onclick="saveDefaultCost()">
+                            💾 保存默认成本
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div class="panel">
                 <div class="panel-title" style="margin-bottom: 20px;">🔌 API 连接配置</div>
                 <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
@@ -2150,6 +2217,25 @@
                     <div>
                         <button class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">
                             💾 保存设置
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="userBrandingPanel">
+                <div class="panel-title" style="margin-bottom:4px;">🏷️ 用户页展示配置</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
+                    配置用户兑换页标题前缀。留空时显示默认“GPT源头”，填写“91”后显示“91GPT源头”。
+                </p>
+                <div style="display:flex; flex-direction:column; gap:16px; max-width:560px;">
+                    <div class="form-group">
+                        <label>渠道名称</label>
+                        <input type="text" id="settingsChannelName" maxlength="40" placeholder="默认无渠道，例如：91" autocomplete="off">
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">只作为用户页品牌前缀展示，不影响卡密类型或上游接口。</p>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="saveUserBrandingBtn" onclick="saveUserBranding()">
+                            💾 保存用户页展示
                         </button>
                     </div>
                 </div>
@@ -2438,7 +2524,8 @@
                 generate_cards: viewer.permissions?.generate_cards !== false,
                 view_all_cards: viewer.permissions?.view_all_cards === true,
                 view_all_records: viewer.permissions?.view_all_records === true
-            }
+            },
+            defaultCost: Number.isFinite(Number(viewer.defaultCost)) ? Number(viewer.defaultCost) : 10
         };
     }
 
@@ -2451,6 +2538,7 @@
             const permission = node.getAttribute('data-permission');
             node.classList.toggle('hidden', permission ? !hasPermission(permission) : false);
         });
+        applyDefaultCostToGenerateForm();
     }
 
     function getSafeDefaultPage() {
@@ -2588,6 +2676,7 @@
         closeMobileNav();
 
         if (page === 'dashboard') loadStats();
+        if (page === 'generate') applyDefaultCostToGenerateForm();
         if (page === 'cards') loadCards();
         if (page === 'records') loadRecords();
         if (page === 'job-status') resetAdminJobStatusResult();
@@ -2745,13 +2834,92 @@
     }
 
     // ========== 生成卡密 ==========
+    function applyDefaultCostToGenerateForm() {
+        const costInput = document.getElementById('genCost');
+        if (!costInput) return;
+        const defaultCost = Number.isFinite(Number(currentViewer?.defaultCost)) ? Number(currentViewer.defaultCost) : 10;
+        if (!costInput.value || Number(costInput.value) === 10) {
+            costInput.value = String(defaultCost);
+        }
+        handleGenerateIssueTypeChange();
+    }
+
+    function getGenerateDefaultCost() {
+        return Number.isFinite(Number(currentViewer?.defaultCost)) ? Number(currentViewer.defaultCost) : 10;
+    }
+
+    function handleGenerateIssueTypeChange() {
+        const issueType = document.getElementById('genIssueType')?.value || 'normal';
+        const isCompensation = issueType === 'compensation';
+        const countInput = document.getElementById('genCount');
+        const originalCodeGroup = document.getElementById('genOriginalCodeGroup');
+        const remarkGroup = document.getElementById('genRemarkGroup');
+        const compensationReasonGroup = document.getElementById('genCompensationReasonGroup');
+        const reasonInput = document.getElementById('genCompensationReason');
+        const costInput = document.getElementById('genCost');
+        const salePriceInput = document.getElementById('genSalePrice');
+
+        originalCodeGroup?.classList.toggle('hidden', !isCompensation);
+        remarkGroup?.classList.toggle('hidden', isCompensation);
+        compensationReasonGroup?.classList.toggle('hidden', !isCompensation);
+
+        if (reasonInput && !reasonInput.value.trim()) {
+            reasonInput.value = '充值未到账补卡';
+        }
+        if (countInput) {
+            countInput.readOnly = isCompensation;
+            if (isCompensation) countInput.value = '1';
+        }
+        if (costInput) {
+            if (isCompensation) {
+                costInput.value = '';
+                costInput.placeholder = '提交后自动使用旧卡成本';
+            } else {
+                costInput.placeholder = '默认成本';
+                if (!costInput.value) costInput.value = String(getGenerateDefaultCost());
+            }
+            costInput.readOnly = isCompensation;
+        }
+        if (salePriceInput) {
+            if (isCompensation) salePriceInput.value = '0';
+            salePriceInput.readOnly = isCompensation;
+        }
+    }
+
     async function generateCards() {
         const count = parseInt(document.getElementById('genCount').value);
         const type = document.getElementById('genType').value;
+        const issueType = document.getElementById('genIssueType')?.value || 'normal';
+        const isCompensation = issueType === 'compensation';
+        const originalCode = document.getElementById('genOriginalCode')?.value.trim().toUpperCase() || '';
+        const remark = document.getElementById('genRemark').value.trim();
+        const compensationReason = (document.getElementById('genCompensationReason')?.value || '充值未到账补卡').trim() || '充值未到账补卡';
+        const cost = Number(document.getElementById('genCost').value);
+        const salePrice = Number(document.getElementById('genSalePrice').value);
         const btn = document.getElementById('genBtn');
 
         if (!count || count < 1 || count > 500) {
             showToast('数量必须在 1-500 之间', 'error');
+            return;
+        }
+        if (isCompensation && count !== 1) {
+            showToast('补卡一次只能生成 1 张卡密', 'error');
+            return;
+        }
+        if (isCompensation && !originalCode) {
+            showToast('请输入旧卡密', 'error');
+            return;
+        }
+        if (!isCompensation && !remark) {
+            showToast('请输入备注', 'error');
+            return;
+        }
+        if (!isCompensation && (!Number.isFinite(cost) || cost < 0)) {
+            showToast('成本必须是不小于 0 的数字', 'error');
+            return;
+        }
+        if (!isCompensation && (!Number.isFinite(salePrice) || salePrice < 0)) {
+            showToast('卖价必须是不小于 0 的数字', 'error');
             return;
         }
 
@@ -2759,9 +2927,25 @@
         btn.innerHTML = '<span class="spinner"></span> 生成中...';
 
         try {
+            const payload = isCompensation
+                ? {
+                    count: 1,
+                    type,
+                    issue_type: 'compensation',
+                    original_code: originalCode,
+                    compensation_reason: compensationReason
+                }
+                : {
+                    count,
+                    type,
+                    issue_type: 'normal',
+                    remark,
+                    cost,
+                    sale_price: salePrice
+                };
             const res = await adminFetch('/api/admin/cards/generate', {
                 method: 'POST',
-                body: JSON.stringify({ count, type })
+                body: JSON.stringify(payload)
             });
 
             const data = await res.json();
@@ -2775,8 +2959,9 @@
             generatedCodesMeta = { type: data.type || type, count: data.count || data.codes.length };
             const result = document.getElementById('genResult');
             result.classList.add('visible');
+            const actionLabel = data.issue_type === 'compensation' ? '补卡生成' : '成功生成';
             document.getElementById('genResultTitle').textContent =
-                `✅ 成功生成 ${data.count} 张 ${data.type.toUpperCase()} 卡密 (批次: ${data.batchId})`;
+                `✅ ${actionLabel} ${data.count} 张 ${data.type.toUpperCase()} 卡密 (批次: ${data.batchId})`;
             document.getElementById('genCodesList').textContent = data.codes.join('\n');
 
             showToast(data.message, 'success');
@@ -2843,6 +3028,10 @@
 
     document.getElementById('bulkCardActionInput').addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') applyBulkCardAction('disable', 'input');
+    });
+
+    document.getElementById('bulkCardReplaceInput').addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') applyBulkCardReplace();
     });
 
     function escapeHtml(value) {
@@ -3044,6 +3233,107 @@
         }
     }
 
+    function renderBulkReplaceResult(replacements, batchId) {
+        const items = Array.isArray(replacements) ? replacements : [];
+        if (!items.length) return '';
+        return `
+            <div style="margin-top: 16px; color: var(--emerald); font-size: 12px;">已生成 ${items.length} 张新卡${batchId ? ` · 批次 ${escapeHtml(batchId)}` : ''}</div>
+            <div class="table-wrapper" style="margin-top: 12px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>旧卡密</th>
+                            <th>新卡密</th>
+                            <th>类型</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item) => `
+                            <tr>
+                                <td class="code-cell">${escapeHtml(item.old_code)}</td>
+                                <td class="code-cell">${escapeHtml(item.new_code)}</td>
+                                <td><span class="badge badge-${escapeHtml(item.type)}">${escapeHtml(typeLabel(item.type))}</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="bulk-action-buttons" style="margin-top: 12px;">
+                <button class="btn btn-ghost btn-sm" type="button" onclick="copyBulkReplaceCodes()">复制新卡</button>
+            </div>
+        `;
+    }
+
+    function renderBulkReplaceError(data) {
+        const usedCodes = Array.isArray(data.used_codes) ? data.used_codes : [];
+        const unavailableCodes = Array.isArray(data.unavailable_codes) ? data.unavailable_codes : [];
+        const notFoundCodes = Array.isArray(data.not_found_codes) ? data.not_found_codes : [];
+        const groups = [
+            usedCodes.length ? `<p style="margin-top:8px;color:var(--rose);">已使用：${usedCodes.map(escapeHtml).join(', ')}</p>` : '',
+            unavailableCodes.length ? `<p style="margin-top:8px;color:var(--amber);">不可替换：${unavailableCodes.map(escapeHtml).join(', ')}</p>` : '',
+            notFoundCodes.length ? `<p style="margin-top:8px;color:var(--text-muted);">未找到：${notFoundCodes.map(escapeHtml).join(', ')}</p>` : ''
+        ].join('');
+        return `<div class="empty-state" style="margin-top:16px;"><div class="icon">⚠️</div><p>${escapeHtml(data.error || '批量替换失败')}</p>${groups}</div>`;
+    }
+
+    function copyBulkReplaceCodes() {
+        if (!generatedCodes.length) return;
+        navigator.clipboard.writeText(generatedCodes.join('\n')).then(() => {
+            showToast('已复制新卡密', 'success');
+        });
+    }
+
+    async function applyBulkCardReplace() {
+        if (!hasPermission('manage_cards')) return;
+        const input = document.getElementById('bulkCardReplaceInput');
+        const resultDiv = document.getElementById('bulkCardReplaceResult');
+        const codes = parseBulkCardCodesFromText(input.value);
+        if (!codes.length) {
+            showToast('请输入至少一个要替换的卡密', 'error');
+            return;
+        }
+
+        if (!confirm(`确认替换 ${codes.length} 张卡密？成功后旧卡会被禁用，新卡会立即生成。`)) {
+            return;
+        }
+
+        const btn = document.getElementById('bulkReplaceBtn');
+        const oldText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 替换中...';
+        }
+
+        try {
+            const res = await adminFetch('/api/admin/cards/replace', {
+                method: 'POST',
+                body: JSON.stringify({ codes })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                resultDiv.innerHTML = renderBulkReplaceError(data);
+                showToast(data.error || '批量替换失败', 'error');
+                return;
+            }
+
+            generatedCodes = Array.isArray(data.codes) ? data.codes : [];
+            generatedCodesMeta = { type: 'replacement', count: generatedCodes.length };
+            input.value = '';
+            resultDiv.innerHTML = renderBulkReplaceResult(data.replacements, data.batchId);
+            showToast(data.message || `成功替换 ${generatedCodes.length} 张卡密`, 'success');
+            await loadCards();
+            loadStats();
+        } catch (err) {
+            resultDiv.innerHTML = `<div class="empty-state" style="margin-top:16px;"><div class="icon">⚠️</div><p>网络错误，请稍后重试</p></div>`;
+            showToast('批量替换失败: ' + err.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = oldText || '批量替换';
+            }
+        }
+    }
+
     async function loadSubAdmins() {
         if (!hasPermission('manage_accounts')) return;
         const tbody = document.getElementById('subAdminsTableBody');
@@ -3181,7 +3471,7 @@
 
             const tbody = document.getElementById('cardsTableBody');
             if (currentCards.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="${hasPermission('manage_cards') ? 9 : 8}"><div class="empty-state"><div class="icon">🔍</div><p>暂无数据</p></div></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${hasPermission('manage_cards') ? 12 : 11}"><div class="empty-state"><div class="icon">🔍</div><p>暂无数据</p></div></td></tr>`;
             } else {
                 tbody.innerHTML = currentCards.map(c => `
                     <tr>
@@ -3194,6 +3484,9 @@
                         <td class="code-cell">${c.code}</td>
                         <td><span class="badge badge-${c.type}">${typeLabel(c.type)}</span></td>
                         <td><span class="badge badge-${c.status}">${statusLabel(c.status)}</span></td>
+                        <td style="color:var(--text-secondary);font-size:12px;max-width:180px;">${escapeHtml(c.remark || '-')}</td>
+                        <td style="color:var(--text-muted);font-size:12px;">${formatMoney(c.cost)}</td>
+                        <td style="color:var(--text-muted);font-size:12px;">${formatMoney(c.sale_price)}</td>
                         <td style="color:var(--text-muted);font-size:12px;">${escapeHtml(c.created_by_username || 'super_admin')}</td>
                         <td style="color:var(--text-muted);font-size:12px;">${c.created_at || '-'}</td>
                         <td style="color:var(--text-muted);font-size:12px;">${c.used_at || '-'}</td>
@@ -3256,6 +3549,13 @@
     function typeLabel(type) {
         const map = { plus: 'Plus', plus_1y: 'Plus 1 年', pro: 'Pro 5X', pro_20x: 'Pro 20X' };
         return map[type] || String(type || '-').toUpperCase();
+    }
+
+    function formatMoney(value) {
+        if (value === null || value === undefined || value === '') return '-';
+        const number = Number(value);
+        if (!Number.isFinite(number)) return escapeHtml(value);
+        return number.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     }
 
     function apiBalanceValue(balanceTotals, key) {
@@ -4100,6 +4400,10 @@
             document.getElementById('settingsApiKey').placeholder = data.apiKey
                 ? '已配置（输入新值可重置，留空保持不变）'
                 : '请输入 API Key';
+            document.getElementById('settingsChannelName').value = data.channelName || '';
+            document.getElementById('settingsDefaultCost').value = String(Number.isFinite(Number(data.defaultCost)) ? Number(data.defaultCost) : 10);
+            currentViewer = normalizeViewer({ ...(currentViewer || {}), defaultCost: data.defaultCost });
+            applyDefaultCostToGenerateForm();
             applyUserNoticeToForm(data.userNotice);
 
             const banner = document.getElementById('settingsStatusBanner');
@@ -4118,6 +4422,63 @@
             }
         } catch (err) {
             console.error('加载设置失败:', err);
+        }
+    }
+
+    async function saveDefaultCost() {
+        const btn = document.getElementById('saveDefaultCostBtn');
+        const defaultCost = Number(document.getElementById('settingsDefaultCost').value);
+        if (!Number.isFinite(defaultCost) || defaultCost < 0) {
+            showToast('默认成本必须是不小于 0 的数字', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+        try {
+            const res = await adminFetch('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify({ defaultCost })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.error || '保存默认成本失败', 'error');
+                return;
+            }
+            currentViewer = normalizeViewer({ ...(currentViewer || {}), defaultCost: data.defaultCost });
+            document.getElementById('settingsDefaultCost').value = String(data.defaultCost ?? defaultCost);
+            document.getElementById('genCost').value = String(data.defaultCost ?? defaultCost);
+            showToast(`默认成本已保存：${data.defaultCost ?? defaultCost}`, 'success');
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 保存默认成本';
+        }
+    }
+
+    async function saveUserBranding() {
+        const btn = document.getElementById('saveUserBrandingBtn');
+        const channelName = document.getElementById('settingsChannelName').value.trim();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+        try {
+            const res = await adminFetch('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify({ channelName })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.error || '保存用户页展示配置失败', 'error');
+                return;
+            }
+            document.getElementById('settingsChannelName').value = data.channelName || '';
+            showToast(data.channelName ? `渠道名称已保存：${data.channelName}` : '已恢复默认无渠道', 'success');
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 保存用户页展示';
         }
     }
 

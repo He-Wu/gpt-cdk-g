@@ -1028,7 +1028,7 @@
         <!-- 标题 -->
         <header class="header">
             <div class="logo">⚡</div>
-            <h1 data-i18n="brand.title">GPT源头</h1>
+            <h1 id="brandTitle" data-i18n="brand.title">GPT源头</h1>
             <p data-i18n="hero.subtitle">使用卡密快速激活 Plus 或 Pro 订阅</p>
         </header>
 
@@ -1260,6 +1260,7 @@
         let currentMaintenanceMessages = null;
         let currentLanguage = localStorage.getItem('userPageLanguage') || 'zh';
         let currentUserNotice = null;
+        let currentChannelName = '';
 
         const I18N = {
             zh: {
@@ -1544,6 +1545,21 @@
             return String(dictionary[key] || fallback).replace(/\{(\w+)\}/g, (_, name) => replacements[name] ?? '');
         }
 
+        function normalizeChannelName(value) {
+            return String(value || '').trim().slice(0, 40);
+        }
+
+        function brandTitle() {
+            return `${normalizeChannelName(currentChannelName)}${t('brand.title')}`;
+        }
+
+        function applyBranding() {
+            const title = brandTitle();
+            const titleEl = document.getElementById('brandTitle');
+            if (titleEl) titleEl.textContent = title;
+            document.title = `${title} - ${currentLanguage === 'en' ? 'Subscription Redeem' : '订阅兑换'}`;
+        }
+
         function applyLanguage() {
             currentLanguage = I18N[currentLanguage] ? currentLanguage : 'zh';
             document.documentElement.lang = currentLanguage === 'en' ? 'en' : 'zh-CN';
@@ -1563,6 +1579,7 @@
             document.querySelectorAll('[data-lang-option]').forEach((button) => {
                 button.classList.toggle('active', button.dataset.langOption === currentLanguage);
             });
+            applyBranding();
             renderUserNotice(currentUserNotice);
             if (maintenanceActive) {
                 const msgEl = document.getElementById('maintenanceMsgText');
@@ -1622,6 +1639,8 @@
             try {
                 const res = await fetch('/api/status');
                 const data = await res.json();
+                currentChannelName = normalizeChannelName(data.channelName);
+                applyBranding();
                 currentUserNotice = data.userNotice || null;
                 renderUserNotice(currentUserNotice);
                 currentMaintenanceMessages = data.maintenanceMessages || (data.message ? { zh: data.message } : null);

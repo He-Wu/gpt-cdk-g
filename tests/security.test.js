@@ -221,11 +221,18 @@ async function updateMaintenance(port, token, body) {
   });
 }
 
-async function generateOneCard(port, token, type = 'plus') {
+async function generateOneCard(port, token, type = 'plus', overrides = {}) {
   const { res, data } = await requestJson(port, '/api/admin/cards/generate', {
     method: 'POST',
     headers: { 'X-Admin-Token': token },
-    body: JSON.stringify({ count: 1, type })
+    body: JSON.stringify({
+      count: 1,
+      type,
+      remark: '测试生成',
+      cost: 10,
+      sale_price: 20,
+      ...overrides
+    })
   });
   assert.equal(res.status, 200);
   return data.codes[0];
@@ -268,6 +275,14 @@ async function queryCardsBatch(port, codes) {
 
 async function adminQueryCardsBatch(port, token, codes) {
   return requestJson(port, '/api/admin/cards/query/batch', {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token },
+    body: JSON.stringify({ codes })
+  });
+}
+
+async function adminReplaceCards(port, token, codes) {
+  return requestJson(port, '/api/admin/cards/replace', {
     method: 'POST',
     headers: { 'X-Admin-Token': token },
     body: JSON.stringify({ codes })
@@ -452,6 +467,209 @@ test('admin settings can configure public user notice dynamically', async () => 
     assert.equal(status.res.status, 200);
     assert.equal(status.data.userNotice.enabled, true);
     assert.equal(status.data.userNotice.zhBody, '请确认账号状态后再提交。');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin settings can configure public user page channel name', async () => {
+  const server = await startServer('public channel name settings');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const saved = await requestJson(server.port, '/api/admin/settings', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ channelName: '91' })
+    });
+    assert.equal(saved.res.status, 200);
+    assert.equal(saved.data.channelName, '91');
+
+    const adminSettings = await requestJson(server.port, '/api/admin/settings', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(adminSettings.res.status, 200);
+    assert.equal(adminSettings.data.channelName, '91');
+
+    const status = await requestJson(server.port, '/api/status');
+    assert.equal(status.res.status, 200);
+    assert.equal(status.data.channelName, '91');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin settings can configure default card cost and generated cards store commercial fields', async () => {
+  const server = await startServer('default card cost and commercial fields');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const saved = await requestJson(server.port, '/api/admin/settings', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ defaultCost: 12.5 })
+    });
+    assert.equal(saved.res.status, 200);
+    assert.equal(saved.data.defaultCost, 12.5);
+
+    const generated = await requestJson(server.port, '/api/admin/cards/generate', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        count: 2,
+        type: 'plus',
+        remark: '首批客户退款补发',
+        sale_price: 39.9
+      })
+    });
+    assert.equal(generated.res.status, 200);
+    assert.equal(generated.data.count, 2);
+
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?page=1&pageSize=10', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(cardsRes.res.status, 200);
+    const generatedCards = cardsRes.data.cards.filter((card) => generated.data.codes.includes(card.code));
+    assert.equal(generatedCards.length, 2);
+    assert.ok(generatedCards.every((card) => card.remark === '首批客户退款补发'));
+    assert.ok(generatedCards.every((card) => card.cost === 12.5));
+    assert.ok(generatedCards.every((card) => card.sale_price === 39.9));
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin compensation card generation uses original card cost and zero sale price', async () => {
+  const originalCode = 'CDK-PLUS-COMPA-AAAAA-AAAAA-AAAAA-AAAAA';
+  const unusedCode = 'CDK-PLUS-COMPB-BBBBB-BBBBB-BBBBB-BBBBB';
+  const legacyNoCostCode = 'CDK-PLUS-COMPC-CCCCC-CCCCC-CCCCC-CCCCC';
+  const server = await startServer('compensation card generation', {}, {
+    cards: [
+      {
+        id: 1,
+        code: originalCode,
+        type: 'plus',
+        status: 'used',
+        created_at: '2026/4/24 10:00:00',
+        used_at: '2026/4/24 10:20:00',
+        used_by: 'hash-used',
+        used_email: 'buyer@example.com',
+        cost: 12.5,
+        sale_price: 39,
+        batch_id: 'comp-a'
+      },
+      {
+        id: 2,
+        code: unusedCode,
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:10:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'comp-b'
+      },
+      {
+        id: 3,
+        code: legacyNoCostCode,
+        type: 'plus',
+        status: 'used',
+        created_at: '2026/4/24 10:30:00',
+        used_at: '2026/4/24 10:40:00',
+        used_by: 'hash-legacy',
+        used_email: 'legacy@example.com',
+        batch_id: 'comp-c'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const saved = await requestJson(server.port, '/api/admin/settings', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ defaultCost: 18 })
+    });
+    assert.equal(saved.res.status, 200);
+
+    const unusedCompensation = await requestJson(server.port, '/api/admin/cards/generate', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        count: 1,
+        type: 'plus',
+        issue_type: 'compensation',
+        original_code: unusedCode
+      })
+    });
+    assert.equal(unusedCompensation.res.status, 400);
+    assert.match(unusedCompensation.data.error, /必须已使用/);
+
+    const generated = await requestJson(server.port, '/api/admin/cards/generate', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        count: 1,
+        type: 'plus',
+        issue_type: 'compensation',
+        original_code: originalCode,
+        cost: 1,
+        sale_price: 99
+      })
+    });
+    assert.equal(generated.res.status, 200);
+    assert.equal(generated.data.issue_type, 'compensation');
+    assert.equal(generated.data.compensation_for_code, originalCode);
+    assert.equal(generated.data.compensation_reason, '充值未到账补卡');
+    assert.equal(generated.data.cost, 12.5);
+    assert.equal(generated.data.sale_price, 0);
+
+    const duplicate = await requestJson(server.port, '/api/admin/cards/generate', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        count: 1,
+        type: 'plus',
+        issue_type: 'compensation',
+        original_code: originalCode,
+        compensation_reason: '再次补卡'
+      })
+    });
+    assert.equal(duplicate.res.status, 409);
+
+    const legacyGenerated = await requestJson(server.port, '/api/admin/cards/generate', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        count: 1,
+        type: 'plus',
+        issue_type: 'compensation',
+        original_code: legacyNoCostCode,
+        compensation_reason: '旧数据无成本补卡'
+      })
+    });
+    assert.equal(legacyGenerated.res.status, 200);
+    assert.equal(legacyGenerated.data.cost, 18);
+    assert.equal(legacyGenerated.data.sale_price, 0);
+
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?page=1&pageSize=10', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(cardsRes.res.status, 200);
+    const card = cardsRes.data.cards.find((item) => item.code === generated.data.codes[0]);
+    assert.equal(card.remark, '充值未到账补卡');
+    assert.equal(card.cost, 12.5);
+    assert.equal(card.sale_price, 0);
+    assert.equal(card.issue_type, 'compensation');
+    assert.equal(card.compensation_reason, '充值未到账补卡');
+    assert.equal(card.compensation_for_code, originalCode);
+
+    const oldCard = cardsRes.data.cards.find((item) => item.code === originalCode);
+    assert.equal(oldCard.compensation_code, generated.data.codes[0]);
+    assert.equal(oldCard.compensation_reason, '充值未到账补卡');
+
+    const legacyCompensation = cardsRes.data.cards.find((item) => item.code === legacyGenerated.data.codes[0]);
+    assert.equal(legacyCompensation.cost, 18);
+    assert.equal(legacyCompensation.compensation_for_code, legacyNoCostCode);
   } finally {
     await server.stop();
   }
@@ -1538,6 +1756,18 @@ test('admin page exposes user notice configuration controls', async () => {
   assert.match(html, /userNotice/);
 });
 
+test('admin and user pages expose channel name branding controls', async () => {
+  const adminHtml = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(adminHtml, /id="settingsChannelName"/);
+  assert.match(adminHtml, /channelName/);
+
+  const userHtml = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(userHtml, /let currentChannelName/);
+  assert.match(userHtml, /function brandTitle/);
+  assert.match(userHtml, /data\.channelName/);
+  assert.match(userHtml, /brandTitle\(\)/);
+});
+
 test('admin dashboard exposes redeem summary range controls and summary grid', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /redeemSummaryPanel/);
@@ -1796,6 +2026,136 @@ test('sub admins can disable and enable only their own cards', async () => {
     assert.equal(statuses.get('CDK-PRO-OWNENA-BBBBB-BBBBB-BBBBB-BBBBB'), 'unused');
     assert.equal(statuses.get('CDK-PLUS-ROOTUN-CCCCC-CCCCC-CCCCC-CCCCC'), 'unused');
     assert.equal(statuses.get('CDK-PRO-ROOTDIS-DDDDD-DDDDD-DDDDD-DDDDD'), 'disabled');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin batch replace generates same-type new cards and disables old unused cards', async () => {
+  const oldPlus = 'CDK-PLUS-REPLA-AAAAA-AAAAA-AAAAA-AAAAA';
+  const oldPro = 'CDK-PRO-REPLB-BBBBB-BBBBB-BBBBB-BBBBB';
+  const server = await startServer('admin batch replace unused cards', {}, {
+    cards: [
+      {
+        id: 1,
+        code: oldPlus,
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:10:00',
+        used_at: null,
+        used_by: null,
+        remark: '客户原卡',
+        cost: 3,
+        sale_price: 88,
+        batch_id: 'refund-a',
+        created_by_username: 'super_admin',
+        created_by_role: 'super_admin'
+      },
+      {
+        id: 2,
+        code: oldPro,
+        type: 'pro',
+        status: 'unused',
+        created_at: '2026/4/24 10:11:00',
+        used_at: null,
+        used_by: null,
+        remark: '客户原卡',
+        cost: 4,
+        sale_price: 128,
+        batch_id: 'refund-b',
+        created_by_username: 'super_admin',
+        created_by_role: 'super_admin'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const settingsSaved = await requestJson(server.port, '/api/admin/settings', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ defaultCost: 16 })
+    });
+    assert.equal(settingsSaved.res.status, 200);
+
+    const replaced = await adminReplaceCards(server.port, token, [oldPlus, oldPro]);
+    assert.equal(replaced.res.status, 200);
+    assert.equal(replaced.data.replaced, 2);
+    assert.equal(replaced.data.codes.length, 2);
+    assert.equal(replaced.data.replacements.length, 2);
+
+    const replacementMap = new Map(replaced.data.replacements.map((item) => [item.old_code, item]));
+    assert.equal(replacementMap.get(oldPlus).type, 'plus');
+    assert.equal(replacementMap.get(oldPro).type, 'pro');
+    assert.notEqual(replacementMap.get(oldPlus).new_code, oldPlus);
+    assert.notEqual(replacementMap.get(oldPro).new_code, oldPro);
+
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?page=1&pageSize=10', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(cardsRes.res.status, 200);
+    const cardMap = new Map(cardsRes.data.cards.map((card) => [card.code, card]));
+    assert.equal(cardMap.get(oldPlus).status, 'disabled');
+    assert.equal(cardMap.get(oldPro).status, 'disabled');
+    assert.equal(cardMap.get(replacementMap.get(oldPlus).new_code).status, 'unused');
+    assert.equal(cardMap.get(replacementMap.get(oldPlus).new_code).type, 'plus');
+    assert.equal(cardMap.get(replacementMap.get(oldPlus).new_code).remark, '卡密替换');
+    assert.equal(cardMap.get(replacementMap.get(oldPlus).new_code).cost, 16);
+    assert.equal(cardMap.get(replacementMap.get(oldPlus).new_code).sale_price, 88);
+    assert.equal(cardMap.get(replacementMap.get(oldPro).new_code).status, 'unused');
+    assert.equal(cardMap.get(replacementMap.get(oldPro).new_code).type, 'pro');
+    assert.equal(cardMap.get(replacementMap.get(oldPro).new_code).remark, '卡密替换');
+    assert.equal(cardMap.get(replacementMap.get(oldPro).new_code).cost, 16);
+    assert.equal(cardMap.get(replacementMap.get(oldPro).new_code).sale_price, 128);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin batch replace fails atomically and lists used cards', async () => {
+  const unusedCode = 'CDK-PLUS-RFAIL-AAAAA-AAAAA-AAAAA-AAAAA';
+  const usedCode = 'CDK-PRO-RFAIL-BBBBB-BBBBB-BBBBB-BBBBB';
+  const server = await startServer('admin batch replace blocks used cards', {}, {
+    cards: [
+      {
+        id: 1,
+        code: unusedCode,
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:10:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'refund-a'
+      },
+      {
+        id: 2,
+        code: usedCode,
+        type: 'pro',
+        status: 'used',
+        created_at: '2026/4/24 10:11:00',
+        used_at: '2026/4/24 10:20:00',
+        used_by: 'hash-b',
+        used_email: 'buyer@example.com',
+        batch_id: 'refund-b'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const replaced = await adminReplaceCards(server.port, token, [unusedCode, usedCode]);
+    assert.equal(replaced.res.status, 409);
+    assert.match(replaced.data.error, /已使用/);
+    assert.deepEqual(replaced.data.used_codes, [usedCode]);
+
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?page=1&pageSize=10', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(cardsRes.res.status, 200);
+    const cardMap = new Map(cardsRes.data.cards.map((card) => [card.code, card]));
+    assert.equal(cardsRes.data.total, 2);
+    assert.equal(cardMap.get(unusedCode).status, 'unused');
+    assert.equal(cardMap.get(usedCode).status, 'used');
   } finally {
     await server.stop();
   }
@@ -2171,6 +2531,37 @@ test('admin cards page exposes bulk selection and batch status actions', async (
   assert.match(html, /批量启用/);
   assert.match(html, /\/api\/admin\/cards\/disable/);
   assert.match(html, /\/api\/admin\/cards\/enable/);
+});
+
+test('admin cards page exposes batch replace controls for refunds', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="bulkCardReplaceInput"/);
+  assert.match(html, /批量替换/);
+  assert.match(html, /applyBulkCardReplace\(/);
+  assert.match(html, /\/api\/admin\/cards\/replace/);
+  assert.match(html, /renderBulkReplaceResult/);
+});
+
+test('admin card generation and list expose remark cost and sale price fields', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="genIssueType"/);
+  assert.match(html, /value="compensation"/);
+  assert.match(html, /id="genOriginalCode"/);
+  assert.match(html, /旧卡密（必须已使用）/);
+  assert.match(html, /id="genCompensationReason"/);
+  assert.match(html, /value="充值未到账补卡"/);
+  assert.match(html, /自动使用旧卡成本/);
+  assert.match(html, /handleGenerateIssueTypeChange/);
+  assert.match(html, /id="genRemark"/);
+  assert.match(html, /id="genCost"/);
+  assert.match(html, /id="genSalePrice"/);
+  assert.match(html, /remark/);
+  assert.match(html, /sale_price/);
+  assert.match(html, /id="settingsDefaultCost"/);
+  assert.match(html, /默认成本/);
+  assert.match(html, />备注</);
+  assert.match(html, />成本</);
+  assert.match(html, />卖价</);
 });
 
 test('admin cards page exposes created and used minute range filters', async () => {

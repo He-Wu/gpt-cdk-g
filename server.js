@@ -26,6 +26,7 @@ const CARDS_FILE = path.join(DATA_DIR, 'cards.json');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const CARD_TYPES = ['plus', 'plus_1y', 'pro', 'pro_20x'];
+const DEFAULT_COMPENSATION_REASON = '充值未到账补卡';
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -61,6 +62,25 @@ function normalizeUserNotice(raw) {
   };
 }
 
+function normalizeChannelName(value) {
+  return String(value || '').trim().slice(0, 40);
+}
+
+function normalizeMoneyAmount(value, fallback = null) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100) / 100;
+}
+
+function normalizeDefaultCost(value) {
+  return normalizeMoneyAmount(value, 10) ?? 10;
+}
+
+function normalizeCardRemark(value) {
+  return String(value || '').trim().slice(0, 200);
+}
+
 function normalizeMaintenanceMessages(raw = {}) {
   const source = raw && typeof raw === 'object' ? raw : {};
   return {
@@ -77,6 +97,8 @@ function loadSettings() {
       if (!Array.isArray(parsed.subAdmins)) parsed.subAdmins = [];
       parsed.typedMaintenance = normalizeTypedMaintenanceConfig(parsed.typedMaintenance);
       parsed.userNotice = normalizeUserNotice(parsed.userNotice);
+      parsed.channelName = normalizeChannelName(parsed.channelName);
+      parsed.defaultCost = normalizeDefaultCost(parsed.defaultCost);
       const maintenanceMessages = normalizeMaintenanceMessages(parsed);
       parsed.maintenanceMessageZh = maintenanceMessages.zh;
       parsed.maintenanceMessageEn = maintenanceMessages.en;
@@ -95,6 +117,8 @@ function loadSettings() {
     maintenanceMessageEn: '',
     typedMaintenance: createDefaultTypedMaintenance(),
     userNotice: normalizeUserNotice(),
+    channelName: '',
+    defaultCost: 10,
     subAdmins: []
   };
 }
@@ -134,6 +158,14 @@ function getMaintenanceMessage() { return getMaintenanceMessages().zh; }
 function getUserNotice() {
   settings.userNotice = normalizeUserNotice(settings.userNotice);
   return settings.userNotice;
+}
+function getChannelName() {
+  settings.channelName = normalizeChannelName(settings.channelName);
+  return settings.channelName;
+}
+function getDefaultCost() {
+  settings.defaultCost = normalizeDefaultCost(settings.defaultCost);
+  return settings.defaultCost;
 }
 
 function getTypedMaintenance() {
@@ -210,6 +242,7 @@ function buildViewer(session) {
   return {
     role,
     username: session?.username || (isSuperAdmin ? 'super_admin' : null),
+    defaultCost: getDefaultCost(),
     permissions: {
       manage_settings: isSuperAdmin,
       manage_accounts: isSuperAdmin,
@@ -228,7 +261,8 @@ app.get('/api/status', (req, res) => {
     maintenance: isMaintenanceEnabled(),
     message: isMaintenanceEnabled() ? getMaintenanceMessage() : null,
     maintenanceMessages: isMaintenanceEnabled() ? getMaintenanceMessages() : null,
-    userNotice: getUserNotice()
+    userNotice: getUserNotice(),
+    channelName: getChannelName()
   });
 });
 
@@ -430,8 +464,62 @@ function generateCardCode(type) {
   return `CDK-${prefix}-${groups.join('-')}`;
 }
 
+function generateUniqueCardCode(type, existingCodes) {
+  let code;
+  let attempts = 0;
+  do {
+    code = generateCardCode(type);
+    attempts++;
+    if (attempts > 100) {
+      throw new Error('生成卡密失败，请重试');
+    }
+  } while (existingCodes.has(code));
+  existingCodes.add(code);
+  return code;
+}
+
+function createAdminCard(type, batchId, admin, extra = {}) {
+  return {
+    id: cards.length + 1,
+    type,
+    status: 'unused',
+    created_at: nowStr(),
+    used_at: null,
+    used_by: null,
+    remark: '',
+    cost: getDefaultCost(),
+    sale_price: null,
+    issue_type: 'normal',
+    compensation_reason: null,
+    compensation_for_code: null,
+    batch_id: batchId,
+    created_by_username: admin?.username || 'super_admin',
+    created_by_role: admin?.role || 'super_admin',
+    ...extra
+  };
+}
+
 function normalizeCardCode(code) {
   return String(code || '').trim().toUpperCase();
+}
+
+function findManageableCardByAnyStatus(code, session) {
+  const normalizedCode = normalizeCardCode(code);
+  if (!normalizedCode) return null;
+  return cards.find((card) => (
+    card.code === normalizedCode
+    && cardBelongsToSession(card, session)
+  )) || null;
+}
+
+function findCompensationForCard(code, session) {
+  const normalizedCode = normalizeCardCode(code);
+  if (!normalizedCode) return null;
+  return cards.find((card) => (
+    card.issue_type === 'compensation'
+    && normalizeCardCode(card.compensation_for_code) === normalizedCode
+    && cardBelongsToSession(card, session)
+  )) || null;
 }
 
 function normalizeJobStatus(status) {
@@ -1140,13 +1228,15 @@ app.get('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
     maintenanceMessageZh: settings.maintenanceMessageZh || settings.maintenanceMessage || '',
     maintenanceMessageEn: settings.maintenanceMessageEn || '',
     typedMaintenance: getTypedMaintenance(),
-    userNotice: getUserNotice()
+    userNotice: getUserNotice(),
+    channelName: getChannelName(),
+    defaultCost: getDefaultCost()
   });
 });
 
 // 保存系统设置
 app.post('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
-  const { apiKey, baseUrl, userNotice } = req.body;
+  const { apiKey, baseUrl, userNotice, channelName, defaultCost } = req.body;
 
   if (typeof apiKey !== 'undefined' && apiKey !== null) {
     settings.apiKey = String(apiKey).trim();
@@ -1157,12 +1247,24 @@ app.post('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
   if (typeof userNotice !== 'undefined') {
     settings.userNotice = normalizeUserNotice(userNotice);
   }
+  if (typeof channelName !== 'undefined') {
+    settings.channelName = normalizeChannelName(channelName);
+  }
+  if (typeof defaultCost !== 'undefined') {
+    const normalizedDefaultCost = normalizeMoneyAmount(defaultCost, null);
+    if (normalizedDefaultCost === null) {
+      return res.status(400).json({ error: '默认成本必须是不小于 0 的数字' });
+    }
+    settings.defaultCost = normalizedDefaultCost;
+  }
 
   saveSettings(settings);
   res.json({
     message: '设置已保存',
     configured: !!(settings.apiKey && settings.baseUrl),
-    userNotice: getUserNotice()
+    userNotice: getUserNotice(),
+    channelName: getChannelName(),
+    defaultCost: getDefaultCost()
   });
 });
 
@@ -1296,6 +1398,31 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
 // 批量生成卡密
 app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
   const { count, type } = req.body;
+  const issueType = String(req.body.issue_type ?? req.body.issueType ?? req.body.generation_mode ?? 'normal')
+    .trim()
+    .toLowerCase();
+  const isCompensation = req.body.compensation === true || issueType === 'compensation' || issueType === '补卡';
+  const compensationReason = normalizeCardRemark(
+    req.body.compensation_reason
+    ?? req.body.compensationReason
+    ?? req.body.remark
+    ?? req.body.note
+    ?? DEFAULT_COMPENSATION_REASON
+  ) || DEFAULT_COMPENSATION_REASON;
+  const remark = isCompensation ? compensationReason : normalizeCardRemark(req.body.remark ?? req.body.note);
+  const originalCode = normalizeCardCode(
+    req.body.original_code
+    ?? req.body.originalCode
+    ?? req.body.old_code
+    ?? req.body.oldCode
+    ?? req.body.source_code
+    ?? req.body.sourceCode
+  );
+  let cost = isCompensation ? null : normalizeMoneyAmount(req.body.cost, getDefaultCost());
+  const salePrice = isCompensation ? 0 : normalizeMoneyAmount(
+    req.body.sale_price ?? req.body.salePrice ?? req.body.price,
+    null
+  );
 
   if (!count || !Number.isInteger(count) || count < 1 || count > 500) {
     return res.status(400).json({ error: '数量必须是 1-500 的整数' });
@@ -1303,45 +1430,179 @@ app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
   if (!CARD_TYPES.includes(type)) {
     return res.status(400).json({ error: '类型必须是 plus、plus_1y、pro 或 pro_20x' });
   }
+  if (isCompensation && count !== 1) {
+    return res.status(400).json({ error: '补卡一次只能生成 1 张卡密' });
+  }
+  if (!remark) {
+    return res.status(400).json({ error: '备注不能为空' });
+  }
+  if (!isCompensation && cost === null) {
+    return res.status(400).json({ error: '成本必须是不小于 0 的数字' });
+  }
+  if (salePrice === null) {
+    return res.status(400).json({ error: '卖价必须是不小于 0 的数字' });
+  }
 
   const batchId = uuidv4().substring(0, 8);
   const existingCodes = new Set(cards.map(c => c.code));
   const newCodes = [];
+  let originalCard = null;
 
-  for (let i = 0; i < count; i++) {
-    let code;
-    let attempts = 0;
-    do {
-      code = generateCardCode(type);
-      attempts++;
-      if (attempts > 100) {
-        return res.status(500).json({ error: '生成卡密失败，请重试' });
-      }
-    } while (existingCodes.has(code));
+  if (isCompensation) {
+    if (!originalCode) {
+      return res.status(400).json({ error: '补卡需要输入旧卡密' });
+    }
+    originalCard = findManageableCardByAnyStatus(originalCode, req.admin);
+    if (!originalCard) {
+      return res.status(404).json({ error: '旧卡密不存在或无权补卡' });
+    }
+    if (originalCard.status !== 'used') {
+      return res.status(400).json({ error: '旧卡密必须已使用后才能补卡' });
+    }
+    cost = normalizeMoneyAmount(originalCard.cost, null);
+    if (cost === null) {
+      cost = getDefaultCost();
+    }
+    const existingCompensation = originalCard.compensation_code || findCompensationForCard(originalCode, req.admin)?.code;
+    if (existingCompensation) {
+      return res.status(409).json({ error: `旧卡密已补过，新卡密：${existingCompensation}` });
+    }
+  }
 
-    existingCodes.add(code);
-    newCodes.push(code);
-    cards.push({
-      id: cards.length + 1,
-      code,
-      type,
-      status: 'unused',
-      created_at: nowStr(),
-      used_at: null,
-      used_by: null,
-      batch_id: batchId,
-      created_by_username: req.admin?.username || 'super_admin',
-      created_by_role: req.admin?.role || 'super_admin'
+  try {
+    for (let i = 0; i < count; i++) {
+      const code = generateUniqueCardCode(type, existingCodes);
+      newCodes.push(code);
+      cards.push(createAdminCard(type, batchId, req.admin, {
+        code,
+        remark,
+        cost,
+        sale_price: salePrice,
+        issue_type: isCompensation ? 'compensation' : 'normal',
+        compensation_reason: isCompensation ? compensationReason : null,
+        compensation_for_code: isCompensation ? originalCode : null
+      }));
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message || '生成卡密失败，请重试' });
+  }
+
+  if (isCompensation && originalCard) {
+    originalCard.compensated_at = nowStr();
+    originalCard.compensation_code = newCodes[0];
+    originalCard.compensation_batch_id = batchId;
+    originalCard.compensation_reason = compensationReason;
+  }
+
+  saveCards(cards);
+  res.json({
+    message: isCompensation
+      ? `成功补卡 ${count} 张 ${type.toUpperCase()} 卡密`
+      : `成功生成 ${count} 张 ${type.toUpperCase()} 卡密`,
+    batchId,
+    count,
+    type,
+    remark,
+    cost,
+    sale_price: salePrice,
+    issue_type: isCompensation ? 'compensation' : 'normal',
+    compensation_reason: isCompensation ? compensationReason : null,
+    compensation_for_code: isCompensation ? originalCode : null,
+    codes: newCodes
+  });
+});
+
+// 批量替换卡密：退款等场景下，确认旧卡未使用后生成同类型新卡并禁用旧卡
+app.post('/api/admin/cards/replace', adminAuth, (req, res) => {
+  const parsed = parseBatchCardCodes(req.body, 500);
+  if (parsed.error) {
+    return res.status(400).json({ error: parsed.error.replace('查询', '替换') });
+  }
+
+  const targetCards = [];
+  const usedCodes = [];
+  const unavailableCodes = [];
+  const notFoundCodes = [];
+
+  for (const code of parsed.codes) {
+    const card = cards.find((item) => item.code === code && cardBelongsToSession(item, req.admin));
+    if (!card) {
+      notFoundCodes.push(code);
+    } else if (card.status === 'used') {
+      usedCodes.push(code);
+    } else if (card.status !== 'unused') {
+      unavailableCodes.push(code);
+    } else {
+      targetCards.push(card);
+    }
+  }
+
+  if (usedCodes.length > 0) {
+    return res.status(409).json({
+      error: `批量替换失败，以下卡密已使用：${usedCodes.join(', ')}`,
+      used_codes: usedCodes,
+      unavailable_codes: unavailableCodes,
+      not_found_codes: notFoundCodes
+    });
+  }
+
+  if (unavailableCodes.length > 0 || notFoundCodes.length > 0) {
+    return res.status(400).json({
+      error: '批量替换失败，只能替换存在且未使用的卡密',
+      unavailable_codes: unavailableCodes,
+      not_found_codes: notFoundCodes
+    });
+  }
+
+  const batchId = uuidv4().substring(0, 8);
+  const replacedAt = nowStr();
+  const existingCodes = new Set(cards.map(c => c.code));
+  let generated;
+
+  try {
+    generated = targetCards.map((card) => ({
+      oldCard: card,
+      newCode: generateUniqueCardCode(card.type, existingCodes)
+    }));
+  } catch (err) {
+    return res.status(500).json({ error: err.message || '生成替换卡密失败，请重试' });
+  }
+
+  const replacements = [];
+  const newCodes = [];
+  for (const item of generated) {
+    const { oldCard, newCode } = item;
+    oldCard.status = 'disabled';
+    oldCard.replaced_at = replacedAt;
+    oldCard.replacement_batch_id = batchId;
+    oldCard.replaced_by_code = newCode;
+
+    const newCard = createAdminCard(oldCard.type, batchId, req.admin, {
+      code: newCode,
+      remark: '卡密替换',
+      cost: getDefaultCost(),
+      sale_price: normalizeMoneyAmount(oldCard.sale_price ?? oldCard.price, null),
+      replaced_from_code: oldCard.code,
+      replacement_batch_id: batchId
+    });
+    cards.push(newCard);
+
+    newCodes.push(newCode);
+    replacements.push({
+      old_code: oldCard.code,
+      new_code: newCode,
+      type: oldCard.type
     });
   }
 
   saveCards(cards);
   res.json({
-    message: `成功生成 ${count} 张 ${type.toUpperCase()} 卡密`,
+    message: `成功替换 ${replacements.length} 张卡密，旧卡已禁用`,
     batchId,
-    count,
-    type,
-    codes: newCodes
+    count: replacements.length,
+    replaced: replacements.length,
+    codes: newCodes,
+    replacements
   });
 });
 
@@ -1384,7 +1645,10 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
       c.created_by_username,
       c.created_by_role,
       c.created_at,
-      c.used_at
+      c.used_at,
+      c.remark,
+      c.cost,
+      c.sale_price
     ].some(value => String(value || '').toLowerCase().includes(q)));
   }
   if (batch_id) {
