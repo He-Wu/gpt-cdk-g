@@ -42359,14 +42359,14 @@
     "id": 3657,
     "code": "CDK-PLUS-67M9F-ENP9E-4Q6YN-VNZ56-CA4SE",
     "type": "plus",
-    "status": "used",
+    "status": "unused",
     "created_at": "2026/4/25 17:53:03",
-    "used_at": "2026/4/25 22:06:26",
-    "used_by": "3f384930a48a55f8",
+    "used_at": null,
+    "used_by": null,
     "batch_id": "ab5ead53",
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
-    "used_email": "zhou858221@163.com"
+    "used_email": null
   },
   {
     "id": 3658,
@@ -44658,14 +44658,14 @@
     "id": 3838,
     "code": "CDK-PLUS-AUZML-5VP39-5832M-7K29B-EMD4H",
     "type": "plus",
-    "status": "used",
+    "status": "unused",
     "created_at": "2026/4/25 18:45:12",
-    "used_at": "2026/4/26 01:47:26",
-    "used_by": "b9669ffc71377d98",
+    "used_at": null,
+    "used_by": null,
     "batch_id": "35cb6f2f",
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
-    "used_email": "satourensiki@gmail.com"
+    "used_email": null
   },
   {
     "id": 3839,
@@ -50769,14 +50769,14 @@
     "id": 4328,
     "code": "CDK-PLUS-CYU3Q-6NLVP-PQEYR-ZQU55-PNCVH",
     "type": "plus",
-    "status": "used",
+    "status": "unused",
     "created_at": "2026/4/25 21:51:17",
-    "used_at": "2026/4/25 23:21:23",
-    "used_by": "f09d5fd3478fc974",
+    "used_at": null,
+    "used_by": null,
     "batch_id": "5a008642",
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
-    "used_email": "18269825378@163.com"
+    "used_email": null
   },
   {
     "id": 4329,

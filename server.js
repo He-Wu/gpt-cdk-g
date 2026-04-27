@@ -4,6 +4,7 @@ const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -397,23 +398,32 @@ function normalizeJobStatus(status) {
   return normalized || status;
 }
 
+const CANCELABLE_RECORD_STATUSES = new Set(['pending', 'processing', 'unknown', 'expired']);
+
+function recordNeedsManualReview(record, normalizedStatus = normalizeJobStatus(record?.status)) {
+  return record?.needs_manual_review === true ||
+    !!record?.manual_review_reason ||
+    !!record?.manual_review_stage ||
+    !!record?.upstream_detail ||
+    normalizedStatus === 'unknown' ||
+    normalizedStatus === 'expired';
+}
+
 function findCancelableRecordByJobId(jobId, session = null) {
-  const cancelableStatuses = new Set(['pending', 'processing', 'unknown', 'expired']);
   return records.find(r =>
     r.job_id === jobId &&
     (!session || recordBelongsToSession(r, session)) &&
-    cancelableStatuses.has(r.status)
+    CANCELABLE_RECORD_STATUSES.has(normalizeJobStatus(r.status))
   );
 }
 
 function findCancelableRecordById(recordId, session = null) {
   const numericId = Number(recordId);
   if (!Number.isInteger(numericId) || numericId <= 0) return null;
-  const cancelableStatuses = new Set(['pending', 'processing', 'unknown', 'expired']);
   return records.find(r =>
     r.id === numericId &&
     (!session || recordBelongsToSession(r, session)) &&
-    cancelableStatuses.has(r.status)
+    CANCELABLE_RECORD_STATUSES.has(normalizeJobStatus(r.status))
   );
 }
 
@@ -522,6 +532,112 @@ function nowStr() {
   return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 }
 
+function clampPercent(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value * 10) / 10));
+}
+
+function getCpuTimesSnapshot() {
+  return os.cpus().map((cpu) => {
+    const times = cpu.times || {};
+    const idle = times.idle || 0;
+    const total = Object.values(times).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    return { idle, total };
+  });
+}
+
+function calculateCpuUsagePercent(start, end) {
+  if (!Array.isArray(start) || !Array.isArray(end) || start.length === 0 || end.length === 0) {
+    return 0;
+  }
+
+  const usableLength = Math.min(start.length, end.length);
+  let idleDelta = 0;
+  let totalDelta = 0;
+  for (let i = 0; i < usableLength; i += 1) {
+    idleDelta += Math.max(0, end[i].idle - start[i].idle);
+    totalDelta += Math.max(0, end[i].total - start[i].total);
+  }
+  if (totalDelta <= 0) return 0;
+  return clampPercent((1 - idleDelta / totalDelta) * 100);
+}
+
+async function sampleCpuUsagePercent(delayMs = 120) {
+  const start = getCpuTimesSnapshot();
+  await new Promise(resolve => setTimeout(resolve, delayMs));
+  return calculateCpuUsagePercent(start, getCpuTimesSnapshot());
+}
+
+function getDiskInfo(targetPath = DATA_DIR) {
+  if (typeof fs.statfsSync !== 'function') return null;
+  try {
+    const stats = fs.statfsSync(targetPath);
+    const blockSize = Number(stats.bsize || stats.frsize || 0);
+    const total = blockSize * Number(stats.blocks || 0);
+    const free = blockSize * Number(stats.bfree || 0);
+    const available = blockSize * Number(stats.bavail || stats.bfree || 0);
+    if (!Number.isFinite(total) || total <= 0) return null;
+    const used = Math.max(0, total - free);
+    return {
+      path: targetPath,
+      total,
+      free,
+      available,
+      used,
+      usage_percent: clampPercent((used / total) * 100)
+    };
+  } catch (err) {
+    return {
+      path: targetPath,
+      error: err.message || '无法读取磁盘信息'
+    };
+  }
+}
+
+async function buildSystemInfo() {
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = Math.max(0, totalMem - freeMem);
+  const cpus = os.cpus();
+  const processMemory = process.memoryUsage();
+
+  return {
+    collected_at: nowStr(),
+    host: {
+      hostname: os.hostname(),
+      platform: os.platform(),
+      release: os.release(),
+      arch: os.arch(),
+      uptime_seconds: Math.round(os.uptime())
+    },
+    cpu: {
+      usage_percent: await sampleCpuUsagePercent(),
+      cores: cpus.length,
+      model: cpus[0]?.model || 'unknown',
+      speed_mhz: cpus[0]?.speed || null,
+      loadavg: os.loadavg()
+    },
+    memory: {
+      total: totalMem,
+      free: freeMem,
+      used: usedMem,
+      usage_percent: totalMem > 0 ? clampPercent((usedMem / totalMem) * 100) : 0
+    },
+    disk: getDiskInfo(DATA_DIR),
+    process: {
+      pid: process.pid,
+      node_version: process.version,
+      uptime_seconds: Math.round(process.uptime()),
+      cwd: process.cwd(),
+      data_dir: DATA_DIR,
+      rss: processMemory.rss,
+      heap_total: processMemory.heapTotal,
+      heap_used: processMemory.heapUsed,
+      external: processMemory.external
+    }
+  };
+}
+
 const SHANGHAI_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 function parseDateInputBoundary(value, endOfDay = false) {
@@ -588,7 +704,8 @@ const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 503]);
 const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
 
 function refundCardForRecord(record) {
-  const card = cards.find(c => c.code === record.card_code && c.status === 'used');
+  const cardCode = normalizeCardCode(record?.card_code);
+  const card = cards.find(c => normalizeCardCode(c.code) === cardCode);
   if (!card) return;
   card.status = 'unused';
   card.used_at = null;
@@ -610,6 +727,23 @@ function summarizeUpstreamDetail(detail, fallback = null) {
   const raw = String(detail ?? '').trim();
   if (!raw) return fallback;
   return raw.replace(/\s+/g, ' ').slice(0, 240);
+}
+
+function describeFetchError(err) {
+  const parts = [];
+  if (err?.message) parts.push(err.message);
+
+  const cause = err?.cause;
+  if (cause) {
+    if (cause.code) parts.push(`code=${cause.code}`);
+    if (cause.errno) parts.push(`errno=${cause.errno}`);
+    if (cause.syscall) parts.push(`syscall=${cause.syscall}`);
+    if (cause.address) parts.push(`address=${cause.address}`);
+    if (cause.port) parts.push(`port=${cause.port}`);
+    if (cause.message && cause.message !== err.message) parts.push(`cause=${cause.message}`);
+  }
+
+  return summarizeUpstreamDetail(parts.join('; '), err?.message || 'fetch failed');
 }
 
 function fallbackRecordErrorMessage(record, status = null) {
@@ -954,6 +1088,15 @@ app.post('/api/admin/maintenance', adminAuth, requireSuperAdmin, (req, res) => {
   });
 });
 
+// 系统运行状态
+app.get('/api/admin/system', adminAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    res.json(await buildSystemInfo());
+  } catch (err) {
+    console.error('读取系统状态失败:', err);
+    res.status(500).json({ error: '读取系统状态失败', detail: err.message });
+  }
+});
 
 // 统计数据
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
@@ -1183,11 +1326,15 @@ app.get('/api/admin/records', adminAuth, (req, res) => {
     });
   }
 
-  filtered = filtered.map(record => ({
-    ...record,
-    status: normalizeJobStatus(record.status),
-    error_message: fallbackRecordErrorMessage(record)
-  }));
+  filtered = filtered.map(record => {
+    const normalizedStatus = normalizeJobStatus(record.status);
+    return {
+      ...record,
+      status: normalizedStatus,
+      needs_manual_review: recordNeedsManualReview(record, normalizedStatus),
+      error_message: fallbackRecordErrorMessage(record)
+    };
+  });
 
   filtered.sort((a, b) => b.id - a.id);
 
@@ -1472,11 +1619,12 @@ app.post('/api/card/redeem', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('兑换请求失败:', err);
-    markRecordUncertain(record, `提交请求结果不确定: ${err.message}`, 'unknown', {
+    const fetchErrorDetail = describeFetchError(err);
+    console.error('兑换请求失败:', fetchErrorDetail, err);
+    markRecordUncertain(record, `提交请求结果不确定: ${fetchErrorDetail}`, 'unknown', {
       manual_review_reason: '请求上游时出现网络错误，无法确认是否已成功受理',
       manual_review_stage: 'submit_network_error',
-      upstream_detail: err.message
+      upstream_detail: fetchErrorDetail
     });
     res.status(502).json({
       error: '兑换提交状态不确定，卡密已锁定，请联系管理员人工核验',

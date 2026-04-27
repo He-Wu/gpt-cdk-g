@@ -77,6 +77,33 @@
             padding: 40px 20px 60px;
         }
 
+        .language-toggle {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-bottom: 18px;
+        }
+
+        .language-toggle button {
+            min-width: 64px;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.04);
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .language-toggle button.active {
+            border-color: rgba(129, 140, 248, 0.45);
+            background: rgba(99,102,241,0.18);
+            color: var(--text-primary);
+        }
+
         /* 头部 */
         .header {
             text-align: center;
@@ -228,6 +255,30 @@
         .input-hint a {
             color: var(--accent-indigo);
             text-decoration: none;
+        }
+
+        .session-email-preview {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+            color: var(--accent-emerald);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .session-email-preview.visible {
+            display: flex;
+        }
+
+        .session-email-preview .email-value {
+            color: var(--text-primary);
+            font-family: 'Inter', monospace;
+            overflow-wrap: anywhere;
         }
 
         /* 按钮 */
@@ -921,8 +972,8 @@
     <!-- 维护模式遗罩 -->
     <div class="maintenance-overlay" id="maintenanceOverlay">
         <div class="maintenance-icon">🔧</div>
-        <div class="maintenance-title">系统维护中</div>
-        <div class="maintenance-msg" id="maintenanceMsgText">系统正在进行维护升级，请稍后再访问。</div>
+        <div class="maintenance-title" data-i18n="maintenance.title">系统维护中</div>
+        <div class="maintenance-msg" id="maintenanceMsgText" data-i18n="maintenance.message">系统正在进行维护升级，请稍后再访问。</div>
         <div class="maintenance-dots">
             <span></span><span></span><span></span>
         </div>
@@ -935,17 +986,22 @@
     <div class="floating-orb orb-3"></div>
 
     <div class="container">
+        <div class="language-toggle" id="languageToggle" aria-label="Language">
+            <button type="button" data-lang-option="zh" onclick="setLanguage('zh')">中文</button>
+            <button type="button" data-lang-option="en" onclick="setLanguage('en')">English</button>
+        </div>
+
         <!-- 标题 -->
         <header class="header">
             <div class="logo">⚡</div>
-            <h1>GPT源头</h1>
-            <p>使用卡密快速激活 Plus 或 Pro 订阅</p>
+            <h1 data-i18n="brand.title">GPT源头</h1>
+            <p data-i18n="hero.subtitle">使用卡密快速激活 Plus 或 Pro 订阅</p>
         </header>
 
         <!-- 重要警告 -->
         <div class="notice-warning">
-            <div class="notice-title">⚠️ 兑换前必读</div>
-            <div class="notice-body">
+            <div class="notice-title" data-i18n="notice.title">⚠️ 兑换前必读</div>
+            <div class="notice-body" data-i18n-html="notice.body">
                 <strong>以下账号类型请勿兑换，否则卡密将白白消耗：</strong><br><br>
                 🚫 <strong>已订阅 Plus / Pro 且未到期</strong> — 不会覆盖或延长现有订阅，请到期后再兑换<br>
                 🚫 <strong>加入了工作空间 / Team 的账号</strong> — Team 模式下兑换无效，会直接出错<br><br>
@@ -955,27 +1011,27 @@
 
         <!-- 使用说明 -->
         <div class="guide-card">
-            <div class="guide-title">📖 使用步骤</div>
+            <div class="guide-title" data-i18n="guide.title">📖 使用步骤</div>
             <ol class="steps-list">
                 <li>
                     <span class="step-num">1</span>
-                    <span>苹果手机请在 <strong>Safari 浏览器</strong>中打开 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 并登录账号，其他设备使用任意浏览器即可</span>
+                    <span data-i18n-html="guide.step1">苹果手机请在 <strong>Safari 浏览器</strong>中打开 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 并登录账号，其他设备使用任意浏览器即可</span>
                 </li>
                 <li>
                     <span class="step-num">2</span>
-                    <span>登录后，在同一浏览器中访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a></span>
+                    <span data-i18n-html="guide.step2">登录后，在同一浏览器中访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a></span>
                 </li>
                 <li>
                     <span class="step-num">3</span>
-                    <span>页面会显示一大串 JSON 文本，<strong>全选并复制所有内容</strong></span>
+                    <span data-i18n-html="guide.step3">页面会显示一大串 JSON 文本，<strong>全选并复制所有内容</strong></span>
                 </li>
                 <li>
                     <span class="step-num">4</span>
-                    <span>输入卡密 → 验证通过 → 将复制的内容粘贴到输入框 → 提交兑换</span>
+                    <span data-i18n="guide.step4">输入卡密 → 验证通过 → 将复制的内容粘贴到输入框 → 提交兑换</span>
                 </li>
                 <li>
                     <span class="step-num">5</span>
-                    <span>兑换成功后，稍等 <strong>30 秒</strong> 再登录 ChatGPT 查看订阅状态</span>
+                    <span data-i18n-html="guide.step5">兑换成功后，稍等 <strong>30 秒</strong> 再登录 ChatGPT 查看订阅状态</span>
                 </li>
             </ol>
         </div>
@@ -985,29 +1041,29 @@
             <div class="home-queue-top">
                 <div class="card-title" style="margin-bottom: 0;">
                     <span class="icon">⏱</span>
-                    实时排队
+                    <span data-i18n="queue.liveTitle">实时排队</span>
                 </div>
-                <span class="home-queue-tip">每 30 秒自动刷新</span>
+                <span class="home-queue-tip" data-i18n="queue.refreshTip">每 30 秒自动刷新</span>
             </div>
             <div class="home-queue-grid" id="homeQueueGrid"></div>
-            <div class="home-queue-empty hidden" id="homeQueueEmpty">暂时还没拿到最新队列信息，请稍后自动刷新。</div>
+            <div class="home-queue-empty hidden" id="homeQueueEmpty" data-i18n="queue.empty">暂时还没拿到最新队列信息，请稍后自动刷新。</div>
         </section>
 
         <section class="card" id="step1Card">
             <div class="card-title">
                 <span class="step-badge">1</span>
-                输入卡密
+                <span data-i18n="redeem.step1Title">输入卡密</span>
             </div>
             <div class="input-group">
-                <label for="cardCodeInput">兑换卡密 (CDK)</label>
-                <input type="text" id="cardCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
+                <label for="cardCodeInput" data-i18n="redeem.cardLabel">兑换卡密 (CDK)</label>
+                <input type="text" id="cardCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1" data-i18n-placeholder="redeem.cardPlaceholder"
                     autocomplete="off" spellcheck="false"
                     oninput="this.value = this.value.toUpperCase(); validateCodeFormat(this.value)"
                     onblur="validateCodeFormat(this.value)">
                 <div id="codeError" style="display:none; margin-top:6px; font-size:12px; color:#fb7185; display:flex; align-items:center; gap:5px;"></div>
             </div>
             <button class="btn btn-primary" id="verifyBtn" onclick="verifyCard()">
-                验证卡密
+                <span data-i18n="redeem.verifyButton">验证卡密</span>
             </button>
             <div class="verify-result" id="verifyResult"></div>
         </section>
@@ -1016,43 +1072,47 @@
         <section class="card hidden" id="step2Card">
             <div class="card-title">
                 <span class="step-badge">2</span>
-                提交兑换
+                <span data-i18n="redeem.step2Title">提交兑换</span>
             </div>
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 16px; background: rgba(99,102,241,0.08); border-radius: 10px;">
-                <span style="font-size: 13px; color: var(--text-secondary);">订阅类型:</span>
+                <span style="font-size: 13px; color: var(--text-secondary);" data-i18n="redeem.subscriptionType">订阅类型:</span>
                 <span class="type-badge" id="cardTypeBadge"></span>
             </div>
             <div class="queue-summary-card hidden" id="queueSummaryCard">
                 <div class="queue-summary-header">
-                    <div class="queue-summary-title">当前排队预估</div>
+                    <div class="queue-summary-title" data-i18n="queue.currentEstimate">当前排队预估</div>
                     <span class="type-badge" id="queueSummaryWorkflow">-</span>
                 </div>
                 <div class="queue-summary-grid">
                     <div class="queue-summary-item">
-                        <span class="queue-summary-label">当前队伍数量</span>
+                        <span class="queue-summary-label" data-i18n="queue.currentSize">当前队伍数量</span>
                         <span class="queue-summary-value" id="queueSummaryCount">-</span>
                     </div>
                     <div class="queue-summary-item">
-                        <span class="queue-summary-label">预计等待时间</span>
+                        <span class="queue-summary-label" data-i18n="queue.eta">预计等待时间</span>
                         <span class="queue-summary-value" id="queueSummaryEta">-</span>
                     </div>
                 </div>
             </div>
             <div class="input-group">
-                <label for="accessTokenInput">ChatGPT Session 数据</label>
+                <label for="accessTokenInput" data-i18n="redeem.sessionLabel">ChatGPT Session 数据</label>
                 <textarea id="accessTokenInput" rows="5"
                     placeholder='{"user":{"id":"...","name":"..."},"expires":"...","accessToken":"eyJhbGciOiJSUzI1NiIs..."}'
                     spellcheck="false"
-                    oninput="clearTokenError()"></textarea>
+                    oninput="handleSessionInput()"></textarea>
                 <div id="tokenError" style="display:none; margin-top:6px; font-size:12px; color:#fb7185;"></div>
-                <p class="input-hint">
+                <div class="session-email-preview" id="sessionEmailPreview">
+                    <span data-i18n="redeem.detectedEmail">识别邮箱:</span>
+                    <span class="email-value" id="sessionEmailText">-</span>
+                </div>
+                <p class="input-hint" data-i18n-html="redeem.sessionHint">
                     登录 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 后，访问
                     <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>，
                     <strong>全选复制整个页面内容</strong>粘贴到此处，系统会自动提取所需信息
                 </p>
             </div>
             <button class="btn btn-primary" id="redeemBtn" onclick="redeemCard()">
-                🚀 提交兑换
+                <span data-i18n="redeem.submitButton">🚀 提交兑换</span>
             </button>
         </section>
 
@@ -1061,7 +1121,7 @@
             <div class="job-header">
                 <div class="card-title" style="margin-bottom: 0;">
                     <span class="icon">📋</span>
-                    任务状态
+                    <span data-i18n="job.title">任务状态</span>
                 </div>
                 <span class="status-badge" id="jobBadge">PENDING</span>
             </div>
@@ -1071,65 +1131,65 @@
                     <span class="value" id="jobIdDisplay">-</span>
                 </div>
                 <div class="job-info-row">
-                    <span class="label">当前状态</span>
+                    <span class="label" data-i18n="job.currentStatus">当前状态</span>
                     <span class="value" id="jobStatusText">等候中...</span>
                 </div>
                 <div class="job-info-row hidden" id="jobEmailRow">
-                    <span class="label">兑换邮箱</span>
+                    <span class="label" data-i18n="job.email">兑换邮箱</span>
                     <span class="value" id="jobEmailText">-</span>
                 </div>
                 <div class="job-info-row hidden" id="jobQueueRow">
-                    <span class="label">排队进度</span>
+                    <span class="label" data-i18n="job.queueProgress">排队进度</span>
                     <span class="value" id="jobQueueText">-</span>
                 </div>
             </div>
             <div class="progress-bar" id="progressBar">
                 <div class="fill"></div>
             </div>
-            <div class="job-message success hidden" id="jobResultMsg">
+            <div class="job-message success hidden" id="jobResultMsg" data-i18n="job.successMessage">
                 🎉 订阅成功！请登录 ChatGPT 检查状态。
             </div>
             <div class="job-message error hidden" id="jobErrorMsg"></div>
             <button class="cancel-inline-btn hidden" id="jobCancelBtn" onclick="cancelTaskByJobId(currentJobId, this)">
-                取消任务
+                <span data-i18n="job.cancelTask">取消任务</span>
             </button>
             <div class="hidden" id="jobActionBtns" style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
                 <button class="btn btn-primary" id="redeemRetryBtn" onclick="retryRedeem()" style="flex:1;min-width:140px;">
-                    🔄 重试兑换
+                    <span data-i18n="job.retryRedeem">🔄 重试兑换</span>
                 </button>
                 <button class="btn btn-outline" id="redeemNewBtn" onclick="resetForm()" style="flex:1;min-width:140px;">
-                    换一张卡密
+                    <span data-i18n="job.changeCard">换一张卡密</span>
                 </button>
             </div>
             <!-- 成功后只显示换一张 -->
             <button class="btn btn-outline hidden" id="retryBtn" onclick="resetForm()" style="margin-top: 16px;">
-                兑换另一张卡密
+                <span data-i18n="job.redeemAnother">兑换另一张卡密</span>
             </button>
         </section>
 
         <footer class="footer">
-            <p>一张卡密仅可使用一次 · 已有会员请到期后兑换 · Team/工作空间账号请勿兑换</p>
+            <p data-i18n="footer.warning">一张卡密仅可使用一次 · 已有会员请到期后兑换 · Team/工作空间账号请勿兑换</p>
         </footer>
 
         <!-- 分隔线 -->
-        <div class="divider">卡密查询</div>
+        <div class="divider" data-i18n="query.divider">卡密查询</div>
 
         <!-- 卡密查询区域 -->
         <section class="card" id="queryCard">
             <div class="card-title">
                 <span class="icon">🔍</span>
-                卡密状态查询
+                <span data-i18n="query.title">卡密状态查询</span>
             </div>
             <div class="input-group" style="margin-bottom: 12px;">
-                <label for="queryCodeInput">输入卡密</label>
+                <label for="queryCodeInput" data-i18n="query.singleLabel">输入卡密</label>
                 <div class="input-wrapper">
-                    <input type="text" id="queryCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1"
+                    <input type="text" id="queryCodeInput" placeholder="例如: CDK-PLUS-A3F8K2M9X1" data-i18n-placeholder="redeem.cardPlaceholder"
                         autocomplete="off" spellcheck="false"
                         oninput="this.value = this.value.toUpperCase()"
                         style="padding-right: 100px;">
                     <button id="queryBtn" onclick="queryCard()"
                         style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 7px 16px; background: var(--gradient-1); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
-                        查&nbsp;询
+                        <span data-i18n="query.searchButton">查询</span>
                     </button>
                 </div>
             </div>
@@ -1138,18 +1198,18 @@
             <div class="batch-query-section">
                 <div class="card-title" style="margin-bottom: 14px;">
                     <span class="icon">📚</span>
-                    批量卡密查询
+                    <span data-i18n="query.batchTitle">批量卡密查询</span>
                 </div>
                 <div class="input-group" style="margin-bottom: 0;">
-                    <label for="batchQueryInput">一次可查询多个卡密</label>
-                    <textarea id="batchQueryInput" placeholder="每行一个卡密，或使用逗号分隔&#10;公共页面单次最多查询 20 个"
+                    <label for="batchQueryInput" data-i18n="query.batchLabel">一次可查询多个卡密</label>
+                    <textarea id="batchQueryInput" placeholder="每行一个卡密，或使用逗号分隔&#10;公共页面单次最多查询 20 个" data-i18n-placeholder="query.batchPlaceholder"
                         spellcheck="false"
                         oninput="this.value = this.value.toUpperCase()"></textarea>
-                    <div class="input-hint">支持换行或逗号分隔，批量结果会按表格展示。</div>
+                    <div class="input-hint" data-i18n="query.batchHint">支持换行或逗号分隔，批量结果会按表格展示。</div>
                 </div>
                 <div class="batch-query-actions">
                     <button id="batchQueryBtn" class="btn btn-outline" type="button" onclick="queryCardsBatch()" style="width: auto; padding: 10px 18px;">
-                        批量查询
+                        <span data-i18n="query.batchButton">批量查询</span>
                     </button>
                 </div>
                 <div id="batchQueryResult"></div>
@@ -1157,7 +1217,7 @@
         </section>
 
         <footer class="footer" style="margin-top: 10px;">
-            <p>&#169; GPT源头 &nbsp;&middot;&nbsp; 一卡一用 · 安全可靠</p>
+            <p data-i18n-html="footer.brand">&#169; GPT源头 &nbsp;&middot;&nbsp; 一卡一用 · 安全可靠</p>
         </footer>
     </div>
 
@@ -1168,6 +1228,327 @@
         let currentSubmittedEmail = null;
         let isPolling = false;
         let maintenanceActive = false;
+        let currentLanguage = localStorage.getItem('userPageLanguage') || 'zh';
+
+        const I18N = {
+            zh: {
+                'page.title': 'GPT源头 - 订阅兑换',
+                'page.description': '使用卡密快速兑换 ChatGPT Plus 或 Pro 订阅',
+                'brand.title': 'GPT源头',
+                'maintenance.title': '系统维护中',
+                'maintenance.message': '系统正在进行维护升级，请稍后再访问。',
+                'hero.subtitle': '使用卡密快速激活 Plus 或 Pro 订阅',
+                'notice.title': '⚠️ 兑换前必读',
+                'notice.body': '<strong>以下账号类型请勿兑换，否则卡密将白白消耗：</strong><br><br>🚫 <strong>已订阅 Plus / Pro 且未到期</strong> — 不会覆盖或延长现有订阅，请到期后再兑换<br>🚫 <strong>加入了工作空间 / Team 的账号</strong> — Team 模式下兑换无效，会直接出错<br><br>以上情况充入后卡密均<strong>直接消耗且无法退回</strong>，请确认账户状态后再操作。',
+                'guide.title': '📖 使用步骤',
+                'guide.step1': '苹果手机请在 <strong>Safari 浏览器</strong>中打开 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 并登录账号，其他设备使用任意浏览器即可',
+                'guide.step2': '登录后，在同一浏览器中访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a>',
+                'guide.step3': '页面会显示一大串 JSON 文本，<strong>全选并复制所有内容</strong>',
+                'guide.step4': '输入卡密 → 验证通过 → 将复制的内容粘贴到输入框 → 提交兑换',
+                'guide.step5': '兑换成功后，稍等 <strong>30 秒</strong> 再登录 ChatGPT 查看订阅状态',
+                'queue.liveTitle': '实时排队',
+                'queue.refreshTip': '每 30 秒自动刷新',
+                'queue.empty': '暂时还没拿到最新队列信息，请稍后自动刷新。',
+                'queue.currentEstimate': '当前排队预估',
+                'queue.currentSize': '当前队伍数量',
+                'queue.eta': '预计等待时间',
+                'queue.current': '当前队伍',
+                'queue.wait': '预计等待',
+                'queue.position': '排队位置 {position}',
+                'queue.estimatedSeconds': '预计 {seconds} 秒',
+                'queue.estimatedMinutes': '预计 {minutes} 分钟',
+                'time.seconds': '{value} 秒',
+                'time.minutes': '{value} 分钟',
+                'time.hours': '{value} 小时',
+                'type.plus': 'ChatGPT Plus',
+                'type.plus_1y': 'ChatGPT Plus 1 年',
+                'type.pro': 'ChatGPT Pro 5X',
+                'type.pro_20x': 'ChatGPT Pro 20X',
+                'redeem.step1Title': '输入卡密',
+                'redeem.cardLabel': '兑换卡密 (CDK)',
+                'redeem.cardPlaceholder': '例如: CDK-PLUS-A3F8K2M9X1',
+                'redeem.verifyButton': '验证卡密',
+                'redeem.verifying': '验证中...',
+                'redeem.verified': '✓ 已验证',
+                'redeem.valid': '卡密有效',
+                'redeem.validRetry': '卡密有效（重试）',
+                'redeem.type': '类型:',
+                'redeem.step2Title': '提交兑换',
+                'redeem.subscriptionType': '订阅类型:',
+                'redeem.sessionLabel': 'ChatGPT Session 数据',
+                'redeem.sessionHint': '登录 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 后，访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>，<strong>全选复制整个页面内容</strong>粘贴到此处，系统会自动提取所需信息',
+                'redeem.detectedEmail': '识别邮箱:',
+                'redeem.submitButton': '🚀 提交兑换',
+                'redeem.failed': '兑换失败，请稍后重试',
+                'redeem.submitting': '提交中...',
+                'redeem.retrySubmit': '🚀 重试兑换',
+                'job.title': '任务状态',
+                'job.currentStatus': '当前状态',
+                'job.email': '兑换邮箱',
+                'job.queueProgress': '排队进度',
+                'job.successMessage': '🎉 订阅成功！请登录 ChatGPT 检查状态。',
+                'job.cancelTask': '取消任务',
+                'job.canceling': '取消中...',
+                'job.retryRedeem': '🔄 重试兑换',
+                'job.changeCard': '换一张卡密',
+                'job.redeemAnother': '兑换另一张卡密',
+                'job.failed': '❌ 兑换失败: {error}（卡密已自动退回）',
+                'job.manualCheck': '兑换状态待人工核验：{error}',
+                'footer.warning': '一张卡密仅可使用一次 · 已有会员请到期后兑换 · Team/工作空间账号请勿兑换',
+                'footer.brand': '&#169; GPT源头 &nbsp;&middot;&nbsp; 一卡一用 · 安全可靠',
+                'query.divider': '卡密查询',
+                'query.title': '卡密状态查询',
+                'query.singleLabel': '输入卡密',
+                'query.searchButton': '查询',
+                'query.batchTitle': '批量卡密查询',
+                'query.batchLabel': '一次可查询多个卡密',
+                'query.batchPlaceholder': '每行一个卡密，或使用逗号分隔\n公共页面单次最多查询 20 个',
+                'query.batchHint': '支持换行或逗号分隔，批量结果会按表格展示。',
+                'query.batchButton': '批量查询',
+                'query.code': '卡密',
+                'query.type': '类型',
+                'query.cardStatus': '卡密状态',
+                'query.redeemStatus': '兑换状态',
+                'query.email': '兑换邮箱',
+                'query.error': '错误信息',
+                'query.redeemEmail': '兑换邮箱',
+                'query.redeemTime': '兑换成功时间',
+                'query.redeemProgress': '兑换进度',
+                'query.queueEstimate': '排队预估',
+                'query.statusNote': '状态说明',
+                'query.subscriptionType': '订阅类型',
+                'query.createdAt': '生成时间',
+                'query.unusedCard': '💡 该卡密尚未使用',
+                'query.inputRequired': '请输入卡密',
+                'query.batchInputRequired': '请输入至少一个卡密',
+                'query.failed': '查询失败',
+                'query.batchFailed': '批量查询失败',
+                'query.noResults': '没有查询到结果',
+                'query.networkError': '网络错误，请检查连接后重试',
+                'query.total': '共查询 {count} 个卡密',
+                'query.manualTitle': '⚠️ 需人工核验',
+                'query.manualBody': '此卡密在提交时遇到异常，目前状态不确定。卡密已锁定，请勿重复提交，请联系客服人工查询。',
+                'query.diagnostics': '诊断信息: {stage} - {reason}',
+                'query.diagnosticsUnknown': '未知',
+                'query.diagnosticsNone': '暂无',
+                'status.pending': '排队等待中...',
+                'status.processing': '系统处理中，请稍候...',
+                'status.done': '✅ 兑换成功',
+                'status.failed': '兑换失败',
+                'status.unknown': '待人工核验',
+                'status.expired': '已过期待核验',
+                'cardStatus.unused': '未使用',
+                'cardStatus.used': '已使用',
+                'cardStatus.disabled': '已禁用',
+                'cardStatus.not_found': '未找到',
+                'common.unknown': '未知',
+                'common.unknownReason': '未知原因',
+                'common.manualReview': '需人工核验',
+                'common.cancelled': '已取消',
+                'common.cancelNoJob': '没有可取消的 Job ID',
+                'common.cancelConfirm': '确认取消这个兑换任务吗？如果上游允许取消，卡密会自动退回。',
+                'common.cancelFailed': '取消失败，请稍后重试',
+                'common.cancelSuccess': '任务已取消，卡密已退回',
+                'common.cancelNetwork': '取消失败：网络错误，请稍后重试',
+                'common.networkError': '网络错误，请检查连接',
+                'common.networkErrorWithMessage': '网络错误: {message}',
+                'validation.codeRequired': '请输入卡密',
+                'validation.codePrefix': '卡密必须以 CDK- 开头',
+                'validation.codeType': '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-…、CDK-PRO-… 或 CDK-PRO_20X-…',
+                'validation.codeFormat': '卡密格式不正确，请输入旧版 10 位码，或新版 5 组安全码',
+                'validation.sessionRequired': '请粘贴 api/auth/session 页面的内容',
+                'validation.sessionShort': '内容过短，请复制完整的页面内容',
+                'validation.jsonInvalid': 'JSON 格式错误，请完整复制页面内容，勿手动修改',
+                'validation.unauthenticated': 'ChatGPT 未登录，请先在同一浏览器登录账号后再来获取',
+                'validation.accessTokenMissing': 'JSON 中未找到 accessToken 字段，请确认复制的是 api/auth/session 页面的内容',
+                'validation.tokenPrefix': 'accessToken 格式无效，应以 eyJ 开头（JWT 格式）',
+                'validation.tokenLength': 'accessToken 长度异常，请确认复制的是完整内容',
+                'validation.tokenParts': 'accessToken 不是标准 JWT 格式（应有三段用 . 分隔）',
+                'manual.unknownSubmit': '状态不确定，请联系管理员人工核验。',
+                'manual.expiredJob': '任务已过期或不存在，请联系客服人工核验最终状态',
+                'manual.finalCheck': '请联系客服确认最终结果，暂不要重复提交。',
+                'retry.cardUnavailable': '卡密已无法重试：{error}',
+                'retry.networkError': '网络错误，请检查连接后重试'
+            },
+            en: {
+                'page.title': 'GPT Source - Subscription Redeem',
+                'page.description': 'Redeem ChatGPT Plus or Pro subscriptions quickly with a CDK',
+                'brand.title': 'GPT Source',
+                'maintenance.title': 'System Maintenance',
+                'maintenance.message': 'The system is being upgraded. Please come back later.',
+                'hero.subtitle': 'Activate Plus or Pro subscriptions quickly with a CDK',
+                'notice.title': '⚠️ Read Before Redeeming',
+                'notice.body': '<strong>Do not redeem with these account types, or the CDK will be consumed:</strong><br><br>🚫 <strong>Accounts with an active Plus / Pro subscription</strong> — redemption will not overwrite or extend the current subscription. Redeem after it expires.<br>🚫 <strong>Workspace / Team accounts</strong> — Team mode cannot redeem and will fail directly.<br><br>In these cases the CDK is <strong>consumed and cannot be returned</strong>. Please confirm your account status first.',
+                'guide.title': '📖 How to Use',
+                'guide.step1': 'On iPhone, open <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> in <strong>Safari</strong> and sign in. Other devices can use any browser.',
+                'guide.step2': 'After signing in, open <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a> in the same browser.',
+                'guide.step3': 'The page will show JSON text. <strong>Select all and copy everything</strong>.',
+                'guide.step4': 'Enter CDK → verify → paste the copied content → submit redemption',
+                'guide.step5': 'After success, wait <strong>30 seconds</strong>, then sign in to ChatGPT to check subscription status.',
+                'queue.liveTitle': 'Live Queue',
+                'queue.refreshTip': 'Auto refreshes every 30 seconds',
+                'queue.empty': 'No latest queue data yet. It will refresh automatically.',
+                'queue.currentEstimate': 'Current queue estimate',
+                'queue.currentSize': 'Current queue size',
+                'queue.eta': 'Estimated wait',
+                'queue.current': 'Current queue',
+                'queue.wait': 'Estimated wait',
+                'queue.position': 'Queue position {position}',
+                'queue.estimatedSeconds': 'Est. {seconds}s',
+                'queue.estimatedMinutes': 'Est. {minutes} min',
+                'time.seconds': '{value}s',
+                'time.minutes': '{value} min',
+                'time.hours': '{value} hr',
+                'type.plus': 'ChatGPT Plus',
+                'type.plus_1y': 'ChatGPT Plus 1 Year',
+                'type.pro': 'ChatGPT Pro 5X',
+                'type.pro_20x': 'ChatGPT Pro 20X',
+                'redeem.step1Title': 'Enter CDK',
+                'redeem.cardLabel': 'Redeem CDK',
+                'redeem.cardPlaceholder': 'Example: CDK-PLUS-A3F8K2M9X1',
+                'redeem.verifyButton': 'Verify CDK',
+                'redeem.verifying': 'Verifying...',
+                'redeem.verified': '✓ Verified',
+                'redeem.valid': 'CDK is valid',
+                'redeem.validRetry': 'CDK is valid (retry)',
+                'redeem.type': 'Type:',
+                'redeem.step2Title': 'Submit Redemption',
+                'redeem.subscriptionType': 'Subscription type:',
+                'redeem.sessionLabel': 'ChatGPT Session Data',
+                'redeem.sessionHint': 'After signing in to <a href="https://chatgpt.com" target="_blank">chatgpt.com</a>, open <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>, then <strong>select all and copy the whole page</strong> here. The system will extract the required data automatically.',
+                'redeem.detectedEmail': 'Detected email:',
+                'redeem.submitButton': '🚀 Submit Redemption',
+                'redeem.failed': 'Redemption failed. Please try again later.',
+                'redeem.submitting': 'Submitting...',
+                'redeem.retrySubmit': '🚀 Retry Redemption',
+                'job.title': 'Task Status',
+                'job.currentStatus': 'Current status',
+                'job.email': 'Redeem email',
+                'job.queueProgress': 'Queue progress',
+                'job.successMessage': '🎉 Subscription activated. Sign in to ChatGPT to check the status.',
+                'job.cancelTask': 'Cancel task',
+                'job.canceling': 'Canceling...',
+                'job.retryRedeem': '🔄 Retry Redemption',
+                'job.changeCard': 'Use another CDK',
+                'job.redeemAnother': 'Redeem another CDK',
+                'job.failed': '❌ Redemption failed: {error} (CDK has been returned automatically)',
+                'job.manualCheck': 'Redemption needs manual review: {error}',
+                'footer.warning': 'One CDK can only be used once · Existing members should redeem after expiration · Do not use Team/workspace accounts',
+                'footer.brand': '&#169; GPT Source &nbsp;&middot;&nbsp; One CDK, one use · Secure and reliable',
+                'query.divider': 'CDK Query',
+                'query.title': 'CDK Status Query',
+                'query.singleLabel': 'Enter CDK',
+                'query.searchButton': 'Search',
+                'query.batchTitle': 'Batch card query',
+                'query.batchLabel': 'Query multiple CDKs at once',
+                'query.batchPlaceholder': 'One CDK per line, or separate with commas\nPublic page limit: 20 per query',
+                'query.batchHint': 'Supports new lines or commas. Batch results are shown in a table.',
+                'query.batchButton': 'Batch Query',
+                'query.code': 'CDK',
+                'query.type': 'Type',
+                'query.cardStatus': 'CDK status',
+                'query.redeemStatus': 'Redeem status',
+                'query.email': 'Redeem email',
+                'query.error': 'Error',
+                'query.redeemEmail': 'Redeem email',
+                'query.redeemTime': 'Redeemed at',
+                'query.redeemProgress': 'Redeem progress',
+                'query.queueEstimate': 'Queue estimate',
+                'query.statusNote': 'Status note',
+                'query.subscriptionType': 'Subscription type',
+                'query.createdAt': 'Created at',
+                'query.unusedCard': '💡 This CDK has not been used yet',
+                'query.inputRequired': 'Please enter a CDK',
+                'query.batchInputRequired': 'Please enter at least one CDK',
+                'query.failed': 'Query failed',
+                'query.batchFailed': 'Batch query failed',
+                'query.noResults': 'No results found',
+                'query.networkError': 'Network error. Please check your connection and try again.',
+                'query.total': 'Queried {count} CDK(s)',
+                'query.manualTitle': '⚠️ Manual review required',
+                'query.manualBody': 'This CDK hit an exception during submission, so the current status is uncertain. The CDK is locked. Do not submit again. Contact support for manual checking.',
+                'query.diagnostics': 'Diagnostics: {stage} - {reason}',
+                'query.diagnosticsUnknown': 'unknown',
+                'query.diagnosticsNone': 'N/A',
+                'status.pending': 'Waiting in queue...',
+                'status.processing': 'Processing. Please wait...',
+                'status.done': '✅ Redeemed successfully',
+                'status.failed': 'Redemption failed',
+                'status.unknown': 'Manual review pending',
+                'status.expired': 'Expired, pending review',
+                'cardStatus.unused': 'Unused',
+                'cardStatus.used': 'Used',
+                'cardStatus.disabled': 'Disabled',
+                'cardStatus.not_found': 'Not found',
+                'common.unknown': 'Unknown',
+                'common.unknownReason': 'Unknown reason',
+                'common.manualReview': 'Manual review required',
+                'common.cancelled': 'cancelled',
+                'common.cancelNoJob': 'No Job ID to cancel',
+                'common.cancelConfirm': 'Cancel this redemption task? If upstream allows it, the CDK will be returned automatically.',
+                'common.cancelFailed': 'Cancel failed. Please try again later.',
+                'common.cancelSuccess': 'Task canceled. The CDK has been returned.',
+                'common.cancelNetwork': 'Cancel failed: network error. Please try again later.',
+                'common.networkError': 'Network error. Please check your connection.',
+                'common.networkErrorWithMessage': 'Network error: {message}',
+                'validation.codeRequired': 'Please enter a CDK',
+                'validation.codePrefix': 'CDK must start with CDK-',
+                'validation.codeType': 'Invalid type. Use CDK-PLUS-..., CDK-PLUS_1Y-..., CDK-PRO-..., or CDK-PRO_20X-...',
+                'validation.codeFormat': 'Invalid CDK format. Enter the legacy 10-character code or the new 5-group secure code.',
+                'validation.sessionRequired': 'Please paste the content from api/auth/session',
+                'validation.sessionShort': 'Content is too short. Please copy the whole page.',
+                'validation.jsonInvalid': 'Invalid JSON. Please copy the whole page and do not edit it manually.',
+                'validation.unauthenticated': 'ChatGPT is not signed in. Sign in with the same browser first.',
+                'validation.accessTokenMissing': 'No accessToken field found. Please confirm you copied the api/auth/session page.',
+                'validation.tokenPrefix': 'Invalid accessToken format. It should start with eyJ (JWT format).',
+                'validation.tokenLength': 'accessToken length looks abnormal. Please copy the full content.',
+                'validation.tokenParts': 'accessToken is not a standard JWT. It should contain three dot-separated parts.',
+                'manual.unknownSubmit': 'Status is uncertain. Please contact support for manual review.',
+                'manual.expiredJob': 'The task expired or no longer exists. Contact support to verify the final status.',
+                'manual.finalCheck': 'Contact support to confirm the final result. Do not submit again for now.',
+                'retry.cardUnavailable': 'CDK can no longer be retried: {error}',
+                'retry.networkError': 'Network error. Please check your connection and try again.'
+            }
+        };
+
+        function t(key, replacements = {}) {
+            const dictionary = I18N[currentLanguage] || I18N.zh;
+            const fallback = I18N.zh[key] || key;
+            return String(dictionary[key] || fallback).replace(/\{(\w+)\}/g, (_, name) => replacements[name] ?? '');
+        }
+
+        function applyLanguage() {
+            currentLanguage = I18N[currentLanguage] ? currentLanguage : 'zh';
+            document.documentElement.lang = currentLanguage === 'en' ? 'en' : 'zh-CN';
+            document.title = t('page.title');
+            const description = document.querySelector('meta[name="description"]');
+            if (description) description.setAttribute('content', t('page.description'));
+
+            document.querySelectorAll('[data-i18n]').forEach((el) => {
+                el.textContent = t(el.dataset.i18n);
+            });
+            document.querySelectorAll('[data-i18n-html]').forEach((el) => {
+                el.innerHTML = t(el.dataset.i18nHtml);
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+                el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+            });
+            document.querySelectorAll('[data-lang-option]').forEach((button) => {
+                button.classList.toggle('active', button.dataset.langOption === currentLanguage);
+            });
+        }
+
+        function setLanguage(language) {
+            currentLanguage = language === 'en' ? 'en' : 'zh';
+            localStorage.setItem('userPageLanguage', currentLanguage);
+            applyLanguage();
+            if (verifiedCard) {
+                const badge = document.getElementById('cardTypeBadge');
+                badge.textContent = subscriptionTypeLabel(verifiedCard.type);
+            }
+        }
+
+        applyLanguage();
 
         // ========== 页面加载时检查维护状态 ==========
         async function checkMaintenanceStatus() {
@@ -1204,11 +1585,11 @@
             if (!CDK_PATTERN.test(value)) {
                 let hint = '';
                 if (!value.startsWith('CDK-')) {
-                    hint = '卡密必须以 CDK- 开头';
+                    hint = t('validation.codePrefix');
                 } else if (!/^CDK-(PLUS|PLUS_1Y|PRO|PRO_20X)-/.test(value)) {
-                    hint = '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-…、CDK-PRO-… 或 CDK-PRO_20X-…';
+                    hint = t('validation.codeType');
                 } else {
-                    hint = '卡密格式不正确，请输入旧版 10 位码，或新版 5 组安全码';
+                    hint = t('validation.codeFormat');
                 }
                 errEl.innerHTML = `⚠️ ${hint}`;
                 errEl.style.display = 'flex';
@@ -1235,6 +1616,43 @@
             ta.style.borderColor = '';
         }
 
+        function extractSessionEmail(parsed) {
+            const email = parsed?.user?.email || parsed?.user?.emailAddress || parsed?.email || parsed?.account?.email;
+            return typeof email === 'string' && email.includes('@') ? email.trim() : null;
+        }
+
+        function updateSessionEmailPreview(email) {
+            const preview = document.getElementById('sessionEmailPreview');
+            const text = document.getElementById('sessionEmailText');
+            if (!preview || !text) return;
+
+            if (email) {
+                text.textContent = email;
+                preview.classList.add('visible');
+                currentSubmittedEmail = email;
+            } else {
+                text.textContent = '-';
+                preview.classList.remove('visible');
+                currentSubmittedEmail = null;
+            }
+        }
+
+        function handleSessionInput() {
+            clearTokenError();
+            const raw = document.getElementById('accessTokenInput').value.trim();
+            if (!raw.startsWith('{')) {
+                updateSessionEmailPreview(null);
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(raw);
+                updateSessionEmailPreview(extractSessionEmail(parsed));
+            } catch (err) {
+                updateSessionEmailPreview(null);
+            }
+        }
+
         function clearQueueSummary() {
             const summaryCard = document.getElementById('queueSummaryCard');
             const workflowBadge = document.getElementById('queueSummaryWorkflow');
@@ -1248,9 +1666,9 @@
         function formatQueueSummaryEta(seconds) {
             const value = Number(seconds);
             if (!Number.isFinite(value) || value < 0) return '-';
-            if (value < 60) return `${Math.ceil(value)} 秒`;
-            if (value < 3600) return `${Math.ceil(value / 60)} 分钟`;
-            return `${(value / 3600).toFixed(value >= 7200 ? 0 : 1)} 小时`;
+            if (value < 60) return t('time.seconds', { value: Math.ceil(value) });
+            if (value < 3600) return t('time.minutes', { value: Math.ceil(value / 60) });
+            return t('time.hours', { value: (value / 3600).toFixed(value >= 7200 ? 0 : 1) });
         }
 
         async function loadQueueSummary(workflow) {
@@ -1314,11 +1732,11 @@
                     <span class="type-badge ${summary.workflow}">${subscriptionTypeLabel(summary.workflow)}</span>
                     <div class="home-queue-meta">
                         <div class="home-queue-meta-row">
-                            <span>当前队伍</span>
+                            <span>${t('queue.current')}</span>
                             <strong>${Number.isFinite(pending) ? pending : 0}</strong>
                         </div>
                         <div class="home-queue-meta-row">
-                            <span>预计等待</span>
+                            <span>${t('queue.wait')}</span>
                             <strong>${eta}</strong>
                         </div>
                     </div>
@@ -1344,35 +1762,37 @@
 
         // 校验 Session 数据，返回 { ok, token, error }
         function validateSessionInput(raw) {
-            if (!raw) return { ok: false, error: '请粘贴 api/auth/session 页面的内容' };
-            if (raw.length < 50) return { ok: false, error: '内容过短，请复制完整的页面内容' };
+            if (!raw) return { ok: false, error: t('validation.sessionRequired') };
+            if (raw.length < 50) return { ok: false, error: t('validation.sessionShort') };
 
             let token = raw;
+            let email = null;
 
             if (raw.startsWith('{')) {
                 let parsed;
                 try { parsed = JSON.parse(raw); }
-                catch (e) { return { ok: false, error: 'JSON 格式错误，请完整复制页面内容，勿手动修改' }; }
+                catch (e) { return { ok: false, error: t('validation.jsonInvalid') }; }
+                email = extractSessionEmail(parsed);
                 if (!parsed.accessToken) {
-                    if (parsed.error === 'unauthenticated') return { ok: false, error: 'ChatGPT 未登录，请先在同一浏览器登录账号后再来获取' };
-                    return { ok: false, error: 'JSON 中未找到 accessToken 字段，请确认复制的是 api/auth/session 页面的内容' };
+                    if (parsed.error === 'unauthenticated') return { ok: false, error: t('validation.unauthenticated') };
+                    return { ok: false, error: t('validation.accessTokenMissing') };
                 }
                 token = parsed.accessToken;
             }
 
             // JWT 校验：必须以 eyJ 开头且长度足够
             if (!token.startsWith('eyJ')) {
-                return { ok: false, error: 'accessToken 格式无效，应以 eyJ 开头（JWT 格式）' };
+                return { ok: false, error: t('validation.tokenPrefix') };
             }
             if (token.length < 100) {
-                return { ok: false, error: 'accessToken 长度异常，请确认复制的是完整内容' };
+                return { ok: false, error: t('validation.tokenLength') };
             }
             const parts = token.split('.');
             if (parts.length !== 3) {
-                return { ok: false, error: 'accessToken 不是标准 JWT 格式（应有三段用 . 分隔）' };
+                return { ok: false, error: t('validation.tokenParts') };
             }
 
-            return { ok: true, token };
+            return { ok: true, token, email };
         }
 
         // ========== 卡密验证 ==========
@@ -1383,7 +1803,7 @@
 
             // 前置校验
             if (!code) {
-                showVerifyError('请输入卡密');
+                showVerifyError(t('validation.codeRequired'));
                 document.getElementById('codeError').style.display = 'none';
                 return;
             }
@@ -1393,7 +1813,7 @@
             }
 
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> 验证中...';
+            btn.innerHTML = `<span class="spinner"></span> ${t('redeem.verifying')}`;
 
             try {
                 const res = await fetch('/api/card/verify', {
@@ -1405,7 +1825,7 @@
                 const data = await res.json();
 
                 if (!res.ok) {
-                    showVerifyError(data.error || '验证失败');
+                    showVerifyError(data.error || t('query.failed'));
                     return;
                 }
 
@@ -1416,9 +1836,9 @@
                 resultDiv.className = 'verify-result success';
                 resultDiv.innerHTML = `
                     <div class="result-icon">✅</div>
-                    <div class="result-text">卡密有效</div>
+                    <div class="result-text">${t('redeem.valid')}</div>
                     <div class="result-detail">
-                        类型: <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span>
+                        ${t('redeem.type')} <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span>
                     </div>
                 `;
 
@@ -1432,7 +1852,7 @@
 
                 // 锁定卡密输入
                 document.getElementById('cardCodeInput').readOnly = true;
-                btn.textContent = '✓ 已验证';
+                btn.textContent = t('redeem.verified');
                 btn.disabled = true;
 
                 // 滚动到第二步
@@ -1441,11 +1861,11 @@
                 }, 200);
 
             } catch (err) {
-                showVerifyError('网络错误，请检查连接');
+                showVerifyError(t('common.networkError'));
             } finally {
                 if (!verifiedCard) {
                     btn.disabled = false;
-                    btn.textContent = '验证卡密';
+                    btn.textContent = t('redeem.verifyButton');
                 }
             }
         }
@@ -1455,20 +1875,19 @@
             resultDiv.className = 'verify-result error';
             resultDiv.innerHTML = `
                 <div class="result-icon">❌</div>
-                <div class="result-text">${message}</div>
+                <div class="result-text">${escapeHtml(message)}</div>
             `;
         }
 
         // ========== 兑换提交 ==========
         async function redeemCard() {
             if (!verifiedCard) {
-                showVerifyError('请先验证卡密');
+                showVerifyError(t('validation.codeRequired'));
                 return;
             }
 
             const raw = document.getElementById('accessTokenInput').value.trim();
             const btn = document.getElementById('redeemBtn');
-            currentSubmittedEmail = null;
 
             // 前置校验 Session 数据
             const validation = validateSessionInput(raw);
@@ -1478,9 +1897,10 @@
                 return;
             }
             clearTokenError();
+            updateSessionEmailPreview(validation.email || null);
 
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> 提交中...';
+            btn.innerHTML = `<span class="spinner"></span> ${t('redeem.submitting')}`;
 
             try {
                 const res = await fetch('/api/card/redeem', {
@@ -1501,15 +1921,15 @@
                             job_id: data.job_id || 'unknown', 
                             status: data.status, 
                             email: data.email,
-                            error: data.error || '状态不确定，请联系管理员人工核验。' 
+                            error: data.error || t('manual.unknownSubmit') 
                         });
                         document.getElementById('step1Card').classList.add('hidden');
                         document.getElementById('step2Card').classList.add('hidden');
                         return;
                     }
-                    showTokenError(data.error || '兑换失败，请稍后重试');
+                    showTokenError(data.error || t('redeem.failed'));
                     btn.disabled = false;
-                    btn.textContent = '🚀 提交兑换';
+                    btn.textContent = t('redeem.submitButton');
                     return;
                 }
 
@@ -1526,9 +1946,9 @@
                 startPolling();
 
             } catch (err) {
-                alert('网络错误: ' + err.message);
+                alert(t('common.networkErrorWithMessage', { message: err.message }));
                 btn.disabled = false;
-                btn.textContent = '🚀 提交兑换';
+                btn.textContent = t('redeem.submitButton');
             }
         }
 
@@ -1573,7 +1993,7 @@
                 progressBar.classList.add('hidden');
                 resultMsg.classList.add('hidden');
                 errorMsg.classList.remove('hidden');
-                errorMsg.textContent = '❌ 兑换失败: ' + (job.error || '未知原因') + '（卡密已自动退回）';
+                errorMsg.textContent = t('job.failed', { error: job.error || t('common.unknownReason') });
                 // 失败：显示「重试兑换」和「换一张」
                 jobActionBtns.style.display = 'flex';
                 jobActionBtns.classList.remove('hidden');
@@ -1582,7 +2002,7 @@
                 progressBar.classList.add('hidden');
                 resultMsg.classList.add('hidden');
                 errorMsg.classList.remove('hidden');
-                errorMsg.textContent = '兑换状态待人工核验：' + (job.error || '请联系客服确认最终结果，暂不要重复提交。');
+                errorMsg.textContent = t('job.manualCheck', { error: job.error || t('manual.finalCheck') });
                 jobActionBtns.classList.add('hidden');
                 retryBtn.classList.add('hidden');
             } else {
@@ -1596,12 +2016,12 @@
 
         function getStatusDesc(status) {
             const map = {
-                pending: '排队等待中...',
-                processing: '系统处理中，请稍候...',
-                done: '✅ 兑换成功',
-                failed: '兑换失败',
-                unknown: '待人工核验',
-                expired: '已过期待核验'
+                pending: t('status.pending'),
+                processing: t('status.processing'),
+                done: t('status.done'),
+                failed: t('status.failed'),
+                unknown: t('status.unknown'),
+                expired: t('status.expired')
             };
             return map[status] || status;
         }
@@ -1609,12 +2029,14 @@
         function formatQueueEstimate(job) {
             const parts = [];
             if (job.queue_position !== null && job.queue_position !== undefined) {
-                parts.push(`排队位置 ${job.queue_position}`);
+                parts.push(t('queue.position', { position: job.queue_position }));
             }
             if (job.estimated_wait_seconds !== null && job.estimated_wait_seconds !== undefined) {
                 const seconds = Number(job.estimated_wait_seconds);
                 if (Number.isFinite(seconds)) {
-                    parts.push(seconds < 60 ? `预计 ${Math.ceil(seconds)} 秒` : `预计 ${Math.ceil(seconds / 60)} 分钟`);
+                    parts.push(seconds < 60
+                        ? t('queue.estimatedSeconds', { seconds: Math.ceil(seconds) })
+                        : t('queue.estimatedMinutes', { minutes: Math.ceil(seconds / 60) }));
                 }
             }
             return parts.join(' · ');
@@ -1622,25 +2044,25 @@
 
         function subscriptionTypeLabel(type) {
             const map = {
-                plus: 'ChatGPT Plus',
-                plus_1y: 'ChatGPT Plus 1 年',
-                pro: 'ChatGPT Pro 5X',
-                pro_20x: 'ChatGPT Pro 20X'
+                plus: t('type.plus'),
+                plus_1y: t('type.plus_1y'),
+                pro: t('type.pro'),
+                pro_20x: t('type.pro_20x')
             };
             return map[type] || String(type || '-').toUpperCase();
         }
 
         async function cancelTaskByJobId(jobId, button) {
             if (!jobId) {
-                alert('没有可取消的 Job ID');
+                alert(t('common.cancelNoJob'));
                 return;
             }
-            if (!confirm('确认取消这个兑换任务吗？如果上游允许取消，卡密会自动退回。')) return;
+            if (!confirm(t('common.cancelConfirm'))) return;
 
             const oldText = button ? button.textContent : '';
             if (button) {
                 button.disabled = true;
-                button.textContent = '取消中...';
+                button.textContent = t('job.canceling');
             }
 
             try {
@@ -1651,23 +2073,23 @@
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    alert(data.error || '取消失败，请稍后重试');
+                    alert(data.error || t('common.cancelFailed'));
                     return;
                 }
 
                 if (jobId === currentJobId) {
                     isPolling = false;
-                    showJobStatus({ job_id: jobId, status: data.status || 'failed', error: 'cancelled' });
+                    showJobStatus({ job_id: jobId, status: data.status || 'failed', error: t('common.cancelled') });
                 }
-                alert(data.message || '任务已取消，卡密已退回');
+                alert(data.message || t('common.cancelSuccess'));
                 const queryCode = document.getElementById('queryCodeInput')?.value.trim();
                 if (queryCode) queryCard();
             } catch (err) {
-                alert('取消失败：网络错误，请稍后重试');
+                alert(t('common.cancelNetwork'));
             } finally {
                 if (button) {
                     button.disabled = false;
-                    button.textContent = oldText || '取消任务';
+                    button.textContent = oldText || t('job.cancelTask');
                 }
             }
         }
@@ -1682,7 +2104,7 @@
                     if (!res.ok) {
                         if (res.status === 404) {
                             isPolling = false;
-                            showJobStatus({ job_id: currentJobId, status: 'expired', error: '任务已过期或不存在，请联系客服人工核验最终状态' });
+                            showJobStatus({ job_id: currentJobId, status: 'expired', error: t('manual.expiredJob') });
                             break;
                         }
                         await new Promise(r => setTimeout(r, 5000));
@@ -1713,7 +2135,8 @@
             document.getElementById('cardCodeInput').value = '';
             document.getElementById('cardCodeInput').readOnly = false;
             document.getElementById('accessTokenInput').value = '';
-            document.getElementById('verifyBtn').textContent = '验证卡密';
+            updateSessionEmailPreview(null);
+            document.getElementById('verifyBtn').textContent = t('redeem.verifyButton');
             document.getElementById('verifyBtn').disabled = false;
             document.getElementById('verifyResult').className = 'verify-result';
             document.getElementById('verifyResult').innerHTML = '';
@@ -1730,7 +2153,7 @@
 
             const retryBtn = document.getElementById('redeemRetryBtn');
             retryBtn.disabled = true;
-            retryBtn.innerHTML = '<span class="spinner"></span> 验证中...';
+            retryBtn.innerHTML = `<span class="spinner"></span> ${t('redeem.verifying')}`;
 
             // 隐藏任务状态区域
             currentJobId = null;
@@ -1753,7 +2176,7 @@
 
                 if (!res.ok) {
                     // 卡密不再可用（如被禁用），全重置
-                    alert('卡密已无法重试：' + (data.error || '未知错误'));
+                    alert(t('retry.cardUnavailable', { error: data.error || t('common.unknown') }));
                     resetForm();
                     return;
                 }
@@ -1770,13 +2193,13 @@
                 // 恢复 step1 状态
                 step1.classList.remove('hidden');
                 document.getElementById('cardCodeInput').readOnly = true;
-                verifyBtn.textContent = '✓ 已验证';
+                verifyBtn.textContent = t('redeem.verified');
                 verifyBtn.disabled = true;
                 verifyResult.className = 'verify-result success';
                 verifyResult.innerHTML = `
                     <div class="result-icon">✅</div>
-                    <div class="result-text">卡密有效（重试）</div>
-                    <div class="result-detail">类型: <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></div>
+                    <div class="result-text">${t('redeem.validRetry')}</div>
+                    <div class="result-detail">${t('redeem.type')} <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></div>
                 `;
 
                 // 显示 step2，自动恢复兑换按钮
@@ -1785,16 +2208,16 @@
                 loadQueueSummary(data.type);
                 const redeemBtn = document.getElementById('redeemBtn');
                 redeemBtn.disabled = false;
-                redeemBtn.textContent = '🚀 重试兑换';
+                redeemBtn.textContent = t('redeem.retrySubmit');
                 step2.classList.remove('hidden');
 
                 setTimeout(() => step2.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
 
             } catch (err) {
-                alert('网络错误，请检查连接后重试');
+                alert(t('retry.networkError'));
             } finally {
                 retryBtn.disabled = false;
-                retryBtn.innerHTML = '🔄 重试兑换';
+                retryBtn.textContent = t('job.retryRedeem');
             }
         }
 
@@ -1837,33 +2260,43 @@
             return statusIconMap[status] || '';
         }
 
+        function cardStatusLabel(status, fallback) {
+            const key = `cardStatus.${status}`;
+            return (I18N[currentLanguage]?.[key] || I18N.zh[key] || fallback || status || t('common.unknown'));
+        }
+
+        function redeemStatusLabel(status, fallback) {
+            const key = `status.${status}`;
+            return (I18N[currentLanguage]?.[key] || I18N.zh[key] || fallback || status || t('common.unknown'));
+        }
+
         function renderBatchQueryTable(items) {
             return `
                 <div class="query-table-wrap">
                     <table class="query-table">
                         <thead>
                             <tr>
-                                <th>卡密</th>
-                                <th>类型</th>
-                                <th>卡密状态</th>
-                                <th>兑换状态</th>
-                                <th>兑换邮箱</th>
+                                <th>${t('query.code')}</th>
+                                <th>${t('query.type')}</th>
+                                <th>${t('query.cardStatus')}</th>
+                                <th>${t('query.redeemStatus')}</th>
+                                <th>${t('query.email')}</th>
                                 <th>Job ID</th>
-                                <th>错误信息</th>
+                                <th>${t('query.error')}</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${items.map((item) => {
                                 const cardStatusClass = escapeHtml(item.status || 'not_found');
                                 const redeemStatus = item.redeem_status
-                                    ? `<span class="status-pill ${escapeHtml(item.redeem_status)}">${queryStatusIcon(item.redeem_status)} ${escapeHtml(item.redeem_status_label || item.redeem_status)}</span>`
+                                    ? `<span class="status-pill ${escapeHtml(item.redeem_status)}">${queryStatusIcon(item.redeem_status)} ${escapeHtml(redeemStatusLabel(item.redeem_status, item.redeem_status_label))}</span>`
                                     : '-';
-                                const errorText = item.error || item.redeem_error || (item.needs_manual_review ? '需人工核验' : '-');
+                                const errorText = item.error || item.redeem_error || (item.needs_manual_review ? t('common.manualReview') : '-');
                                 return `
                                     <tr>
                                         <td class="mono-cell">${escapeHtml(item.code || '-')}</td>
                                         <td>${item.type ? `<span class="type-badge ${escapeHtml(item.type)}">${escapeHtml(subscriptionTypeLabel(item.type))}</span>` : '-'}</td>
-                                        <td><span class="status-pill ${cardStatusClass}">${queryStatusIcon(item.status)} ${escapeHtml(item.status_label || item.status || '未知')}</span></td>
+                                        <td><span class="status-pill ${cardStatusClass}">${queryStatusIcon(item.status)} ${escapeHtml(cardStatusLabel(item.status, item.status_label))}</span></td>
                                         <td>${redeemStatus}</td>
                                         <td class="mono-cell">${escapeHtml(item.email || '-')}</td>
                                         <td class="mono-cell">${escapeHtml(item.job_id || '-')}</td>
@@ -1884,7 +2317,7 @@
             const resultDiv = document.getElementById('queryResult');
 
             if (!code) {
-                resultDiv.innerHTML = `<div class="query-empty">请输入卡密</div>`;
+                resultDiv.innerHTML = `<div class="query-empty">${t('query.inputRequired')}</div>`;
                 return;
             }
 
@@ -1898,7 +2331,7 @@
                 if (!res.ok) {
                     resultDiv.innerHTML = `
                         <div style="padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
-                            <span>&#10060;</span> ${data.error || '查询失败'}
+                            <span>&#10060;</span> ${escapeHtml(data.error || t('query.failed'))}
                         </div>`;
                     return;
                 }
@@ -1906,33 +2339,36 @@
                 const redeemRows = data.redeem_status ? `
                     ${data.used_at ? `
                     <div class="query-row">
-                        <span class="q-label">❤️ 兑换成功时间</span>
+                        <span class="q-label">❤️ ${t('query.redeemTime')}</span>
                         <span class="q-value mono">${data.used_at}</span>
                     </div>` : ''}
                     ${data.email ? `
                     <div class="query-row">
-                        <span class="q-label">📧 兑换邮箱</span>
+                        <span class="q-label">📧 ${t('query.redeemEmail')}</span>
                         <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${escapeHtml(data.email)}</span>
                     </div>` : ''}
                     <div class="query-row">
-                        <span class="q-label">📦 兑换进度</span>
-                        <span class="q-value"><span class="status-pill ${data.redeem_status}">${queryStatusIcon(data.redeem_status)} ${data.redeem_status_label}</span></span>
+                        <span class="q-label">📦 ${t('query.redeemProgress')}</span>
+                        <span class="q-value"><span class="status-pill ${data.redeem_status}">${queryStatusIcon(data.redeem_status)} ${escapeHtml(redeemStatusLabel(data.redeem_status, data.redeem_status_label))}</span></span>
                     </div>
                     ${(data.queue_position !== null && data.queue_position !== undefined) || (data.estimated_wait_seconds !== null && data.estimated_wait_seconds !== undefined) ? `
                     <div class="query-row">
-                        <span class="q-label">⏳ 排队预估</span>
+                        <span class="q-label">⏳ ${t('query.queueEstimate')}</span>
                         <span class="q-value">${formatQueueEstimate(data)}</span>
                     </div>` : ''}
                     ${data.redeem_error ? `
                     <div class="query-row">
-                        <span class="q-label">状态说明</span>
-                        <span class="q-value" style="color: var(--accent-amber);">${data.redeem_error}</span>
+                        <span class="q-label">${t('query.statusNote')}</span>
+                        <span class="q-value" style="color: var(--accent-amber);">${escapeHtml(data.redeem_error)}</span>
                     </div>` : ''}
                     ${data.needs_manual_review ? `
                     <div style="margin:0 20px 12px; padding: 12px; background: rgba(251, 191, 36, 0.1); border-left: 3px solid #fbbf24; border-radius: 4px; font-size: 13px;">
-                        <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">⚠️ 需人工核验</div>
-                        <div style="color:var(--text-secondary);">此卡密在提交时遇到异常，目前状态不确定。卡密已锁定，请勿重复提交，请联系客服人工查询。</div>
-                        <div style="color:var(--text-secondary);font-size:11px;opacity:0.8;margin-top:4px;">[Diagnostics: ${data.manual_review_stage || 'unknown'} - ${data.manual_review_reason || 'N/A'}]</div>
+                        <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">${t('query.manualTitle')}</div>
+                        <div style="color:var(--text-secondary);">${t('query.manualBody')}</div>
+                        <div style="color:var(--text-secondary);font-size:11px;opacity:0.8;margin-top:4px;">${escapeHtml(t('query.diagnostics', {
+                            stage: data.manual_review_stage || t('query.diagnosticsUnknown'),
+                            reason: data.manual_review_reason || t('query.diagnosticsNone')
+                        }))}</div>
                     </div>` : ''}
                     ${data.job_id ? `
                     <div class="query-row">
@@ -1940,34 +2376,34 @@
                         <span class="q-value mono">${data.job_id}</span>
                     </div>` : ''}
                     ${data.job_id && !['done', 'failed', 'unknown', 'expired'].includes(data.redeem_status) ? `
-                    <button class="cancel-inline-btn" onclick="cancelTaskByJobId('${data.job_id}', this)">取消任务</button>` : ''}
+                    <button class="cancel-inline-btn" onclick="cancelTaskByJobId('${data.job_id}', this)">${t('job.cancelTask')}</button>` : ''}
                 ` : '';
 
                 resultDiv.innerHTML = `
                     <div class="query-result">
                         <div class="query-result-header">
-                            <span class="qcode">${data.code}</span>
-                            <span class="status-pill ${data.status}">${queryStatusIcon(data.status)} ${data.status_label}</span>
+                            <span class="qcode">${escapeHtml(data.code)}</span>
+                            <span class="status-pill ${data.status}">${queryStatusIcon(data.status)} ${escapeHtml(cardStatusLabel(data.status, data.status_label))}</span>
                         </div>
                         <div class="query-result-body">
                             <div class="query-row">
-                                <span class="q-label">🏷️ 订阅类型</span>
+                                <span class="q-label">🏷️ ${t('query.subscriptionType')}</span>
                                 <span class="q-value"><span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></span>
                             </div>
                             <div class="query-row">
-                                <span class="q-label">📅 生成时间</span>
-                                <span class="q-value mono">${data.created_at || '-'}</span>
+                                <span class="q-label">📅 ${t('query.createdAt')}</span>
+                                <span class="q-value mono">${escapeHtml(data.created_at || '-')}</span>
                             </div>
                             ${redeemRows}
-                            ${!data.used_at && !data.redeem_status ? `<div class="query-empty">💡 该卡密尚未使用</div>` : ''}
+                            ${!data.used_at && !data.redeem_status ? `<div class="query-empty">${t('query.unusedCard')}</div>` : ''}
                         </div>
                     </div>`;
 
             } catch (err) {
-                resultDiv.innerHTML = `<div class="query-empty">网络错误，请检查连接后重试</div>`;
+                resultDiv.innerHTML = `<div class="query-empty">${t('query.networkError')}</div>`;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '查&nbsp;询';
+                btn.innerHTML = t('query.searchButton');
             }
         }
 
@@ -1977,7 +2413,7 @@
             const resultDiv = document.getElementById('batchQueryResult');
 
             if (!text) {
-                resultDiv.innerHTML = `<div class="query-empty">请输入至少一个卡密</div>`;
+                resultDiv.innerHTML = `<div class="query-empty">${t('query.batchInputRequired')}</div>`;
                 return;
             }
 
@@ -1995,26 +2431,26 @@
                 if (!res.ok) {
                     resultDiv.innerHTML = `
                         <div style="margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
-                            <span>&#10060;</span> ${escapeHtml(data.error || '批量查询失败')}
+                            <span>&#10060;</span> ${escapeHtml(data.error || t('query.batchFailed'))}
                         </div>`;
                     return;
                 }
 
                 const items = Array.isArray(data.results) ? data.results : [];
                 if (!items.length) {
-                    resultDiv.innerHTML = `<div class="query-empty">没有查询到结果</div>`;
+                    resultDiv.innerHTML = `<div class="query-empty">${t('query.noResults')}</div>`;
                     return;
                 }
 
                 resultDiv.innerHTML = `
-                    <div style="margin-top: 16px; color: var(--text-secondary); font-size: 12px;">共查询 ${items.length} 个卡密</div>
+                    <div style="margin-top: 16px; color: var(--text-secondary); font-size: 12px;">${t('query.total', { count: items.length })}</div>
                     ${renderBatchQueryTable(items)}
                 `;
             } catch (err) {
-                resultDiv.innerHTML = `<div class="query-empty">网络错误，请检查连接后重试</div>`;
+                resultDiv.innerHTML = `<div class="query-empty">${t('query.networkError')}</div>`;
             } finally {
                 btn.disabled = false;
-                btn.textContent = '批量查询';
+                btn.textContent = t('query.batchButton');
             }
         }
     </script>

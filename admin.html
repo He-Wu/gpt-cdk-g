@@ -738,6 +738,120 @@
             font-size: 12px;
         }
 
+        .system-overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .system-metric-card {
+            background: rgba(255, 255, 255, 0.026);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            min-width: 0;
+        }
+
+        .system-metric-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .system-metric-label {
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .system-metric-status {
+            width: 9px;
+            height: 9px;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            background: var(--emerald);
+            box-shadow: 0 0 16px rgba(52, 211, 153, 0.28);
+        }
+
+        .system-metric-status.warn {
+            background: var(--amber);
+            box-shadow: 0 0 16px rgba(251, 191, 36, 0.26);
+        }
+
+        .system-metric-status.danger {
+            background: var(--rose);
+            box-shadow: 0 0 16px rgba(251, 113, 133, 0.28);
+        }
+
+        .system-metric-value {
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .system-metric-detail {
+            margin-top: 8px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .system-meter {
+            height: 7px;
+            margin-top: 14px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.055);
+        }
+
+        .system-meter-fill {
+            display: block;
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: var(--gradient-emerald);
+            transition: width 0.25s ease;
+        }
+
+        .system-meter-fill.warn { background: var(--gradient-amber); }
+        .system-meter-fill.danger { background: var(--gradient-rose); }
+
+        .system-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
+        }
+
+        .system-detail-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            min-width: 0;
+            padding: 13px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .system-detail-row span {
+            color: var(--text-muted);
+            font-size: 12px;
+            flex: 0 0 auto;
+        }
+
+        .system-detail-row strong {
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-align: right;
+            word-break: break-word;
+        }
+
         /* 表格 */
         .table-wrapper {
             overflow-x: auto;
@@ -1198,6 +1312,9 @@
             <div class="nav-item" onclick="switchPage('job-status')" data-page="job-status" data-permission="manage_settings">
                 <span class="nav-icon">🔎</span> 任务查询
             </div>
+            <div class="nav-item" onclick="switchPage('system')" data-page="system" data-permission="manage_settings">
+                <span class="nav-icon">🖥️</span> 系统状态
+            </div>
             <div class="nav-item" onclick="switchPage('accounts')" data-page="accounts" data-permission="manage_accounts">
                 <span class="nav-icon">👥</span> 账号管理
             </div>
@@ -1234,6 +1351,9 @@
             </div>
             <div class="nav-item" onclick="switchPage('job-status')" data-page="job-status" data-permission="manage_settings">
                 <span class="nav-icon">🔎</span> 任务查询
+            </div>
+            <div class="nav-item" onclick="switchPage('system')" data-page="system" data-permission="manage_settings">
+                <span class="nav-icon">🖥️</span> 系统状态
             </div>
             <div class="nav-item" onclick="switchPage('accounts')" data-page="accounts" data-permission="manage_accounts">
                 <span class="nav-icon">👥</span> 账号管理
@@ -1564,6 +1684,34 @@
                 </div>
             </div>
         </div>
+        <!-- ===== 系统状态页 ===== -->
+        <div class="page" id="page-system" data-permission="manage_settings">
+            <div class="page-header">
+                <h2>系统状态</h2>
+                <p>查看服务器 CPU、内存、磁盘和运行时状态</p>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">资源概览</div>
+                        <p id="systemCollectedAt" style="font-size:12px;color:var(--text-muted);margin-top:6px;">-</p>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" type="button" id="systemRefreshBtn" onclick="loadSystemStatus()">刷新状态</button>
+                </div>
+                <div class="system-overview-grid" id="systemOverviewGrid">
+                    <div class="empty-state" style="grid-column:1 / -1;">
+                        <div class="icon">🖥️</div>
+                        <p>打开页面后自动读取系统运行状态</p>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">运行环境</div>
+                </div>
+                <div class="system-detail-grid" id="systemDetailGrid"></div>
+            </div>
+        </div>
         <!-- ===== 账号管理页 ===== -->
         <div class="page" id="page-accounts" data-permission="manage_accounts">
             <div class="page-header">
@@ -1751,6 +1899,7 @@
         cards: '卡密管理',
         records: '兑换记录',
         'job-status': '任务查询',
+        system: '系统状态',
         accounts: '账号管理',
         settings: '系统设置'
     };
@@ -2028,6 +2177,7 @@
         if (page === 'cards') loadCards();
         if (page === 'records') loadRecords();
         if (page === 'job-status') resetAdminJobStatusResult();
+        if (page === 'system') loadSystemStatus();
         if (page === 'accounts') loadSubAdmins();
         if (page === 'settings') { loadSettingsPage(); loadMaintenancePage(); }
     }
@@ -2822,7 +2972,7 @@
                 tbody.innerHTML = currentRecords.map(r => `
                     <tr>
                         <td class="table-check-cell">${canCancelRecord(r)
-                            ? `<input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(Number(r.id)) ? 'checked' : ''} onchange="toggleRecordSelection(${Number(r.id)}, this.checked)">`
+                            ? `<div style="display:flex;align-items:center;gap:8px;min-width:82px;"><input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(Number(r.id)) ? 'checked' : ''} onchange="toggleRecordSelection(${Number(r.id)}, this.checked)">${recordCancelButton(r)}</div>`
                             : '-'
                         }</td>
                         <td style="color:var(--text-muted);">${r.id}</td>
@@ -2893,11 +3043,23 @@
         return normalized || status;
     }
 
+    function hasManualReviewSignal(record, normalizedStatus = normalizeAdminRecordStatus(record?.status)) {
+        return record?.needs_manual_review === true ||
+            !!record?.manual_review_reason ||
+            !!record?.manual_review_stage ||
+            !!record?.upstream_detail ||
+            normalizedStatus === 'unknown' ||
+            normalizedStatus === 'expired';
+    }
+
     function canCancelRecord(record) {
         if (!record) return false;
-        const isManualReviewWithoutJobId = !record.job_id && record.needs_manual_review === true;
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        const isManualReviewWithoutJobId = !record.job_id &&
+            RECORD_CANCELABLE_STATUSES.has(normalizedStatus) &&
+            hasManualReviewSignal(record, normalizedStatus);
         if (isManualReviewWithoutJobId) return true;
-        return !!record.job_id && RECORD_CANCELABLE_STATUSES.has(normalizeAdminRecordStatus(record.status));
+        return !!record.job_id && RECORD_CANCELABLE_STATUSES.has(normalizedStatus);
     }
 
     function getCurrentPageCancelableRecordIds() {
@@ -2954,13 +3116,13 @@
         if (!canCancelRecord(record)) {
             return `<button class="btn btn-ghost btn-sm" disabled title="该记录当前不可取消">取消</button>`;
         }
-        const isManualReviewWithoutJobId = !record.job_id && record.needs_manual_review === true;
+        const isManualReviewWithoutJobId = !record.job_id && hasManualReviewSignal(record);
         const jobId = record.job_id ? String(record.job_id).replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
         const recordId = Number(record.id) || 0;
         const title = isManualReviewWithoutJobId
             ? '该记录没有 Job ID，将直接按本地记录取消并退回卡密'
             : '取消该兑换任务并退回卡密';
-        return `<button class="btn btn-ghost btn-sm" onclick="cancelRecordJob('${jobId}', ${recordId}, this)" style="color:var(--rose);" title="${title}">取消</button>`;
+        return `<button class="btn btn-ghost btn-sm" type="button" data-record-cancel="${recordId}" onclick="cancelRecordJob('${jobId}', ${recordId}, this)" style="color:var(--rose);" title="${title}">取消</button>`;
     }
 
     function showRecordDiagnostics(recordId) {
@@ -3031,6 +3193,7 @@
             }
             loadRecords();
             loadStats();
+            loadCards();
         } catch (err) {
             showToast('取消失败: ' + err.message, 'error');
         } finally {
@@ -3091,6 +3254,7 @@
             }
             loadRecords();
             loadStats();
+            loadCards();
         } catch (err) {
             showToast('批量取消失败: ' + err.message, 'error');
         } finally {
@@ -3167,6 +3331,146 @@
             if (button) {
                 button.disabled = false;
                 button.textContent = '查询状态';
+            }
+        }
+    }
+
+    function formatBytes(value) {
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes) || bytes < 0) return '-';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let current = bytes;
+        let unitIndex = 0;
+        while (current >= 1024 && unitIndex < units.length - 1) {
+            current /= 1024;
+            unitIndex += 1;
+        }
+        const precision = unitIndex === 0 ? 0 : current >= 10 ? 1 : 2;
+        return `${current.toFixed(precision)} ${units[unitIndex]}`;
+    }
+
+    function formatPercent(value) {
+        const percent = Number(value);
+        if (!Number.isFinite(percent)) return '-';
+        return `${Math.max(0, Math.min(100, percent)).toFixed(1)}%`;
+    }
+
+    function formatDuration(seconds) {
+        let remaining = Math.max(0, Math.floor(Number(seconds) || 0));
+        const days = Math.floor(remaining / 86400);
+        remaining %= 86400;
+        const hours = Math.floor(remaining / 3600);
+        remaining %= 3600;
+        const minutes = Math.floor(remaining / 60);
+        if (days > 0) return `${days} 天 ${hours} 小时`;
+        if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+        return `${minutes} 分钟`;
+    }
+
+    function systemMetricClass(percent) {
+        const value = Number(percent);
+        if (!Number.isFinite(value)) return '';
+        if (value >= 90) return 'danger';
+        if (value >= 75) return 'warn';
+        return '';
+    }
+
+    function renderSystemMetric({ label, value, detail, percent }) {
+        const status = systemMetricClass(percent);
+        const width = Number.isFinite(Number(percent)) ? Math.max(0, Math.min(100, Number(percent))) : 0;
+        return `
+            <div class="system-metric-card">
+                <div class="system-metric-head">
+                    <div class="system-metric-label">${escapeHtml(label)}</div>
+                    <span class="system-metric-status ${status}" aria-hidden="true"></span>
+                </div>
+                <div class="system-metric-value">${escapeHtml(value)}</div>
+                <div class="system-metric-detail">${escapeHtml(detail || '-')}</div>
+                <div class="system-meter"><span class="system-meter-fill ${status}" style="width:${width}%"></span></div>
+            </div>
+        `;
+    }
+
+    function renderSystemDetail(label, value) {
+        return `<div class="system-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? '-')}</strong></div>`;
+    }
+
+    async function loadSystemStatus() {
+        const overview = document.getElementById('systemOverviewGrid');
+        const detailGrid = document.getElementById('systemDetailGrid');
+        const collectedAt = document.getElementById('systemCollectedAt');
+        const button = document.getElementById('systemRefreshBtn');
+        if (!overview || !detailGrid) return;
+
+        overview.innerHTML = `<div class="empty-state" style="grid-column:1 / -1;"><div class="icon">⏳</div><p>正在读取系统状态...</p></div>`;
+        detailGrid.innerHTML = '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '刷新中...';
+        }
+
+        try {
+            const res = await adminFetch('/api/admin/system');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '读取系统状态失败');
+
+            const cpu = data.cpu || {};
+            const memory = data.memory || {};
+            const disk = data.disk || null;
+            const processInfo = data.process || {};
+            const host = data.host || {};
+            const diskPercent = disk && !disk.error ? disk.usage_percent : null;
+
+            if (collectedAt) collectedAt.textContent = `采集时间：${data.collected_at || '-'}`;
+            overview.innerHTML = [
+                renderSystemMetric({
+                    label: 'CPU 使用率',
+                    value: formatPercent(cpu.usage_percent),
+                    detail: `${cpu.cores || 0} 核 · ${cpu.model || 'unknown'}`,
+                    percent: cpu.usage_percent
+                }),
+                renderSystemMetric({
+                    label: '内存使用率',
+                    value: formatPercent(memory.usage_percent),
+                    detail: `${formatBytes(memory.used)} / ${formatBytes(memory.total)}`,
+                    percent: memory.usage_percent
+                }),
+                renderSystemMetric({
+                    label: '磁盘使用率',
+                    value: disk && !disk.error ? formatPercent(diskPercent) : '-',
+                    detail: disk && !disk.error
+                        ? `${formatBytes(disk.used)} / ${formatBytes(disk.total)}`
+                        : (disk?.error || '当前运行环境不支持磁盘统计'),
+                    percent: diskPercent
+                }),
+                renderSystemMetric({
+                    label: '进程内存',
+                    value: formatBytes(processInfo.rss),
+                    detail: `Heap ${formatBytes(processInfo.heap_used)} / ${formatBytes(processInfo.heap_total)}`,
+                    percent: processInfo.heap_total ? (processInfo.heap_used / processInfo.heap_total) * 100 : null
+                })
+            ].join('');
+
+            detailGrid.innerHTML = [
+                renderSystemDetail('主机名', host.hostname),
+                renderSystemDetail('系统平台', `${host.platform || '-'} ${host.release || ''} ${host.arch || ''}`.trim()),
+                renderSystemDetail('CPU 频率', cpu.speed_mhz ? `${cpu.speed_mhz} MHz` : '-'),
+                renderSystemDetail('平均负载', Array.isArray(cpu.loadavg) ? cpu.loadavg.map(v => Number(v).toFixed(2)).join(' / ') : '-'),
+                renderSystemDetail('系统运行时间', formatDuration(host.uptime_seconds)),
+                renderSystemDetail('服务运行时间', formatDuration(processInfo.uptime_seconds)),
+                renderSystemDetail('Node 版本', processInfo.node_version),
+                renderSystemDetail('进程 PID', processInfo.pid),
+                renderSystemDetail('数据目录', processInfo.data_dir),
+                renderSystemDetail('磁盘路径', disk?.path || '-')
+            ].join('');
+        } catch (err) {
+            overview.innerHTML = `<div class="empty-state" style="grid-column:1 / -1;"><div class="icon">⚠️</div><p>${escapeHtml(err.message || '读取系统状态失败')}</p></div>`;
+            if (collectedAt) collectedAt.textContent = '-';
+            showToast('读取系统状态失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = '刷新状态';
             }
         }
     }

@@ -496,6 +496,31 @@ test('admin stats counts plus total as monthly plus plus one year cards', async 
   }
 });
 
+test('admin system endpoint returns host cpu memory disk and process metrics', async () => {
+  const server = await startServer('admin system metrics');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const { res, data } = await requestJson(server.port, '/api/admin/system', {
+      headers: { 'X-Admin-Token': token }
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(typeof data.collected_at, 'string');
+    assert.equal(typeof data.host.hostname, 'string');
+    assert.equal(typeof data.cpu.usage_percent, 'number');
+    assert.ok(data.cpu.cores >= 1);
+    assert.ok(data.memory.total > 0);
+    assert.ok(data.memory.used >= 0);
+    assert.equal(typeof data.memory.usage_percent, 'number');
+    assert.ok(data.disk === null || typeof data.disk === 'object');
+    assert.equal(typeof data.process.node_version, 'string');
+    assert.equal(typeof data.process.uptime_seconds, 'number');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('admin stats fetches available totals from upstream balance api', async () => {
   let balanceCalled = 0;
   const upstream = await startMockUpstream((req, res) => {
@@ -869,6 +894,33 @@ test('uncertain submit success keeps card locked for manual review instead of re
   }
 });
 
+test('submit network errors keep detailed upstream diagnostics without job id', async () => {
+  const server = await startServer('submit network error diagnostics');
+  const deadPort = await getFreePort();
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, `http://127.0.0.1:${deadPort}`);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 502);
+    assert.equal(redeem.data.status, 'unknown');
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.job_id, null);
+    assert.equal(query.data.redeem_status, 'unknown');
+    assert.equal(query.data.needs_manual_review, true);
+    assert.equal(query.data.manual_review_stage, 'submit_network_error');
+    assert.match(query.data.upstream_detail || '', /fetch failed/i);
+    assert.match(query.data.upstream_detail || '', /ECONNREFUSED|connect/i);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('redeem submit and user card query responses include the full session email', async () => {
   const upstream = await startMockUpstream((req, res) => {
     if (req.method === 'POST' && req.url === '/submit') {
@@ -1175,8 +1227,22 @@ test('user page exposes batch card query controls and results table', async () =
   assert.match(html, /queryCardsBatch\(/);
   assert.match(html, /\/api\/card\/query\/batch/);
   assert.match(html, /id="batchQueryResult"/);
-  assert.match(html, /<th>兑换邮箱<\/th>/);
+  assert.match(html, /query\.email/);
   assert.match(html, /escapeHtml\(item\.email \|\| '-'\)/);
+});
+
+test('user page exposes chinese and english language switching', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /id="languageToggle"/);
+  assert.match(html, /setLanguage\('zh'\)/);
+  assert.match(html, /setLanguage\('en'\)/);
+  assert.match(html, /const\s+I18N\s*=/);
+  assert.match(html, /applyLanguage\(\)/);
+  assert.match(html, /data-i18n="hero\.subtitle"/);
+  assert.match(html, /Batch card query/);
+  assert.match(html, /Redeem email/);
+  assert.match(html, /'query\.searchButton': '查询'/);
+  assert.doesNotMatch(html, /'query\.searchButton': '.*&nbsp;/);
 });
 
 test('user page treats unknown redeem submit responses as locked terminal state', async () => {
@@ -1193,6 +1259,20 @@ test('user job status panel shows the submitted session email without masking', 
   assert.match(html, /id="jobEmailText"/);
   assert.match(html, /jobEmailRow[\s\S]{0,500}job\.email/);
   assert.match(html, /jobEmailText\.textContent\s*=\s*job\.email/);
+});
+
+test('user page previews session email while typing before submit', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /id="sessionEmailPreview"/);
+  assert.match(html, /id="sessionEmailText"/);
+  assert.match(html, /oninput="handleSessionInput\(\)"/);
+  assert.match(html, /function extractSessionEmail/);
+  assert.match(html, /parsed\?\.user\?\.email/);
+  assert.match(html, /function updateSessionEmailPreview/);
+  assert.match(html, /preview\.classList\.add\('visible'\)/);
+  assert.match(html, /currentSubmittedEmail = email/);
+  assert.match(html, /'redeem\.detectedEmail': '识别邮箱:'/);
+  assert.match(html, /'redeem\.detectedEmail': 'Detected email:'/);
 });
 
 test('user query page exposes manual review diagnostics and no-retry guidance', async () => {
@@ -1280,8 +1360,12 @@ test('admin records page exposes bulk cancel selection controls', async () => {
 
 test('admin records keep cancel available for manual-review rows without job id', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
-  assert.match(html, /record\.needs_manual_review === true/);
+  assert.match(html, /hasManualReviewSignal/);
+  assert.match(html, /normalizedStatus === 'unknown'/);
   assert.match(html, /record_id/);
+  assert.match(html, /data-record-cancel/);
+  assert.match(html, /record-select-checkbox[\s\S]{0,240}recordCancelButton\(r\)/);
+  assert.match(html, /loadCards\(\)/);
   assert.match(html, /该记录没有 Job ID，将直接按本地记录取消并退回卡密/);
 });
 
@@ -1658,6 +1742,52 @@ test('admin cancel refunds manual-review records without job id by local record 
   }
 });
 
+test('admin records expose cancel for legacy unknown records without job id or manual flag', async () => {
+  const server = await startServer('admin legacy unknown local cancel record', {}, {
+    cards: [{
+      code: 'LEGACY-UNKNOWN-LOCAL-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token',
+      used_email: 'user@example.com'
+    }],
+    records: [{
+      id: 8,
+      card_code: 'LEGACY-UNKNOWN-LOCAL-0001',
+      card_type: 'plus',
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: null,
+      status: 'unknown',
+      error_message: '提交请求结果不确定: fetch failed',
+      workflow: 'plus',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const recordsRes = await requestJson(server.port, '/api/admin/records?search=LEGACY-UNKNOWN-LOCAL-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records[0].needs_manual_review, true);
+
+    const cancelled = await adminCancelRecord(server.port, token, 8);
+    assert.equal(cancelled.res.status, 200);
+    assert.equal(cancelled.data.status, 'failed');
+
+    const query = await queryCard(server.port, 'LEGACY-UNKNOWN-LOCAL-0001');
+    assert.equal(query.data.status, 'unused');
+    assert.equal(query.data.redeem_status, 'failed');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('admin cancel refunds manual-review records when upstream job is missing or expired', async () => {
   let deleteCalled = 0;
   const upstream = await startMockUpstream((req, res) => {
@@ -1824,6 +1954,18 @@ test('admin page exposes a super-admin job status page', async () => {
   assert.match(html, /data-page="job-status"[\s\S]*data-permission="manage_settings"|data-permission="manage_settings"[\s\S]*data-page="job-status"/);
 });
 
+test('admin page exposes a dedicated system status page', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /page-system/);
+  assert.match(html, /switchPage\('system'\)/);
+  assert.match(html, /loadSystemStatus/);
+  assert.match(html, /\/api\/admin\/system/);
+  assert.match(html, /CPU 使用率/);
+  assert.match(html, /内存使用率/);
+  assert.match(html, /磁盘使用率/);
+  assert.match(html, /data-page="system"[\s\S]*data-permission="manage_settings"|data-permission="manage_settings"[\s\S]*data-page="system"/);
+});
+
 test('admin page script parses so login handlers are actually defined', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   const match = html.match(/<script>([\s\S]*)<\/script>\s*<\/body>/);
@@ -1880,9 +2022,20 @@ test('admin and user pages expose plus one year and queue estimates', async () =
 test('user page labels plus one year cards as plus one year instead of pro', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
   assert.match(html, /function subscriptionTypeLabel/);
-  assert.match(html, /plus_1y:\s*'ChatGPT Plus 1 骞?/);
-  assert.match(html, /pro_20x:\s*'ChatGPT Pro 20X'/);
+  assert.match(html, /plus_1y:\s*t\('type\.plus_1y'\)/);
+  assert.match(html, /pro_20x:\s*t\('type\.pro_20x'\)/);
   assert.doesNotMatch(html, /data\.type\s*===\s*'plus'\s*\?\s*'ChatGPT Plus'\s*:\s*'ChatGPT Pro'/);
+});
+
+test('user page localizes dynamic labels in english mode', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /data-i18n="brand\.title"/);
+  assert.match(html, /'brand\.title': 'GPT Source'/);
+  assert.match(html, /'type\.plus_1y': 'ChatGPT Plus 1 Year'/);
+  assert.match(html, /'query\.diagnostics': 'Diagnostics: \{stage\} - \{reason\}'/);
+  assert.match(html, /'query\.diagnostics': '诊断信息: \{stage\} - \{reason\}'/);
+  assert.match(html, /t\('query\.diagnostics'/);
+  assert.doesNotMatch(html, /\[Diagnostics:/);
 });
 
 test('user page exposes queue summary hooks for current queue size and estimated wait time', async () => {
