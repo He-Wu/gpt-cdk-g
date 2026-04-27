@@ -108,7 +108,10 @@ API 提供四个 workflow,对应不同订阅方案:
 | `400`  | 请求参数无效 (含 `workflow` 为必填、不认得的 workflow) | 不扣 |
 | `401`  | 未授权 (API Key 无效)                                | 不扣 |
 | `402`  | 余额不足 (该 workflow 余额为 0,信息含 workflow 名)  | 不扣 |
+| `429`  | 该 workflow 队列已满(上限 500 笔 pending),请稍后再试 | 不扣 |
 | `503`  | 服务暂停中                                           | 不扣 |
+
+> **队列上限**:每个 workflow 最多容纳 **500 笔 pending job**(processing 中的不算)。一旦达上限,新提交会立刻收到 `429`,**不会扣费、不会建立 job 记录**。队列吃紧时可先 `GET /queue` 看 `pending` 字段。
 
 ---
 
@@ -353,16 +356,25 @@ GET /job/a1b2c3d4e5f6?wait=30
 
 - `POST /submit` 响应极快(< 1 秒),一般 timeout 10 秒即可
 - `GET /job/{id}?wait=30` 建议 timeout 40 秒
-- 整个 job 处理最长 **30 分钟**(1800 秒),超过 server 会将 job 标 `failed` 并自动退款。Client 端 polling 建议用 long-poll(`?wait=30`)而非自己 hold 一个 30 分钟连接
+- 整个 job 处理最长 **1 小时**(3600 秒),超过 server 会将 job 标 `failed` 并自动退款。Client 端 polling 建议用 long-poll(`?wait=30`)而非自己 hold 一个 1 小时连接
 
-### 4. 扣费语义
+### 4. 队列容量限制
+
+每个 workflow 的 pending 队列上限为 **500 笔**。达上限后新提交会立刻被拒(`HTTP 429`),不扣费、不建立 job 记录。
+
+实务建议:
+- 提交前先 `GET /queue` 观察 `pending`(该 workflow 已排队数)接近 500 时暂缓
+- 收到 `429` 不要立即重试,等 30-60 秒让队列消化
+- 大量批次提交时控制送出速率,避免一次塞满
+
+### 5. 扣费语义
 
 - `POST /submit` 回 `202`:立即扣 1 点(从 `workflow` 对应的余额)
 - Job 最终 `status = done`:扣款保留
 - Job 最终 `status = failed`:**自动退款**到原 workflow,client 不需处理
 - 各 workflow (`plus` / `plus_1y` / `pro` / `pro_20x`) 余额完全独立,扣 / 退都各自结算
 
-### 5. 重试策略
+### 6. 重试策略
 
 | 场景                            | 建议动作                               |
 | ------------------------------- | -------------------------------------- |
@@ -371,18 +383,19 @@ GET /job/a1b2c3d4e5f6?wait=30
 | `400 workflow 为必填`           | request body 补上 `workflow`           |
 | `400 未知 workflow`             | 确认用 `"plus"` / `"plus_1y"` / `"pro"` / `"pro_20x"` |
 | `400` 其他                      | 修正 request body 后才重试             |
+| `429 队列已满`                  | 等 30-60 秒让队列消化后重试;勿短间隔重打 |
 | `503` (submit 时)              | 等 30-60 秒重试                        |
 | Job `status = failed`           | 依 `error` 内容判断,通常可直接重新 submit |
 
-### 6. 重复提交
+### 7. 重复提交
 
 同一个 access token 可多次调用 `/submit`,每次会独立建 job 各自扣费。请 client 端自行控制避免重复。
 
-### 7. 并发
+### 8. 并发
 
 建议同一 API key **同 workflow 同时在途 job ≤ 5**。四个 workflow (`plus` / `plus_1y` / `pro` / `pro_20x`) 彼此独立队列,互不阻塞。
 
-### 8. Workflow 选择
+### 9. Workflow 选择
 
 依想启用的订阅方案 + 期长选择:
 
@@ -409,7 +422,10 @@ A. ChatGPT 侧 token 通常数小时内有效。建议获取后 1 小时内 subm
 A. 收到 `status = done` 后,以该账号登录 ChatGPT 查看 Plus / Pro 状态。建议等 30 秒再检查。
 
 **Q. Job 太久才完成怎么办?**
-A. 单一 job 最长处理 30 分钟,超过会 `status = failed` + error `队列超时,请稍后重试`,此时余额已自动退回对应 workflow。
+A. 单一 job 最长处理 1 小时,超过会 `status = failed` + error `队列超时,请稍后重试`,此时余额已自动退回对应 workflow。
+
+**Q. 收到 `429 Queue full` 怎么办?**
+A. 该 workflow 的 pending 队列已达 500 笔上限。等 30-60 秒让 worker 消化后再重试,别短间隔重打。建议提交前先 `GET /queue` 看 `pending` 是否接近上限。`429` 不会扣费也不会建立 job 记录。
 
 **Q. 怎么知道 job 还要等多久?**
 A. 调用 `GET /job/{job_id}`,在 `pending` / `processing` 状态下 response 会带 `queue_position` 与 `estimated_wait_seconds`。想看整体队列状况可用 `GET /queue`。两者皆为估算值,实际时间依当下系统状况可能会有差异。
@@ -426,6 +442,7 @@ A. 可以。四个 workflow 余额完全独立,扣费 / 退款也各自结算。
 
 | 日期       | 变更                                                                       |
 | ---------- | -------------------------------------------------------------------------- |
+| 2026-04-27 | v6:Job timeout 延长为 1 小时(3600 秒);新增队列容量上限 500 笔 / workflow,超过回 `429 Queue full`(不扣费、不建 job) |
 | 2026-04-24 | v5:新增 `pro_20x` workflow(Pro 20x 版本)                                |
 | 2026-04-23 | v4:Job timeout 延长为 30 分钟;新增 `GET /queue` endpoint;`/submit` 与 `/job/{id}` 响应加上 `queue_position` 与 `estimated_wait_seconds`;`/queue` 响应加上 `workers` (workflow 的并行处理数);文档化 `plus_1y` workflow(Plus 1 年期) |
 | 2026-04-20 | v3:新增 `pro` workflow,`workflow` 为必填,余额拆成 per-workflow (`balances`) |

@@ -364,6 +364,44 @@ test('login rate limiting ignores spoofed x-forwarded-for headers', async () => 
   }
 });
 
+test('trusted proxy real ip is saved on redeem records', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: 'job-real-ip' }));
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ detail: 'not found' }));
+  });
+  const server = await startServer('trusted proxy real ip', { TRUST_PROXY: '1' });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await requestJson(server.port, '/api/card/redeem', {
+      method: 'POST',
+      headers: { 'X-Real-IP': '203.0.113.66' },
+      body: JSON.stringify({
+        code,
+        access_token: `eyJ.${'a'.repeat(120)}.${'b'.repeat(40)}`
+      })
+    });
+    assert.equal(redeem.res.status, 200);
+
+    const recordsRes = await requestJson(server.port, `/api/admin/records?search=${encodeURIComponent(code)}`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records[0].ip_address, '203.0.113.66');
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
 test('server starts without ADMIN_PASSWORD by generating a saved admin password', async () => {
   const server = await startServerWithoutAdminPassword('starts without admin password');
 
@@ -377,6 +415,67 @@ test('server starts without ADMIN_PASSWORD by generating a saved admin password'
       body: JSON.stringify({ password: settings.adminPassword })
     });
     assert.equal(login.res.status, 200);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin settings can configure public user notice dynamically', async () => {
+  const server = await startServer('dynamic user notice settings');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const saved = await requestJson(server.port, '/api/admin/settings', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        userNotice: {
+          enabled: true,
+          zhTitle: '兑换提示',
+          zhBody: '请确认账号状态后再提交。',
+          enTitle: 'Redeem Notice',
+          enBody: 'Confirm your account status before submitting.'
+        }
+      })
+    });
+    assert.equal(saved.res.status, 200);
+
+    const adminSettings = await requestJson(server.port, '/api/admin/settings', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(adminSettings.res.status, 200);
+    assert.equal(adminSettings.data.userNotice.enabled, true);
+    assert.equal(adminSettings.data.userNotice.zhTitle, '兑换提示');
+    assert.equal(adminSettings.data.userNotice.enBody, 'Confirm your account status before submitting.');
+
+    const status = await requestJson(server.port, '/api/status');
+    assert.equal(status.res.status, 200);
+    assert.equal(status.data.userNotice.enabled, true);
+    assert.equal(status.data.userNotice.zhBody, '请确认账号状态后再提交。');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin maintenance can configure localized public messages', async () => {
+  const server = await startServer('localized maintenance messages');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const saved = await updateMaintenance(server.port, token, {
+      enabled: true,
+      messageZh: '系统升级中，请稍后再试。',
+      messageEn: 'System upgrade in progress. Please try again later.'
+    });
+    assert.equal(saved.res.status, 200);
+    assert.equal(saved.data.maintenanceMessages.zh, '系统升级中，请稍后再试。');
+    assert.equal(saved.data.maintenanceMessages.en, 'System upgrade in progress. Please try again later.');
+
+    const status = await requestJson(server.port, '/api/status');
+    assert.equal(status.res.status, 200);
+    assert.equal(status.data.maintenance, true);
+    assert.equal(status.data.maintenanceMessages.zh, '系统升级中，请稍后再试。');
+    assert.equal(status.data.maintenanceMessages.en, 'System upgrade in progress. Please try again later.');
   } finally {
     await server.stop();
   }
@@ -861,6 +960,64 @@ test('sub admins can only access their own cards and records and cannot open adm
   }
 });
 
+test('admin cards support created and used minute range filtering', async () => {
+  const server = await startServer('admin cards datetime range filters', {}, {
+    cards: [
+      {
+        id: 1,
+        code: 'CDK-PLUS-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA',
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:10:00',
+        used_at: null,
+        used_by: null,
+        batch_id: 'range-a'
+      },
+      {
+        id: 2,
+        code: 'CDK-PLUS-BBBBB-BBBBB-BBBBB-BBBBB-BBBBB',
+        type: 'plus',
+        status: 'used',
+        created_at: '2026/4/24 10:35:00',
+        used_at: '2026/4/24 11:15:00',
+        used_by: 'hash-b',
+        batch_id: 'range-b'
+      },
+      {
+        id: 3,
+        code: 'CDK-PLUS-CCCCC-CCCCC-CCCCC-CCCCC-CCCCC',
+        type: 'plus',
+        status: 'used',
+        created_at: '2026/4/24 11:05:00',
+        used_at: '2026/4/24 12:00:00',
+        used_by: 'hash-c',
+        batch_id: 'range-c'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const createdRange = await requestJson(
+      server.port,
+      '/api/admin/cards?created_from=2026-04-24T10:30&created_to=2026-04-24T11:00',
+      { headers: { 'X-Admin-Token': token } }
+    );
+    assert.equal(createdRange.res.status, 200);
+    assert.deepEqual(createdRange.data.cards.map((card) => card.id), [2]);
+
+    const usedRange = await requestJson(
+      server.port,
+      '/api/admin/cards?used_from=2026-04-24T11:00&used_to=2026-04-24T11:30',
+      { headers: { 'X-Admin-Token': token } }
+    );
+    assert.equal(usedRange.res.status, 200);
+    assert.deepEqual(usedRange.data.cards.map((card) => card.id), [2]);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('uncertain submit success keeps card locked for manual review instead of refunding', async () => {
   const upstream = await startMockUpstream((req, res) => {
     if (req.method === 'POST' && req.url === '/submit') {
@@ -918,6 +1075,38 @@ test('submit network errors keep detailed upstream diagnostics without job id', 
     assert.match(query.data.upstream_detail || '', /ECONNREFUSED|connect/i);
   } finally {
     await server.stop();
+  }
+});
+
+test('submit queue full refunds the card without manual review', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ detail: 'Queue full' }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('submit queue full refunds card');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 429);
+    assert.match(redeem.data.error, /Queue full/i);
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'unused');
+    assert.equal(query.data.redeem_status, 'failed');
+    assert.equal(query.data.needs_manual_review, false);
+    assert.equal(query.data.upstream_status_code, null);
+  } finally {
+    await server.stop();
+    await upstream.stop();
   }
 });
 
@@ -1245,6 +1434,32 @@ test('user page exposes chinese and english language switching', async () => {
   assert.doesNotMatch(html, /'query\.searchButton': '.*&nbsp;/);
 });
 
+test('user notice is rendered from public settings instead of hardcoded warning copy', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /id="userNotice"/);
+  assert.match(html, /function renderUserNotice/);
+  assert.match(html, /data\.userNotice/);
+  assert.doesNotMatch(html, /以下账号类型请勿兑换/);
+  assert.doesNotMatch(html, /已订阅 Plus \/ Pro 且未到期/);
+  assert.doesNotMatch(html, /Read Before Redeeming/);
+});
+
+test('user maintenance overlay uses localized messages from public status', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /currentMaintenanceMessages/);
+  assert.match(html, /function maintenanceMessageForCurrentLanguage/);
+  assert.match(html, /data\.maintenanceMessages/);
+  assert.match(html, /maintenanceMessageForCurrentLanguage\(\)/);
+});
+
+test('maintenance overlay exposes language switching while active', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /id="maintenanceLanguageToggle"/);
+  assert.match(html, /maintenance-language-toggle/);
+  assert.match(html, /data-lang-option="zh" onclick="setLanguage\('zh'\)"/);
+  assert.match(html, /data-lang-option="en" onclick="setLanguage\('en'\)"/);
+});
+
 test('user page treats unknown redeem submit responses as locked terminal state', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
   assert.match(html, /if\s*\(!res\.ok\)\s*{[\s\S]{0,500}\['unknown',\s*'expired'\]\.includes\(data\.status\)/);
@@ -1303,6 +1518,24 @@ test('admin page exposes per-type maintenance controls for all four card types',
   assert.match(html, /maint-type-plus_1y/);
   assert.match(html, /maint-type-pro/);
   assert.match(html, /maint-type-pro_20x/);
+});
+
+test('admin page exposes localized maintenance message controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="maintMessageZh"/);
+  assert.match(html, /id="maintMessageEn"/);
+  assert.match(html, /messageZh/);
+  assert.match(html, /messageEn/);
+});
+
+test('admin page exposes user notice configuration controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="userNoticePanel"/);
+  assert.match(html, /id="userNoticeEnabled"/);
+  assert.match(html, /id="userNoticeZhBody"/);
+  assert.match(html, /id="userNoticeEnBody"/);
+  assert.match(html, /function saveUserNotice/);
+  assert.match(html, /userNotice/);
 });
 
 test('admin dashboard exposes redeem summary range controls and summary grid', async () => {
@@ -1364,7 +1597,9 @@ test('admin records keep cancel available for manual-review rows without job id'
   assert.match(html, /normalizedStatus === 'unknown'/);
   assert.match(html, /record_id/);
   assert.match(html, /data-record-cancel/);
-  assert.match(html, /record-select-checkbox[\s\S]{0,240}recordCancelButton\(r\)/);
+  assert.match(html, /function renderRecordSelectCell/);
+  assert.match(html, /record-select-checkbox/);
+  assert.match(html, /recordCancelButton\(record\)/);
   assert.match(html, /loadCards\(\)/);
   assert.match(html, /该记录没有 Job ID，将直接按本地记录取消并退回卡密/);
 });
@@ -1877,6 +2112,29 @@ test('admin records page exposes a refresh button wired to reload current filter
   assert.match(html, /刷新记录|刷新列表|刷新/);
 });
 
+test('admin records page presents a focused operations workspace', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /records-focus-grid/);
+  assert.match(html, /records-toolbar/);
+  assert.match(html, /recordsActiveFilters/);
+  assert.match(html, /recordsSelectionHint/);
+  assert.match(html, /resetRecordsFilters/);
+  assert.match(html, /renderRecordsFocus/);
+  assert.match(html, /renderRecordRow/);
+  assert.match(html, /records-row-manual/);
+  assert.match(html, /邮箱 \/ IP/);
+  assert.match(html, /recordsPageSize/);
+});
+
+test('admin records page exposes jump and page-size controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="recordsPageSize"/);
+  assert.match(html, /handleRecordsPageSizeChange/);
+  assert.match(html, /id="recordsPageJump"/);
+  assert.match(html, /applyRecordsPageJump/);
+  assert.match(html, /pageSize:\s*recordsPageSize/);
+});
+
 test('generated code export filename includes type count and compact timestamp', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /function buildGeneratedCodesFilename/);
@@ -1913,6 +2171,17 @@ test('admin cards page exposes bulk selection and batch status actions', async (
   assert.match(html, /批量启用/);
   assert.match(html, /\/api\/admin\/cards\/disable/);
   assert.match(html, /\/api\/admin\/cards\/enable/);
+});
+
+test('admin cards page exposes created and used minute range filters', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="cardsCreatedFrom"/);
+  assert.match(html, /id="cardsCreatedTo"/);
+  assert.match(html, /id="cardsUsedFrom"/);
+  assert.match(html, /id="cardsUsedTo"/);
+  assert.match(html, /type="datetime-local"/);
+  assert.match(html, /params\.set\('created_from', createdFrom\)/);
+  assert.match(html, /params\.set\('used_to', usedTo\)/);
 });
 
 test('admin page exposes mobile navigation controls for switching pages on phones', async () => {

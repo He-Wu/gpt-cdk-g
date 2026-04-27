@@ -2,7 +2,7 @@
   "apiKey": "sk_f152d4e6f47493a826ec0d8d2c47ab91",
   "baseUrl": "https://grknik3qae.localto.net",
   "adminPassword": "20000304.Hj",
-  "maintenanceEnabled": false,
+  "maintenanceEnabled": true,
   "maintenanceMessage": "维护一下添加设备提高处理速度",
   "subAdmins": [
     {
@@ -37,5 +37,14 @@
       "enabled": false,
       "message": ""
     }
-  }
+  },
+  "userNotice": {
+    "enabled": true,
+    "zhTitle": "升级成功",
+    "zhBody": "哈哈哈",
+    "enTitle": "update success",
+    "enBody": "hahaha"
+  },
+  "maintenanceMessageZh": "维护一下添加设备提高处理速度",
+  "maintenanceMessageEn": "维护一下添加设备提高处理速度En"
 }

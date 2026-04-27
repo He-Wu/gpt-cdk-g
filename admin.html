@@ -1027,11 +1027,58 @@
             margin-top: 16px;
             font-size: 13px;
             color: var(--text-muted);
+            gap: 12px;
         }
 
         .pagination-btns {
             display: flex;
             gap: 8px;
+        }
+
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .pagination-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+        }
+
+        .pagination-field select,
+        .pagination-field input {
+            height: 32px;
+            min-width: 74px;
+            padding: 0 10px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .pagination-field input {
+            width: 78px;
+        }
+
+        .pagination-field select:focus,
+        .pagination-field input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .user-notice-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
         }
 
         /* 生成结果 */
@@ -1086,8 +1133,242 @@
             min-width: 130px;
         }
 
+        .filter-bar .datetime-filter {
+            min-width: 190px;
+        }
+
+        .filter-bar .datetime-filter label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
         .filter-bar .search-input {
             min-width: 200px;
+        }
+
+        .records-workbench {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .records-focus-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(150px, 1fr));
+            gap: 12px;
+        }
+
+        .records-focus-card {
+            min-width: 0;
+            padding: 14px 15px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.022);
+        }
+
+        .records-focus-card.attention {
+            border-color: rgba(251, 191, 36, 0.22);
+            background: rgba(251, 191, 36, 0.06);
+        }
+
+        .records-focus-card.danger {
+            border-color: rgba(251, 113, 133, 0.22);
+            background: rgba(251, 113, 133, 0.055);
+        }
+
+        .records-focus-label {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .records-focus-value {
+            margin-top: 8px;
+            font-size: 24px;
+            line-height: 1;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .records-focus-detail {
+            margin-top: 7px;
+            color: var(--text-muted);
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .records-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 14px;
+            align-items: end;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .records-filter-grid {
+            display: grid;
+            grid-template-columns: minmax(130px, 150px) minmax(130px, 150px) minmax(130px, 150px) minmax(130px, 150px) minmax(240px, 1fr);
+            gap: 10px;
+            align-items: end;
+        }
+
+        .records-filter-grid .form-group {
+            min-width: 0;
+        }
+
+        .records-filter-grid label {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+
+        .records-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .records-state-line {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 24px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .records-active-filters {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .records-filter-chip {
+            display: inline-flex;
+            align-items: center;
+            max-width: 260px;
+            padding: 4px 9px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.025);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .records-selection-hint {
+            flex: 0 0 auto;
+            color: var(--text-secondary);
+        }
+
+        .records-table-wrapper {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: auto;
+            background: rgba(255, 255, 255, 0.012);
+        }
+
+        .records-table {
+            min-width: 1120px;
+        }
+
+        .records-table th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #0c0d14;
+        }
+
+        .records-row-manual td {
+            background: rgba(251, 191, 36, 0.025);
+        }
+
+        .records-row-failed td {
+            background: rgba(251, 113, 133, 0.018);
+        }
+
+        .records-row-selected td {
+            background: rgba(129, 140, 248, 0.04);
+        }
+
+        .record-select-pack {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 82px;
+        }
+
+        .record-primary {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+        }
+
+        .record-primary strong,
+        .record-mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--accent);
+            word-break: break-all;
+        }
+
+        .record-muted {
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .record-status-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 7px;
+        }
+
+        .record-alert-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            color: var(--amber);
+            background: rgba(251, 191, 36, 0.1);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .record-error-text {
+            max-width: 260px;
+            color: var(--rose);
+            font-size: 12px;
+            line-height: 1.45;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            word-break: break-word;
+        }
+
+        .record-action-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            min-width: 124px;
         }
 
         /* Toast */
@@ -1220,7 +1501,11 @@
             .filter-bar,
             .filter-bar .form-group,
             .filter-bar .search-input,
+            .records-filter-grid .form-group,
+            .records-filter-grid .search-input,
             .pagination-btns,
+            .pagination-controls,
+            .pagination-field,
             .generated-codes-header,
             .generated-codes-header > div { width: 100%; }
             .filter-bar,
@@ -1228,11 +1513,22 @@
             .pagination,
             .generated-codes-header { flex-direction: column; align-items: stretch; }
             .pagination { gap: 12px; flex-direction: column; }
+            .pagination-controls { justify-content: stretch; }
+            .pagination-field select,
+            .pagination-field input { flex: 1; }
             .pagination-btns { display: grid; grid-template-columns: 1fr 1fr; }
             .panel { padding: 18px 16px; }
             .stats-grid { grid-template-columns: 1fr; }
             .dashboard-kpi-grid { grid-template-columns: 1fr; }
             .inventory-row { grid-template-columns: 1fr; }
+            .records-focus-grid { grid-template-columns: 1fr; }
+            .records-toolbar { grid-template-columns: 1fr; }
+            .records-filter-grid { grid-template-columns: 1fr; }
+            .records-actions { justify-content: stretch; }
+            .records-actions .btn { flex: 1 1 120px; }
+            .records-state-line { align-items: flex-start; flex-direction: column; }
+            .records-table { min-width: 980px; }
+            .user-notice-grid { grid-template-columns: 1fr; }
             .stat-card .stat-value { font-size: 24px; }
             .table-wrapper {
                 margin: 0 -16px;
@@ -1516,7 +1812,7 @@
                 <div class="panel-header">
                     <div class="filter-bar">
                         <div class="form-group">
-                            <select id="cardsFilterStatus" onchange="loadCards()">
+                            <select id="cardsFilterStatus" onchange="handleCardsFilterChange()">
                                 <option value="all">全部状态</option>
                                 <option value="unused">未使用</option>
                                 <option value="used">已使用</option>
@@ -1524,13 +1820,29 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <select id="cardsFilterType" onchange="loadCards()">
+                            <select id="cardsFilterType" onchange="handleCardsFilterChange()">
                                 <option value="all">全部类型</option>
                                 <option value="plus">Plus</option>
                                 <option value="plus_1y">Plus 1 年</option>
                                 <option value="pro">Pro 5X</option>
                                 <option value="pro_20x">Pro 20X</option>
                             </select>
+                        </div>
+                        <div class="form-group datetime-filter">
+                            <label for="cardsCreatedFrom">创建开始</label>
+                            <input type="datetime-local" id="cardsCreatedFrom" onchange="handleCardsFilterChange()">
+                        </div>
+                        <div class="form-group datetime-filter">
+                            <label for="cardsCreatedTo">创建结束</label>
+                            <input type="datetime-local" id="cardsCreatedTo" onchange="handleCardsFilterChange()">
+                        </div>
+                        <div class="form-group datetime-filter">
+                            <label for="cardsUsedFrom">使用开始</label>
+                            <input type="datetime-local" id="cardsUsedFrom" onchange="handleCardsFilterChange()">
+                        </div>
+                        <div class="form-group datetime-filter">
+                            <label for="cardsUsedTo">使用结束</label>
+                            <input type="datetime-local" id="cardsUsedTo" onchange="handleCardsFilterChange()">
                         </div>
                         <div class="form-group search-input">
                             <input type="text" id="cardsSearch" placeholder="搜索卡密..."
@@ -1575,13 +1887,42 @@
         <div class="page" id="page-records">
             <div class="page-header">
                 <h2>兑换记录</h2>
-                <p>查看所有兑换历史</p>
+                <p>高频处理兑换状态、人工核验、取消与诊断</p>
             </div>
-            <div class="panel">
-                <div class="panel-header">
-                    <div class="filter-bar">
+            <div class="panel records-workbench">
+                <div class="records-focus-grid" id="recordsFocusGrid">
+                    <div class="records-focus-card">
+                        <div class="records-focus-label">筛选结果</div>
+                        <div class="records-focus-value">-</div>
+                        <div class="records-focus-detail">当前条件下的记录数</div>
+                    </div>
+                    <div class="records-focus-card attention">
+                        <div class="records-focus-label">待人工核验</div>
+                        <div class="records-focus-value">-</div>
+                        <div class="records-focus-detail">本页需优先处理</div>
+                    </div>
+                    <div class="records-focus-card">
+                        <div class="records-focus-label">进行中</div>
+                        <div class="records-focus-value">-</div>
+                        <div class="records-focus-detail">排队中 / 处理中</div>
+                    </div>
+                    <div class="records-focus-card danger">
+                        <div class="records-focus-label">失败</div>
+                        <div class="records-focus-value">-</div>
+                        <div class="records-focus-detail">本页失败记录</div>
+                    </div>
+                    <div class="records-focus-card">
+                        <div class="records-focus-label">可取消</div>
+                        <div class="records-focus-value">-</div>
+                        <div class="records-focus-detail">当前页可批量取消</div>
+                    </div>
+                </div>
+
+                <div class="records-toolbar">
+                    <div class="records-filter-grid">
                         <div class="form-group">
-                            <select id="recordsFilterStatus" onchange="loadRecords()">
+                            <label for="recordsFilterStatus">状态</label>
+                            <select id="recordsFilterStatus" onchange="handleRecordsFilterChange()">
                                 <option value="all">全部状态</option>
                                 <option value="pending">排队中</option>
                                 <option value="processing">处理中</option>
@@ -1592,7 +1933,8 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <select id="recordsFilterType" onchange="loadRecords()">
+                            <label for="recordsFilterType">类型</label>
+                            <select id="recordsFilterType" onchange="handleRecordsFilterChange()">
                                 <option value="all">全部类型</option>
                                 <option value="plus">Plus</option>
                                 <option value="plus_1y">Plus 1 年</option>
@@ -1601,36 +1943,43 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <input type="date" id="recordsDateFrom" onchange="loadRecords()">
+                            <label for="recordsDateFrom">开始日期</label>
+                            <input type="date" id="recordsDateFrom" onchange="handleRecordsFilterChange()">
                         </div>
                         <div class="form-group">
-                            <input type="date" id="recordsDateTo" onchange="loadRecords()">
+                            <label for="recordsDateTo">结束日期</label>
+                            <input type="date" id="recordsDateTo" onchange="handleRecordsFilterChange()">
                         </div>
                         <div class="form-group search-input">
+                            <label for="recordsSearch">搜索</label>
                             <input type="text" id="recordsSearch" placeholder="搜索卡密 / Job ID / 邮箱 / IP / 错误..."
                                 oninput="debounceRecordsSearch()">
                         </div>
                     </div>
-                    <div class="bulk-action-buttons">
+                    <div class="records-actions">
                         <button class="btn btn-ghost btn-sm" type="button" id="bulkCancelSelectedRecordsBtn" onclick="applyBulkRecordCancel()">批量取消</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="recordsResetBtn" onclick="resetRecordsFilters()">清空筛选</button>
                         <button class="btn btn-ghost btn-sm" type="button" id="recordsRefreshBtn" onclick="loadRecords()">刷新记录</button>
                     </div>
                 </div>
-                <div class="table-wrapper">
-                    <table>
+
+                <div class="records-state-line">
+                    <div class="records-active-filters" id="recordsActiveFilters"></div>
+                    <div class="records-selection-hint" id="recordsSelectionHint">未选择记录</div>
+                </div>
+
+                <div class="table-wrapper records-table-wrapper">
+                    <table class="records-table">
                         <thead>
                             <tr>
                                 <th class="table-check-cell"><input type="checkbox" id="recordsSelectAll" onchange="toggleAllRecordSelections(this.checked)"></th>
-                                <th>ID</th>
-                                <th>卡密</th>
-                                <th>类型</th>
+                                <th>记录</th>
+                                <th>卡密 / 类型</th>
                                 <th>状态</th>
-                                <th>Job ID</th>
-                                <th>预计等待</th>
-                                <th>IP 地址</th>
+                                <th>Job / 等待</th>
+                                <th>邮箱 / IP</th>
                                 <th>生成人</th>
-                                <th>时间</th>
-                                <th>错误信息</th>
+                                <th>异常信息</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
@@ -1640,9 +1989,24 @@
                 </div>
                 <div class="pagination">
                     <span id="recordsPagInfo">-</span>
-                    <div class="pagination-btns">
-                        <button class="btn btn-ghost btn-sm" id="recordsPrev" onclick="recordsPagePrev()">← 上一页</button>
-                        <button class="btn btn-ghost btn-sm" id="recordsNext" onclick="recordsPageNext()">下一页 →</button>
+                    <div class="pagination-controls">
+                        <label class="pagination-field" for="recordsPageSize">
+                            每页
+                            <select id="recordsPageSize" onchange="handleRecordsPageSizeChange()">
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
+                        <label class="pagination-field" for="recordsPageJump">
+                            跳到
+                            <input type="number" id="recordsPageJump" min="1" value="1" onkeydown="handleRecordsPageJumpKey(event)">
+                        </label>
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="applyRecordsPageJump()">跳页</button>
+                        <div class="pagination-btns">
+                            <button class="btn btn-ghost btn-sm" id="recordsPrev" onclick="recordsPagePrev()">← 上一页</button>
+                            <button class="btn btn-ghost btn-sm" id="recordsNext" onclick="recordsPageNext()">下一页 →</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1791,6 +2155,47 @@
                 </div>
             </div>
 
+            <div class="panel" id="userNoticePanel">
+                <div class="panel-title" style="margin-bottom:4px;">📣 用户页公告</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
+                    控制用户兑换页顶部公告内容。留空或关闭后，用户页不会显示原来的固定“兑换前必读”。
+                </p>
+
+                <div class="toggle-row">
+                    <div class="toggle-info">
+                        <div class="toggle-label">公告开关</div>
+                        <div class="toggle-desc">开启后会在用户页使用当前配置内容展示</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="userNoticeEnabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="user-notice-grid">
+                    <div class="form-group">
+                        <label>中文标题</label>
+                        <input type="text" id="userNoticeZhTitle" maxlength="80" placeholder="例如：兑换提示">
+                    </div>
+                    <div class="form-group">
+                        <label>English Title</label>
+                        <input type="text" id="userNoticeEnTitle" maxlength="80" placeholder="Redeem Notice">
+                    </div>
+                    <div class="form-group">
+                        <label>中文内容 <span style="color:var(--text-muted);font-weight:400;">（最多 1200 字）</span></label>
+                        <textarea id="userNoticeZhBody" rows="6" maxlength="1200" placeholder="每行一条提示，用户页会保留换行"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>English Body <span style="color:var(--text-muted);font-weight:400;">(max 1200 chars)</span></label>
+                        <textarea id="userNoticeEnBody" rows="6" maxlength="1200" placeholder="One notice per line. Line breaks are preserved."></textarea>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="saveUserNoticeBtn" onclick="saveUserNotice()">
+                    💾 保存用户页公告
+                </button>
+            </div>
+
             <div class="panel">
                 <div class="panel-title" style="margin-bottom:16px;">📌 使用说明</div>
                 <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">
@@ -1817,12 +2222,19 @@
                     </label>
                 </div>
 
-                <div class="form-group" style="margin-bottom:16px;">
-                    <label>维护公告内容 <span style="color:var(--text-muted);font-weight:400;">（最多 500 字）</span></label>
-                    <textarea id="maintMessage"
-                        style="width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:90px;transition:all 0.2s;line-height:1.6;"
-                        placeholder="例如：系统升级维护中，预计 2 小时后恢复，感谢您的耐心等待。"
-                        maxlength="500"></textarea>
+                <div class="user-notice-grid">
+                    <div class="form-group">
+                        <label>中文维护公告 <span style="color:var(--text-muted);font-weight:400;">（最多 500 字）</span></label>
+                        <textarea id="maintMessageZh" rows="5"
+                            placeholder="例如：系统升级维护中，预计 2 小时后恢复，感谢您的耐心等待。"
+                            maxlength="500"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>English Maintenance Message <span style="color:var(--text-muted);font-weight:400;">(max 500 chars)</span></label>
+                        <textarea id="maintMessageEn" rows="5"
+                            placeholder="Example: The system is under maintenance. Please try again later."
+                            maxlength="500"></textarea>
+                    </div>
                 </div>
 
                 <div style="margin:20px 0 16px;padding-top:16px;border-top:1px solid var(--border);">
@@ -1869,6 +2281,8 @@
     let adminToken = localStorage.getItem('admin_token') || '';
     let cardsPage = 1;
     let recordsPage = 1;
+    let recordsPageSize = 20;
+    let recordsTotalPages = 1;
     let generatedCodes = [];
     let generatedCodesMeta = { type: '', count: 0 };
     let searchTimer = null;
@@ -2746,9 +3160,17 @@
         const status = document.getElementById('cardsFilterStatus').value;
         const type = document.getElementById('cardsFilterType').value;
         const search = document.getElementById('cardsSearch').value;
+        const createdFrom = document.getElementById('cardsCreatedFrom')?.value || '';
+        const createdTo = document.getElementById('cardsCreatedTo')?.value || '';
+        const usedFrom = document.getElementById('cardsUsedFrom')?.value || '';
+        const usedTo = document.getElementById('cardsUsedTo')?.value || '';
 
         const params = new URLSearchParams({ page: cardsPage, pageSize: 15, status, type });
         if (search) params.set('search', search);
+        if (createdFrom) params.set('created_from', createdFrom);
+        if (createdTo) params.set('created_to', createdTo);
+        if (usedFrom) params.set('used_from', usedFrom);
+        if (usedTo) params.set('used_to', usedTo);
 
         try {
             const res = await adminFetch(`/api/admin/cards?${params}`);
@@ -2801,9 +3223,14 @@
     function cardsPagePrev() { if (cardsPage > 1) { cardsPage--; loadCards(); } }
     function cardsPageNext() { cardsPage++; loadCards(); }
 
+    function handleCardsFilterChange() {
+        cardsPage = 1;
+        loadCards();
+    }
+
     function debounceSearch() {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => { cardsPage = 1; loadCards(); }, 300);
+        searchTimer = setTimeout(() => { handleCardsFilterChange(); }, 300);
     }
 
     async function toggleCard(code, action) {
@@ -2929,11 +3356,22 @@
         const dateFrom = document.getElementById('recordsDateFrom').value;
         const dateTo = document.getElementById('recordsDateTo').value;
         const search = document.getElementById('recordsSearch').value.trim();
+        const refreshBtn = document.getElementById('recordsRefreshBtn');
 
-        const params = new URLSearchParams({ page: recordsPage, pageSize: 15, status, type });
+        const pageSizeSelect = document.getElementById('recordsPageSize');
+        const selectedPageSize = Number(pageSizeSelect?.value || recordsPageSize);
+        recordsPageSize = [20, 50, 100].includes(selectedPageSize) ? selectedPageSize : 20;
+
+        const params = new URLSearchParams({ page: recordsPage, pageSize: recordsPageSize, status, type });
         if (dateFrom) params.set('date_from', dateFrom);
         if (dateTo) params.set('date_to', dateTo);
         if (search) params.set('search', search);
+
+        renderRecordsActiveFilters({ status, type, dateFrom, dateTo, search });
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '刷新中...';
+        }
 
         try {
             const res = await adminFetch(`/api/admin/records?${params}`);
@@ -2947,11 +3385,20 @@
                 showToast(errorData.error || '加载兑换记录失败', 'error');
                 currentRecords = [];
                 selectedRecordIds.clear();
-                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="12"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+                recordsTotalPages = 1;
+                renderRecordsFocus({ total: 0, pageSize: recordsPageSize });
                 updateBulkRecordCancelButton();
                 return;
             }
             const data = await res.json();
+            const totalPages = Math.ceil(data.total / data.pageSize) || 1;
+            recordsTotalPages = totalPages;
+            if (Number(data.total) > 0 && Number(data.page) > totalPages) {
+                recordsPage = totalPages;
+                await loadRecords();
+                return;
+            }
             currentRecords = Array.isArray(data.records)
                 ? data.records.map((record) => ({
                     ...record,
@@ -2967,51 +3414,201 @@
 
             const tbody = document.getElementById('recordsTableBody');
             if (currentRecords.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>暂无兑换记录</p></div></td></tr>`;
             } else {
-                tbody.innerHTML = currentRecords.map(r => `
-                    <tr>
-                        <td class="table-check-cell">${canCancelRecord(r)
-                            ? `<div style="display:flex;align-items:center;gap:8px;min-width:82px;"><input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(Number(r.id)) ? 'checked' : ''} onchange="toggleRecordSelection(${Number(r.id)}, this.checked)">${recordCancelButton(r)}</div>`
-                            : '-'
-                        }</td>
-                        <td style="color:var(--text-muted);">${r.id}</td>
-                        <td class="code-cell">${r.card_code}</td>
-                        <td><span class="badge badge-${r.card_type}">${typeLabel(r.card_type)}</span></td>
-                        <td><span class="badge badge-${r.status}">${recordStatusLabel(r.status)}</span></td>
-                        <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--text-muted);">${r.job_id || '-'}</td>
-                        <td style="font-size:12px;color:var(--text-muted);">${formatEstimate(r)}</td>
-                        <td style="font-size:12px;color:var(--text-muted);">${r.ip_address || '-'}</td>
-                        <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(r.created_by_username || 'super_admin')}</td>
-                        <td style="font-size:12px;color:var(--text-muted);">${r.created_at || '-'}</td>
-                        <td style="font-size:12px;color:var(--rose);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.error_message || ''}">${r.error_message || '-'}</td>
-                        <td>${recordActionButtons(r)}</td>
-                    </tr>
-                `).join('');
+                tbody.innerHTML = currentRecords.map(renderRecordRow).join('');
             }
+            renderRecordsFocus(data);
             updateBulkRecordCancelButton();
 
-            const totalPages = Math.ceil(data.total / data.pageSize) || 1;
             document.getElementById('recordsPagInfo').textContent = `第 ${data.page} / ${totalPages} 页，共 ${data.total} 条`;
+            const pageJumpInput = document.getElementById('recordsPageJump');
+            if (pageJumpInput) {
+                pageJumpInput.max = String(totalPages);
+                pageJumpInput.value = String(data.page || recordsPage);
+            }
             document.getElementById('recordsPrev').disabled = data.page <= 1;
             document.getElementById('recordsNext').disabled = data.page >= totalPages;
         } catch (err) {
             console.error('加载记录失败:', err);
             currentRecords = [];
             selectedRecordIds.clear();
+            document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">⚠️</div><p>加载兑换记录失败</p></div></td></tr>`;
+            recordsTotalPages = 1;
+            renderRecordsFocus({ total: 0, pageSize: recordsPageSize });
             updateBulkRecordCancelButton();
+            showToast('加载兑换记录失败: ' + err.message, 'error');
+        } finally {
+            if (refreshBtn) {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '刷新记录';
+            }
         }
     }
 
     function recordsPagePrev() { if (recordsPage > 1) { recordsPage--; loadRecords(); } }
-    function recordsPageNext() { recordsPage++; loadRecords(); }
+    function recordsPageNext() { if (recordsPage < recordsTotalPages) { recordsPage++; loadRecords(); } }
+
+    function handleRecordsPageSizeChange() {
+        const value = Number(document.getElementById('recordsPageSize')?.value || 20);
+        recordsPageSize = [20, 50, 100].includes(value) ? value : 20;
+        recordsPage = 1;
+        selectedRecordIds.clear();
+        loadRecords();
+    }
+
+    function applyRecordsPageJump() {
+        const input = document.getElementById('recordsPageJump');
+        const target = Number(input?.value || 1);
+        const page = Math.max(1, Math.min(recordsTotalPages || 1, Math.floor(target) || 1));
+        if (input) input.value = String(page);
+        if (page === recordsPage) return;
+        recordsPage = page;
+        selectedRecordIds.clear();
+        loadRecords();
+    }
+
+    function handleRecordsPageJumpKey(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            applyRecordsPageJump();
+        }
+    }
+
+    function handleRecordsFilterChange() {
+        recordsPage = 1;
+        selectedRecordIds.clear();
+        loadRecords();
+    }
 
     function debounceRecordsSearch() {
         clearTimeout(recordsSearchTimer);
         recordsSearchTimer = setTimeout(() => {
-            recordsPage = 1;
-            loadRecords();
+            handleRecordsFilterChange();
         }, 300);
+    }
+
+    function resetRecordsFilters() {
+        document.getElementById('recordsFilterStatus').value = 'all';
+        document.getElementById('recordsFilterType').value = 'all';
+        document.getElementById('recordsDateFrom').value = '';
+        document.getElementById('recordsDateTo').value = '';
+        document.getElementById('recordsSearch').value = '';
+        handleRecordsFilterChange();
+    }
+
+    function getSelectLabel(selectId, value) {
+        const select = document.getElementById(selectId);
+        const option = Array.from(select?.options || []).find((item) => item.value === value);
+        return option?.textContent || value;
+    }
+
+    function renderRecordsActiveFilters({ status, type, dateFrom, dateTo, search }) {
+        const box = document.getElementById('recordsActiveFilters');
+        if (!box) return;
+        const chips = [];
+        if (status && status !== 'all') chips.push(`状态: ${getSelectLabel('recordsFilterStatus', status)}`);
+        if (type && type !== 'all') chips.push(`类型: ${getSelectLabel('recordsFilterType', type)}`);
+        if (dateFrom) chips.push(`开始: ${dateFrom}`);
+        if (dateTo) chips.push(`结束: ${dateTo}`);
+        if (search) chips.push(`搜索: ${search}`);
+        box.innerHTML = chips.length
+            ? chips.map((chip) => `<span class="records-filter-chip">${escapeHtml(chip)}</span>`).join('')
+            : '<span class="records-filter-chip">当前显示全部记录</span>';
+    }
+
+    function renderRecordsFocus(data = {}) {
+        const grid = document.getElementById('recordsFocusGrid');
+        if (!grid) return;
+        const manualCount = currentRecords.filter((record) => hasManualReviewSignal(record)).length;
+        const activeCount = currentRecords.filter((record) => ['pending', 'processing'].includes(normalizeAdminRecordStatus(record.status))).length;
+        const failedCount = currentRecords.filter((record) => normalizeAdminRecordStatus(record.status) === 'failed').length;
+        const cancelableCount = getCurrentPageCancelableRecordIds().length;
+        const pageSize = Number(data.pageSize || 20);
+        const pageTotal = currentRecords.length;
+        const total = Number(data.total ?? pageTotal);
+
+        grid.innerHTML = [
+            renderRecordsFocusCard('筛选结果', total, `本页 ${pageTotal} 条，每页 ${pageSize} 条`),
+            renderRecordsFocusCard('待人工核验', manualCount, '本页需优先处理', 'attention'),
+            renderRecordsFocusCard('进行中', activeCount, '排队中 / 处理中'),
+            renderRecordsFocusCard('失败', failedCount, '本页失败记录', failedCount > 0 ? 'danger' : ''),
+            renderRecordsFocusCard('可取消', cancelableCount, '当前页可批量取消')
+        ].join('');
+    }
+
+    function renderRecordsFocusCard(label, value, detail, tone = '') {
+        return `
+            <div class="records-focus-card ${tone}">
+                <div class="records-focus-label">${escapeHtml(label)}</div>
+                <div class="records-focus-value">${Number(value) || 0}</div>
+                <div class="records-focus-detail">${escapeHtml(detail)}</div>
+            </div>
+        `;
+    }
+
+    function renderRecordSelectCell(record) {
+        if (!canCancelRecord(record)) return '-';
+        const recordId = Number(record.id);
+        return `
+            <div class="record-select-pack">
+                <input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(recordId) ? 'checked' : ''} onchange="toggleRecordSelection(${recordId}, this.checked)">
+                ${recordCancelButton(record)}
+            </div>
+        `;
+    }
+
+    function recordRowClass(record) {
+        const classes = [];
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        if (hasManualReviewSignal(record, normalizedStatus)) classes.push('records-row-manual');
+        if (normalizedStatus === 'failed') classes.push('records-row-failed');
+        if (selectedRecordIds.has(Number(record.id))) classes.push('records-row-selected');
+        return classes.join(' ');
+    }
+
+    function renderRecordRow(record) {
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        const manualSignal = hasManualReviewSignal(record, normalizedStatus);
+        const errorText = record.error_message || record.manual_review_reason || record.upstream_detail || '';
+        return `
+            <tr class="${recordRowClass(record)}">
+                <td class="table-check-cell">${renderRecordSelectCell(record)}</td>
+                <td>
+                    <div class="record-primary">
+                        <strong>#${escapeHtml(record.id || '-')}</strong>
+                        <span class="record-muted">${escapeHtml(record.created_at || '-')}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="record-primary">
+                        <strong>${escapeHtml(record.card_code || '-')}</strong>
+                        <span><span class="badge badge-${escapeHtml(record.card_type || '')}">${escapeHtml(typeLabel(record.card_type))}</span></span>
+                    </div>
+                </td>
+                <td>
+                    <div class="record-status-stack">
+                        <span class="badge badge-${escapeHtml(normalizedStatus)}">${escapeHtml(recordStatusLabel(normalizedStatus))}</span>
+                        ${manualSignal ? '<span class="record-alert-pill">需核验</span>' : ''}
+                    </div>
+                </td>
+                <td>
+                    <div class="record-primary">
+                        <span class="record-mono">${escapeHtml(record.job_id || '-')}</span>
+                        <span class="record-muted">${escapeHtml(formatEstimate(record))}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="record-primary">
+                        <span class="record-muted">${escapeHtml(record.email || '-')}</span>
+                        <span class="record-muted">${escapeHtml(record.ip_address || '-')}</span>
+                    </div>
+                </td>
+                <td><span class="record-muted">${escapeHtml(record.created_by_username || 'super_admin')}</span></td>
+                <td><div class="record-error-text" title="${escapeHtml(errorText || '-')}">${escapeHtml(errorText || '-')}</div></td>
+                <td>${recordActionButtons(record)}</td>
+            </tr>
+        `;
     }
 
     function formatEstimate(record) {
@@ -3034,7 +3631,7 @@
             actions.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="showRecordDiagnostics(${Number(record.id) || 0})" style="color:var(--amber);">诊断</button>`);
         }
         actions.push(recordCancelButton(record));
-        return `<div style="display:flex;gap:8px;flex-wrap:wrap;">${actions.join('')}</div>`;
+        return `<div class="record-action-group">${actions.join('')}</div>`;
     }
 
     function normalizeAdminRecordStatus(status) {
@@ -3087,8 +3684,16 @@
 
     function updateBulkRecordCancelButton() {
         const button = document.getElementById('bulkCancelSelectedRecordsBtn');
+        const hint = document.getElementById('recordsSelectionHint');
+        const cancelableCount = getCurrentPageCancelableRecordIds().length;
         if (button) {
             button.disabled = selectedRecordIds.size === 0;
+            button.textContent = selectedRecordIds.size > 0 ? `批量取消 (${selectedRecordIds.size})` : '批量取消';
+        }
+        if (hint) {
+            hint.textContent = selectedRecordIds.size > 0
+                ? `已选择 ${selectedRecordIds.size} 条，可取消 ${cancelableCount} 条`
+                : `当前页可取消 ${cancelableCount} 条`;
         }
         updateRecordSelectAllState();
     }
@@ -3495,6 +4100,7 @@
             document.getElementById('settingsApiKey').placeholder = data.apiKey
                 ? '已配置（输入新值可重置，留空保持不变）'
                 : '请输入 API Key';
+            applyUserNoticeToForm(data.userNotice);
 
             const banner = document.getElementById('settingsStatusBanner');
             if (data.configured) {
@@ -3515,6 +4121,52 @@
         }
     }
 
+    function applyUserNoticeToForm(userNotice = {}) {
+        const notice = userNotice || {};
+        const enabled = document.getElementById('userNoticeEnabled');
+        if (!enabled) return;
+        enabled.checked = notice.enabled === true;
+        document.getElementById('userNoticeZhTitle').value = notice.zhTitle || '';
+        document.getElementById('userNoticeZhBody').value = notice.zhBody || '';
+        document.getElementById('userNoticeEnTitle').value = notice.enTitle || '';
+        document.getElementById('userNoticeEnBody').value = notice.enBody || '';
+    }
+
+    function collectUserNoticeFromForm() {
+        return {
+            enabled: document.getElementById('userNoticeEnabled').checked,
+            zhTitle: document.getElementById('userNoticeZhTitle').value.trim(),
+            zhBody: document.getElementById('userNoticeZhBody').value.trim(),
+            enTitle: document.getElementById('userNoticeEnTitle').value.trim(),
+            enBody: document.getElementById('userNoticeEnBody').value.trim()
+        };
+    }
+
+    async function saveUserNotice() {
+        const btn = document.getElementById('saveUserNoticeBtn');
+        const userNotice = collectUserNoticeFromForm();
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+        try {
+            const res = await adminFetch('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify({ userNotice })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.error || '保存用户页公告失败', 'error');
+                return;
+            }
+            applyUserNoticeToForm(data.userNotice || userNotice);
+            showToast('用户页公告已保存', 'success');
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 保存用户页公告';
+        }
+    }
+
     // ========== 维护模式 ==========
     async function loadMaintenancePage() {
         try {
@@ -3523,7 +4175,8 @@
             const data = await res.json();
             const enabled = !!data.maintenanceEnabled;
             document.getElementById('maintToggle').checked = enabled;
-            document.getElementById('maintMessage').value = data.maintenanceMessage || '';
+            document.getElementById('maintMessageZh').value = data.maintenanceMessageZh || data.maintenanceMessage || '';
+            document.getElementById('maintMessageEn').value = data.maintenanceMessageEn || '';
             applyTypedMaintenanceToForm(data.typedMaintenance);
             updateMaintUI(enabled, data.typedMaintenance);
         } catch (err) {
@@ -3570,7 +4223,8 @@
 
     async function saveMaintenance() {
         const enabled = document.getElementById('maintToggle').checked;
-        const message = document.getElementById('maintMessage').value.trim();
+        const messageZh = document.getElementById('maintMessageZh').value.trim();
+        const messageEn = document.getElementById('maintMessageEn').value.trim();
         const nextTypedMaintenance = collectTypedMaintenanceFromForm();
         const btn = document.getElementById('saveMaintBtn');
         btn.disabled = true;
@@ -3578,7 +4232,7 @@
         try {
             const res = await adminFetch('/api/admin/maintenance', {
                 method: 'POST',
-                body: JSON.stringify({ enabled, message, typedMaintenance: nextTypedMaintenance })
+                body: JSON.stringify({ enabled, messageZh, messageEn, typedMaintenance: nextTypedMaintenance })
             });
             const data = await res.json();
             if (!res.ok) { showToast(data.error || '保存失败', 'error'); return; }

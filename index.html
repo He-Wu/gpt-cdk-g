@@ -650,11 +650,16 @@
 
         /* 警告框 */
         .notice-warning {
+            display: none;
             background: rgba(251, 191, 36, 0.08);
             border: 1px solid rgba(251, 191, 36, 0.25);
             border-radius: 14px;
             padding: 20px 24px;
             margin-bottom: 20px;
+        }
+
+        .notice-warning.visible {
+            display: block;
         }
 
         .notice-warning .notice-title {
@@ -925,6 +930,31 @@
             padding: 40px 24px;
         }
         .maintenance-overlay.active { display: flex; }
+        .maintenance-language-toggle {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            display: flex;
+            gap: 6px;
+        }
+        .maintenance-language-toggle button {
+            min-width: 64px;
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.04);
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .maintenance-language-toggle button.active {
+            border-color: rgba(251, 191, 36, 0.42);
+            background: rgba(251, 191, 36, 0.14);
+            color: var(--text-primary);
+        }
         .maintenance-icon {
             font-size: 64px;
             margin-bottom: 24px;
@@ -971,6 +1001,10 @@
 <body>
     <!-- 维护模式遗罩 -->
     <div class="maintenance-overlay" id="maintenanceOverlay">
+        <div class="maintenance-language-toggle" id="maintenanceLanguageToggle" aria-label="Language">
+            <button type="button" data-lang-option="zh" onclick="setLanguage('zh')">中文</button>
+            <button type="button" data-lang-option="en" onclick="setLanguage('en')">English</button>
+        </div>
         <div class="maintenance-icon">🔧</div>
         <div class="maintenance-title" data-i18n="maintenance.title">系统维护中</div>
         <div class="maintenance-msg" id="maintenanceMsgText" data-i18n="maintenance.message">系统正在进行维护升级，请稍后再访问。</div>
@@ -999,14 +1033,9 @@
         </header>
 
         <!-- 重要警告 -->
-        <div class="notice-warning">
-            <div class="notice-title" data-i18n="notice.title">⚠️ 兑换前必读</div>
-            <div class="notice-body" data-i18n-html="notice.body">
-                <strong>以下账号类型请勿兑换，否则卡密将白白消耗：</strong><br><br>
-                🚫 <strong>已订阅 Plus / Pro 且未到期</strong> — 不会覆盖或延长现有订阅，请到期后再兑换<br>
-                🚫 <strong>加入了工作空间 / Team 的账号</strong> — Team 模式下兑换无效，会直接出错<br><br>
-                以上情况充入后卡密均<strong>直接消耗且无法退回</strong>，请确认账户状态后再操作。
-            </div>
+        <div class="notice-warning" id="userNotice">
+            <div class="notice-title" id="userNoticeTitle"></div>
+            <div class="notice-body" id="userNoticeBody"></div>
         </div>
 
         <!-- 使用说明 -->
@@ -1228,7 +1257,9 @@
         let currentSubmittedEmail = null;
         let isPolling = false;
         let maintenanceActive = false;
+        let currentMaintenanceMessages = null;
         let currentLanguage = localStorage.getItem('userPageLanguage') || 'zh';
+        let currentUserNotice = null;
 
         const I18N = {
             zh: {
@@ -1238,8 +1269,6 @@
                 'maintenance.title': '系统维护中',
                 'maintenance.message': '系统正在进行维护升级，请稍后再访问。',
                 'hero.subtitle': '使用卡密快速激活 Plus 或 Pro 订阅',
-                'notice.title': '⚠️ 兑换前必读',
-                'notice.body': '<strong>以下账号类型请勿兑换，否则卡密将白白消耗：</strong><br><br>🚫 <strong>已订阅 Plus / Pro 且未到期</strong> — 不会覆盖或延长现有订阅，请到期后再兑换<br>🚫 <strong>加入了工作空间 / Team 的账号</strong> — Team 模式下兑换无效，会直接出错<br><br>以上情况充入后卡密均<strong>直接消耗且无法退回</strong>，请确认账户状态后再操作。',
                 'guide.title': '📖 使用步骤',
                 'guide.step1': '苹果手机请在 <strong>Safari 浏览器</strong>中打开 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 并登录账号，其他设备使用任意浏览器即可',
                 'guide.step2': '登录后，在同一浏览器中访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a>',
@@ -1377,8 +1406,6 @@
                 'maintenance.title': 'System Maintenance',
                 'maintenance.message': 'The system is being upgraded. Please come back later.',
                 'hero.subtitle': 'Activate Plus or Pro subscriptions quickly with a CDK',
-                'notice.title': '⚠️ Read Before Redeeming',
-                'notice.body': '<strong>Do not redeem with these account types, or the CDK will be consumed:</strong><br><br>🚫 <strong>Accounts with an active Plus / Pro subscription</strong> — redemption will not overwrite or extend the current subscription. Redeem after it expires.<br>🚫 <strong>Workspace / Team accounts</strong> — Team mode cannot redeem and will fail directly.<br><br>In these cases the CDK is <strong>consumed and cannot be returned</strong>. Please confirm your account status first.',
                 'guide.title': '📖 How to Use',
                 'guide.step1': 'On iPhone, open <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> in <strong>Safari</strong> and sign in. Other devices can use any browser.',
                 'guide.step2': 'After signing in, open <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a> in the same browser.',
@@ -1536,6 +1563,11 @@
             document.querySelectorAll('[data-lang-option]').forEach((button) => {
                 button.classList.toggle('active', button.dataset.langOption === currentLanguage);
             });
+            renderUserNotice(currentUserNotice);
+            if (maintenanceActive) {
+                const msgEl = document.getElementById('maintenanceMsgText');
+                if (msgEl) msgEl.textContent = maintenanceMessageForCurrentLanguage();
+            }
         }
 
         function setLanguage(language) {
@@ -1550,16 +1582,54 @@
 
         applyLanguage();
 
+        function renderUserNotice(userNotice) {
+            const noticeEl = document.getElementById('userNotice');
+            const titleEl = document.getElementById('userNoticeTitle');
+            const bodyEl = document.getElementById('userNoticeBody');
+            if (!noticeEl || !titleEl || !bodyEl) return;
+
+            const notice = userNotice || {};
+            const title = currentLanguage === 'en'
+                ? (notice.enTitle || notice.zhTitle || '')
+                : (notice.zhTitle || notice.enTitle || '');
+            const body = currentLanguage === 'en'
+                ? (notice.enBody || notice.zhBody || '')
+                : (notice.zhBody || notice.enBody || '');
+
+            if (notice.enabled !== true || (!title && !body)) {
+                noticeEl.classList.remove('visible');
+                titleEl.textContent = '';
+                bodyEl.textContent = '';
+                return;
+            }
+
+            titleEl.textContent = title;
+            bodyEl.innerHTML = escapeHtml(body).replace(/\n/g, '<br>');
+            titleEl.style.display = title ? '' : 'none';
+            noticeEl.classList.add('visible');
+        }
+
+        function maintenanceMessageForCurrentLanguage() {
+            const messages = currentMaintenanceMessages || {};
+            if (currentLanguage === 'en') {
+                return messages.en || messages.zh || t('maintenance.message');
+            }
+            return messages.zh || messages.en || t('maintenance.message');
+        }
+
         // ========== 页面加载时检查维护状态 ==========
         async function checkMaintenanceStatus() {
             try {
                 const res = await fetch('/api/status');
                 const data = await res.json();
+                currentUserNotice = data.userNotice || null;
+                renderUserNotice(currentUserNotice);
+                currentMaintenanceMessages = data.maintenanceMessages || (data.message ? { zh: data.message } : null);
                 maintenanceActive = !!data.maintenance;
                 if (maintenanceActive) {
                     const overlay = document.getElementById('maintenanceOverlay');
                     const msgEl = document.getElementById('maintenanceMsgText');
-                    if (data.message) msgEl.textContent = data.message;
+                    msgEl.textContent = maintenanceMessageForCurrentLanguage();
                     overlay.classList.add('active');
                 }
             } catch (e) {

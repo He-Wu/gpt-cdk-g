@@ -5,6 +5,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
+const net = require('net');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -49,6 +50,25 @@ function normalizeTypedMaintenanceConfig(raw) {
   return next;
 }
 
+function normalizeUserNotice(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    enabled: source.enabled === true,
+    zhTitle: String(source.zhTitle || '').trim().slice(0, 80),
+    zhBody: String(source.zhBody || '').trim().slice(0, 1200),
+    enTitle: String(source.enTitle || '').trim().slice(0, 80),
+    enBody: String(source.enBody || '').trim().slice(0, 1200)
+  };
+}
+
+function normalizeMaintenanceMessages(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    zh: String(source.zh || source.messageZh || source.maintenanceMessageZh || source.maintenanceMessage || '').trim().slice(0, 500),
+    en: String(source.en || source.messageEn || source.maintenanceMessageEn || '').trim().slice(0, 500)
+  };
+}
+
 // ========== 设置管理（API Key / Base URL 在后台配置）==========
 function loadSettings() {
   try {
@@ -56,6 +76,11 @@ function loadSettings() {
       const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
       if (!Array.isArray(parsed.subAdmins)) parsed.subAdmins = [];
       parsed.typedMaintenance = normalizeTypedMaintenanceConfig(parsed.typedMaintenance);
+      parsed.userNotice = normalizeUserNotice(parsed.userNotice);
+      const maintenanceMessages = normalizeMaintenanceMessages(parsed);
+      parsed.maintenanceMessageZh = maintenanceMessages.zh;
+      parsed.maintenanceMessageEn = maintenanceMessages.en;
+      parsed.maintenanceMessage = maintenanceMessages.zh;
       return parsed;
     }
   } catch (e) {
@@ -66,7 +91,10 @@ function loadSettings() {
     baseUrl: '', 
     maintenanceEnabled: false, 
     maintenanceMessage: '',
+    maintenanceMessageZh: '',
+    maintenanceMessageEn: '',
     typedMaintenance: createDefaultTypedMaintenance(),
+    userNotice: normalizeUserNotice(),
     subAdmins: []
   };
 }
@@ -92,7 +120,21 @@ function getAdminPassword() { return settings.adminPassword || INITIAL_ADMIN_PAS
 function getApiKey() { return settings.apiKey || ''; }
 function getBaseUrl() { return settings.baseUrl || ''; }
 function isMaintenanceEnabled() { return settings.maintenanceEnabled === true; }
-function getMaintenanceMessage() { return settings.maintenanceMessage || '系统正在维护中，请稍后再试。'; }
+function getMaintenanceMessages() {
+  const normalized = normalizeMaintenanceMessages(settings);
+  settings.maintenanceMessageZh = normalized.zh;
+  settings.maintenanceMessageEn = normalized.en;
+  settings.maintenanceMessage = normalized.zh;
+  return {
+    zh: normalized.zh || '系统正在维护中，请稍后再试。',
+    en: normalized.en || 'The system is being upgraded. Please come back later.'
+  };
+}
+function getMaintenanceMessage() { return getMaintenanceMessages().zh; }
+function getUserNotice() {
+  settings.userNotice = normalizeUserNotice(settings.userNotice);
+  return settings.userNotice;
+}
 
 function getTypedMaintenance() {
   settings.typedMaintenance = normalizeTypedMaintenanceConfig(settings.typedMaintenance);
@@ -184,7 +226,9 @@ function buildViewer(session) {
 app.get('/api/status', (req, res) => {
   res.json({
     maintenance: isMaintenanceEnabled(),
-    message: isMaintenanceEnabled() ? getMaintenanceMessage() : null
+    message: isMaintenanceEnabled() ? getMaintenanceMessage() : null,
+    maintenanceMessages: isMaintenanceEnabled() ? getMaintenanceMessages() : null,
+    userNotice: getUserNotice()
   });
 });
 
@@ -521,11 +565,48 @@ function hashAccessToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex').substring(0, 16);
 }
 
-function getClientIP(req) {
-  if (TRUST_PROXY) {
-    return req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+function normalizeClientIP(value) {
+  if (!value) return null;
+  let ip = String(value).trim();
+  if (!ip) return null;
+
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.substring(7);
   }
-  return req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+
+  const bracketMatch = ip.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketMatch) {
+    ip = bracketMatch[1];
+  } else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(ip)) {
+    ip = ip.replace(/:\d+$/, '');
+  }
+
+  return net.isIP(ip) ? ip : null;
+}
+
+function getFirstHeaderValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(getFirstHeaderValue).find(Boolean) || null;
+  }
+  if (!value) return null;
+  return String(value).split(',').map(part => part.trim()).find(Boolean) || null;
+}
+
+function getTrustedProxyIP(req) {
+  if (!TRUST_PROXY) return null;
+  return normalizeClientIP(getFirstHeaderValue(req.headers['cf-connecting-ip'])) ||
+    normalizeClientIP(getFirstHeaderValue(req.headers['x-real-ip'])) ||
+    normalizeClientIP(getFirstHeaderValue(req.headers['x-forwarded-for'])) ||
+    normalizeClientIP(req.ip);
+}
+
+function getSocketIP(req) {
+  const raw = req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+  return normalizeClientIP(raw) || raw || 'unknown';
+}
+
+function getClientIP(req) {
+  return getTrustedProxyIP(req) || getSocketIP(req);
 }
 
 function nowStr() {
@@ -643,15 +724,29 @@ const SHANGHAI_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
 function parseDateInputBoundary(value, endOfDay = false) {
   const raw = String(value || '').trim();
   if (!raw) return null;
-  const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const match = raw.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/
+  );
   if (!match) return null;
 
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
+  const hasTime = typeof match[4] !== 'undefined';
+  const hours = Number(match[4] || 0);
+  const minutes = Number(match[5] || 0);
+  const seconds = Number(match[6] || 0);
 
-  if (!year || month < 1 || month > 12 || day < 1 || day > 31) {
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
     return null;
+  }
+
+  if (hasTime) {
+    if (endOfDay && typeof match[6] === 'undefined') {
+      return Date.UTC(year, month - 1, day, hours, minutes, 59, 999) - SHANGHAI_UTC_OFFSET_MS;
+    }
+    return Date.UTC(year, month - 1, day, hours, minutes, seconds, endOfDay ? 999 : 0) - SHANGHAI_UTC_OFFSET_MS;
   }
 
   if (endOfDay) {
@@ -700,7 +795,7 @@ function filterRecordsByStatsRange(sourceRecords, rangeConfig) {
   });
 }
 
-const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 503]);
+const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 429, 503]);
 const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
 
 function refundCardForRecord(record) {
@@ -1042,37 +1137,52 @@ app.get('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
     configured: !!(settings.apiKey && settings.baseUrl),
     maintenanceEnabled: settings.maintenanceEnabled === true,
     maintenanceMessage: settings.maintenanceMessage || '',
-    typedMaintenance: getTypedMaintenance()
+    maintenanceMessageZh: settings.maintenanceMessageZh || settings.maintenanceMessage || '',
+    maintenanceMessageEn: settings.maintenanceMessageEn || '',
+    typedMaintenance: getTypedMaintenance(),
+    userNotice: getUserNotice()
   });
 });
 
 // 保存系统设置
 app.post('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
-  const { apiKey, baseUrl } = req.body;
+  const { apiKey, baseUrl, userNotice } = req.body;
 
   if (typeof apiKey !== 'undefined' && apiKey !== null) {
-    settings.apiKey = apiKey.trim();
+    settings.apiKey = String(apiKey).trim();
   }
   if (typeof baseUrl !== 'undefined' && baseUrl !== null) {
-    settings.baseUrl = baseUrl.trim().replace(/\/$/, '');
+    settings.baseUrl = String(baseUrl).trim().replace(/\/$/, '');
+  }
+  if (typeof userNotice !== 'undefined') {
+    settings.userNotice = normalizeUserNotice(userNotice);
   }
 
   saveSettings(settings);
   res.json({
     message: '设置已保存',
-    configured: !!(settings.apiKey && settings.baseUrl)
+    configured: !!(settings.apiKey && settings.baseUrl),
+    userNotice: getUserNotice()
   });
 });
 
 // 保存维护模式设置
 app.post('/api/admin/maintenance', adminAuth, requireSuperAdmin, (req, res) => {
-  const { enabled, message, typedMaintenance } = req.body;
+  const { enabled, message, messageZh, messageEn, typedMaintenance } = req.body;
   if (typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'enabled 必须为布尔值' });
   }
   settings.maintenanceEnabled = enabled;
+  if (typeof messageZh === 'string') {
+    settings.maintenanceMessageZh = messageZh.trim().slice(0, 500);
+    settings.maintenanceMessage = settings.maintenanceMessageZh;
+  }
+  if (typeof messageEn === 'string') {
+    settings.maintenanceMessageEn = messageEn.trim().slice(0, 500);
+  }
   if (typeof message === 'string') {
-    settings.maintenanceMessage = message.trim().slice(0, 500);
+    settings.maintenanceMessageZh = message.trim().slice(0, 500);
+    settings.maintenanceMessage = settings.maintenanceMessageZh;
   }
   if (typeof typedMaintenance !== 'undefined') {
     settings.typedMaintenance = normalizeTypedMaintenanceConfig(typedMaintenance);
@@ -1084,6 +1194,7 @@ app.post('/api/admin/maintenance', adminAuth, requireSuperAdmin, (req, res) => {
     message: enabled ? '维护模式已开启' : '维护模式已关闭',
     maintenanceEnabled: settings.maintenanceEnabled,
     maintenanceMessage: settings.maintenanceMessage,
+    maintenanceMessages: getMaintenanceMessages(),
     typedMaintenance: settings.typedMaintenance
   });
 });
@@ -1236,11 +1347,26 @@ app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
 
 // 查看卡密列表
 app.get('/api/admin/cards', adminAuth, (req, res) => {
-  const { page = 1, pageSize = 20, status, type, search, batch_id } = req.query;
+  const {
+    page = 1,
+    pageSize = 20,
+    status,
+    type,
+    search,
+    batch_id,
+    created_from,
+    created_to,
+    used_from,
+    used_to
+  } = req.query;
   const pg = Math.max(1, parseInt(page) || 1);
   const ps = Math.min(Math.max(1, parseInt(pageSize) || 20), 100); // 上限 100
 
   let filtered = cards.filter(card => cardBelongsToSession(card, req.admin));
+  const createdFromTs = parseDateInputBoundary(created_from, false);
+  const createdToTs = parseDateInputBoundary(created_to, true);
+  const usedFromTs = parseDateInputBoundary(used_from, false);
+  const usedToTs = parseDateInputBoundary(used_to, true);
 
   if (status && status !== 'all') {
     filtered = filtered.filter(c => c.status === status);
@@ -1257,11 +1383,30 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
       c.batch_id,
       c.created_by_username,
       c.created_by_role,
-      c.created_at
+      c.created_at,
+      c.used_at
     ].some(value => String(value || '').toLowerCase().includes(q)));
   }
   if (batch_id) {
     filtered = filtered.filter(c => c.batch_id === batch_id);
+  }
+  if (createdFromTs !== null || createdToTs !== null) {
+    filtered = filtered.filter((card) => {
+      const createdAtTs = parseRecordCreatedAt(card.created_at);
+      if (createdAtTs === null) return false;
+      if (createdFromTs !== null && createdAtTs < createdFromTs) return false;
+      if (createdToTs !== null && createdAtTs > createdToTs) return false;
+      return true;
+    });
+  }
+  if (usedFromTs !== null || usedToTs !== null) {
+    filtered = filtered.filter((card) => {
+      const usedAtTs = parseRecordCreatedAt(card.used_at);
+      if (usedAtTs === null) return false;
+      if (usedFromTs !== null && usedAtTs < usedFromTs) return false;
+      if (usedToTs !== null && usedAtTs > usedToTs) return false;
+      return true;
+    });
   }
 
   // 按 id 倒序
