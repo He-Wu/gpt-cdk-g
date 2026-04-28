@@ -57,7 +57,7 @@ async function waitForServer(port, child) {
 async function startServer(testName, env = {}, seed = {}) {
   const cwd = await makeTempProject(testName);
   const port = await getFreePort();
-  if (seed.cards || seed.records || seed.settings) {
+  if (seed.cards || seed.records || seed.settings || seed.costRecords) {
     await fs.mkdir(path.join(cwd, 'data'), { recursive: true });
     if (seed.cards) {
       await fs.writeFile(path.join(cwd, 'data', 'cards.json'), JSON.stringify(seed.cards, null, 2), 'utf-8');
@@ -67,6 +67,9 @@ async function startServer(testName, env = {}, seed = {}) {
     }
     if (seed.settings) {
       await fs.writeFile(path.join(cwd, 'data', 'settings.json'), JSON.stringify(seed.settings, null, 2), 'utf-8');
+    }
+    if (seed.costRecords) {
+      await fs.writeFile(path.join(cwd, 'data', 'cost-records.json'), JSON.stringify(seed.costRecords, null, 2), 'utf-8');
     }
   }
   const child = spawn(process.execPath, ['server.js'], {
@@ -328,6 +331,19 @@ async function adminCancelRecord(port, token, recordId) {
   });
 }
 
+async function adminMarkRecordSuccess(port, token, recordId) {
+  return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/mark-success`, {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token }
+  });
+}
+
+async function adminDiagnoseRecord(port, token, recordId, wait = 0) {
+  return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/diagnose?wait=${wait}`, {
+    headers: { 'X-Admin-Token': token }
+  });
+}
+
 async function adminQueryJobStatus(port, token, jobId, wait = 0) {
   return requestJson(port, `/api/admin/job-status/${encodeURIComponent(jobId)}?wait=${wait}`, {
     headers: { 'X-Admin-Token': token }
@@ -534,6 +550,61 @@ test('admin settings can configure default card cost and generated cards store c
     assert.ok(generatedCards.every((card) => card.remark === '首批客户退款补发'));
     assert.ok(generatedCards.every((card) => card.cost === 12.5));
     assert.ok(generatedCards.every((card) => card.sale_price === 39.9));
+  } finally {
+    await server.stop();
+  }
+});
+
+test('super admin cost records calculate weighted cost and seed generated card cost', async () => {
+  const server = await startServer('cost records weighted average');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const purchase = await requestJson(server.port, '/api/admin/cost-records', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        record_type: 'purchase',
+        card_type: 'plus',
+        quantity: 10,
+        total_cost: 80,
+        supplier: '上游 A',
+        remark: '首批进货'
+      })
+    });
+    assert.equal(purchase.res.status, 200);
+    assert.equal(purchase.data.record.unit_cost, 8);
+    assert.equal(purchase.data.summary.by_type.plus.current_average_cost, 8);
+
+    const generated = await requestJson(server.port, '/api/admin/cards/generate', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({
+        count: 1,
+        type: 'plus',
+        remark: '按进货成本生成',
+        sale_price: 20
+      })
+    });
+    assert.equal(generated.res.status, 200);
+    assert.equal(generated.data.cost, 8);
+
+    const summaryRes = await requestJson(server.port, '/api/admin/cost-records', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(summaryRes.res.status, 200);
+    assert.equal(summaryRes.data.summary.by_type.plus.purchase_quantity, 10);
+    assert.equal(summaryRes.data.summary.by_type.plus.remaining_quantity, 9);
+    assert.equal(summaryRes.data.summary.by_type.plus.remaining_cost, 72);
+
+    const created = await createSubAdmin(server.port, token, 'cost_reader', 'sub-admin-pass-123');
+    assert.equal(created.res.status, 200);
+    const subLogin = await loginSubAdmin(server.port, 'cost_reader', 'sub-admin-pass-123');
+    assert.equal(subLogin.res.status, 200);
+    const blocked = await requestJson(server.port, '/api/admin/cost-records', {
+      headers: { 'X-Admin-Token': subLogin.data.token }
+    });
+    assert.equal(blocked.res.status, 403);
   } finally {
     await server.stop();
   }
@@ -1076,6 +1147,58 @@ test('super admin can create a sub admin who logs in with username and generates
     assert.equal(cardsRes.data.cards[0].code, code);
     assert.equal(cardsRes.data.cards[0].created_by_username, 'alice_ops');
     assert.equal(cardsRes.data.cards[0].created_by_role, 'sub_admin');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('super admin can impersonate a sub admin account to view scoped data', async () => {
+  const server = await startServer('sub admin impersonation');
+
+  try {
+    const adminToken = await loginAdmin(server.port);
+    const created = await createSubAdmin(server.port, adminToken, 'viewer_ops', 'sub-admin-pass-123');
+    assert.equal(created.res.status, 200);
+
+    const impersonated = await requestJson(server.port, `/api/admin/sub-admins/${created.data.subAdmin.id}/impersonate`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': adminToken }
+    });
+    assert.equal(impersonated.res.status, 200);
+    assert.equal(impersonated.data.role, 'sub_admin');
+    assert.equal(impersonated.data.username, 'viewer_ops');
+    assert.equal(impersonated.data.impersonatedBy, 'super_admin');
+    assert.equal(impersonated.data.permissions.manage_accounts, false);
+
+    const ownCode = await generateOneCard(server.port, impersonated.data.token, 'plus', {
+      remark: '模拟登录生成',
+      cost: 8,
+      sale_price: 18
+    });
+    await generateOneCard(server.port, adminToken, 'plus', {
+      remark: '主管理员生成',
+      cost: 9,
+      sale_price: 19
+    });
+
+    const scopedCards = await requestJson(server.port, '/api/admin/cards?page=1&pageSize=10', {
+      headers: { 'X-Admin-Token': impersonated.data.token }
+    });
+    assert.equal(scopedCards.res.status, 200);
+    assert.equal(scopedCards.data.total, 1);
+    assert.equal(scopedCards.data.cards[0].code, ownCode);
+    assert.equal(scopedCards.data.cards[0].created_by_username, 'viewer_ops');
+
+    const settingsBlocked = await requestJson(server.port, '/api/admin/settings', {
+      headers: { 'X-Admin-Token': impersonated.data.token }
+    });
+    assert.equal(settingsBlocked.res.status, 403);
+
+    const nestedBlocked = await requestJson(server.port, `/api/admin/sub-admins/${created.data.subAdmin.id}/impersonate`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': impersonated.data.token }
+    });
+    assert.equal(nestedBlocked.res.status, 403);
   } finally {
     await server.stop();
   }
@@ -2337,6 +2460,373 @@ test('admin cancel refunds manual-review records without job id by local record 
   }
 });
 
+test('admin can mark manual-review records as successful after verification', async () => {
+  const server = await startServer('admin mark manual review success', {}, {
+    cards: [{
+      code: 'MANUAL-SUCCESS-LOCAL-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token',
+      used_email: 'user@example.com'
+    }],
+    records: [{
+      id: 17,
+      card_code: 'MANUAL-SUCCESS-LOCAL-0001',
+      card_type: 'plus',
+      created_by_username: null,
+      created_by_role: null,
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: null,
+      status: 'unknown',
+      error_message: '提交请求结果不确定: fetch failed',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '请求上游时出现网络错误，无法确认是否已成功受理',
+      manual_review_stage: 'submit_network_error',
+      upstream_status_code: null,
+      upstream_detail: 'fetch failed',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const marked = await adminMarkRecordSuccess(server.port, token, 17);
+    assert.equal(marked.res.status, 200);
+    assert.equal(marked.data.status, 'done');
+    assert.equal(marked.data.record.status, 'done');
+    assert.equal(marked.data.record.needs_manual_review, false);
+    assert.equal(marked.data.record.manual_review_reason, null);
+    assert.equal(marked.data.record.manual_resolution, 'success');
+    assert.equal(marked.data.record.manual_resolved_by, 'super_admin');
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?search=MANUAL-SUCCESS-LOCAL-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records[0].status, 'done');
+    assert.equal(recordsRes.data.records[0].needs_manual_review, false);
+
+    const query = await queryCard(server.port, 'MANUAL-SUCCESS-LOCAL-0001');
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.redeem_status, 'done');
+    assert.equal(query.data.needs_manual_review, false);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin record diagnostics queries upstream and enables one-click success when job is done', async () => {
+  let getCalled = 0;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/job/job-diagnose-done?wait=0') {
+      getCalled += 1;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: 'job-diagnose-done',
+        status: 'done',
+        workflow: 'plus',
+        result: { ok: true },
+        error: null
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('admin diagnose record upstream done', {}, {
+    cards: [{
+      code: 'MANUAL-DIAGNOSE-DONE-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token',
+      used_email: 'user@example.com'
+    }],
+    records: [{
+      id: 19,
+      card_code: 'MANUAL-DIAGNOSE-DONE-0001',
+      card_type: 'plus',
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-diagnose-done',
+      status: 'unknown',
+      error_message: '提交状态不确定，等待人工核验',
+      workflow: 'plus',
+      needs_manual_review: true,
+      manual_review_reason: '上游响应不确定',
+      manual_review_stage: 'submit_unknown',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '127.0.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const diagnosed = await adminDiagnoseRecord(server.port, token, 19);
+    assert.equal(diagnosed.res.status, 200);
+    assert.equal(diagnosed.data.can_query_upstream, true);
+    assert.equal(diagnosed.data.upstream_status_code, 200);
+    assert.equal(diagnosed.data.upstream.status, 'done');
+    assert.equal(diagnosed.data.can_mark_success, true);
+    assert.equal(diagnosed.data.recommendation, '上游返回成功，可以一键校验为成功');
+    assert.equal(getCalled, 1);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('background reconcile resolves recent manual-review jobs only on terminal upstream status', async () => {
+  const freshCreatedAt = formatShanghaiRecordTime(Date.now() - 10 * 60 * 1000);
+  const oldCreatedAt = formatShanghaiRecordTime(Date.now() - 2 * 60 * 60 * 1000);
+  const upstreamStatuses = {
+    'job-auto-done': { status: 'done', result: { ok: true }, error: null },
+    'job-auto-failed': { status: 'failed', result: null, error: 'subscription failed' },
+    'job-auto-processing': { status: 'processing', result: null, error: null, queue_position: 1 },
+    'job-auto-old-done': { status: 'done', result: { ok: true }, error: null }
+  };
+  let getCalled = 0;
+  const upstream = await startMockUpstream((req, res) => {
+    const match = req.url.match(/^\/job\/([^?]+)\?wait=0$/);
+    if (req.method === 'GET' && match) {
+      getCalled += 1;
+      const jobId = decodeURIComponent(match[1]);
+      const payload = upstreamStatuses[jobId];
+      if (payload) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ job_id: jobId, workflow: 'plus', ...payload }));
+        return;
+      }
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('background manual review reconciliation', {}, {
+    settings: { apiKey: 'test-api-key', baseUrl: upstream.baseUrl },
+    cards: [{
+      code: 'AUTO-MANUAL-DONE-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: freshCreatedAt,
+      used_at: freshCreatedAt,
+      used_by: 'hash-token',
+      used_email: 'done@example.com'
+    }, {
+      code: 'AUTO-MANUAL-FAILED-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: freshCreatedAt,
+      used_at: freshCreatedAt,
+      used_by: 'hash-token',
+      used_email: 'failed@example.com'
+    }, {
+      code: 'AUTO-MANUAL-PROCESS-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: freshCreatedAt,
+      used_at: freshCreatedAt,
+      used_by: 'hash-token',
+      used_email: 'processing@example.com'
+    }, {
+      code: 'AUTO-MANUAL-OLD-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: oldCreatedAt,
+      used_at: oldCreatedAt,
+      used_by: 'hash-token',
+      used_email: 'old@example.com'
+    }],
+    records: [{
+      id: 31,
+      card_code: 'AUTO-MANUAL-DONE-0001',
+      card_type: 'plus',
+      email: 'done@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-auto-done',
+      status: 'unknown',
+      error_message: '等待人工核验',
+      workflow: 'plus',
+      needs_manual_review: true,
+      manual_review_reason: '状态不确定',
+      manual_review_stage: 'submit_unknown',
+      created_at: freshCreatedAt,
+      ip_address: '127.0.0.1'
+    }, {
+      id: 32,
+      card_code: 'AUTO-MANUAL-FAILED-0001',
+      card_type: 'plus',
+      email: 'failed@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-auto-failed',
+      status: 'unknown',
+      error_message: '等待人工核验',
+      workflow: 'plus',
+      needs_manual_review: true,
+      manual_review_reason: '状态不确定',
+      manual_review_stage: 'submit_unknown',
+      created_at: freshCreatedAt,
+      ip_address: '127.0.0.1'
+    }, {
+      id: 33,
+      card_code: 'AUTO-MANUAL-PROCESS-0001',
+      card_type: 'plus',
+      email: 'processing@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-auto-processing',
+      status: 'unknown',
+      error_message: '等待人工核验',
+      workflow: 'plus',
+      needs_manual_review: true,
+      manual_review_reason: '状态不确定',
+      manual_review_stage: 'submit_unknown',
+      created_at: freshCreatedAt,
+      ip_address: '127.0.0.1'
+    }, {
+      id: 34,
+      card_code: 'AUTO-MANUAL-OLD-0001',
+      card_type: 'plus',
+      email: 'old@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-auto-old-done',
+      status: 'unknown',
+      error_message: '等待人工核验',
+      workflow: 'plus',
+      needs_manual_review: true,
+      manual_review_reason: '状态不确定',
+      manual_review_stage: 'submit_unknown',
+      created_at: oldCreatedAt,
+      ip_address: '127.0.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await new Promise(resolve => setTimeout(resolve, 6500));
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?pageSize=100&search=AUTO-MANUAL', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    const byCode = Object.fromEntries(recordsRes.data.records.map(record => [record.card_code, record]));
+    assert.equal(byCode['AUTO-MANUAL-DONE-0001'].status, 'done');
+    assert.equal(byCode['AUTO-MANUAL-DONE-0001'].needs_manual_review, false);
+    assert.equal(byCode['AUTO-MANUAL-DONE-0001'].manual_resolution, 'success');
+    assert.equal(byCode['AUTO-MANUAL-DONE-0001'].manual_resolved_by, 'system_auto_reconcile');
+    assert.equal(byCode['AUTO-MANUAL-FAILED-0001'].status, 'failed');
+    assert.equal(byCode['AUTO-MANUAL-FAILED-0001'].needs_manual_review, false);
+    assert.equal(byCode['AUTO-MANUAL-FAILED-0001'].manual_resolution, 'failed');
+    assert.equal(byCode['AUTO-MANUAL-PROCESS-0001'].status, 'unknown');
+    assert.equal(byCode['AUTO-MANUAL-PROCESS-0001'].needs_manual_review, true);
+    assert.equal(byCode['AUTO-MANUAL-OLD-0001'].status, 'unknown');
+    assert.equal(byCode['AUTO-MANUAL-OLD-0001'].needs_manual_review, true);
+
+    const failedCard = await queryCard(server.port, 'AUTO-MANUAL-FAILED-0001');
+    assert.equal(failedCard.data.status, 'unused');
+    assert.equal(failedCard.data.redeem_status, 'failed');
+    assert.ok(getCalled >= 3);
+    assert.ok(getCalled < 4);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('background reconcile keeps manual-review records unchanged on upstream network errors', async () => {
+  const freshCreatedAt = formatShanghaiRecordTime(Date.now() - 10 * 60 * 1000);
+  const deadPort = await getFreePort();
+  const server = await startServer('background manual review network error safe', {}, {
+    settings: { apiKey: 'test-api-key', baseUrl: `http://127.0.0.1:${deadPort}` },
+    cards: [{
+      code: 'AUTO-MANUAL-NETWORK-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: freshCreatedAt,
+      used_at: freshCreatedAt,
+      used_by: 'hash-token',
+      used_email: 'network@example.com'
+    }],
+    records: [{
+      id: 35,
+      card_code: 'AUTO-MANUAL-NETWORK-0001',
+      card_type: 'plus',
+      email: 'network@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-auto-network-error',
+      status: 'unknown',
+      error_message: '等待人工核验',
+      workflow: 'plus',
+      needs_manual_review: true,
+      manual_review_reason: '状态不确定',
+      manual_review_stage: 'submit_unknown',
+      created_at: freshCreatedAt,
+      ip_address: '127.0.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await new Promise(resolve => setTimeout(resolve, 6500));
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?search=AUTO-MANUAL-NETWORK-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records[0].status, 'unknown');
+    assert.equal(recordsRes.data.records[0].needs_manual_review, true);
+
+    const query = await queryCard(server.port, 'AUTO-MANUAL-NETWORK-0001');
+    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.redeem_status, 'unknown');
+    assert.equal(query.data.needs_manual_review, true);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin cannot mark non-manual records as successful', async () => {
+  const server = await startServer('admin rejects non manual success mark', {}, {
+    cards: [{
+      code: 'DONE-NON-MANUAL-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token',
+      used_email: 'user@example.com'
+    }],
+    records: [{
+      id: 18,
+      card_code: 'DONE-NON-MANUAL-0001',
+      card_type: 'plus',
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-done-0001',
+      status: 'done',
+      error_message: null,
+      workflow: 'plus',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '127.0.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const marked = await adminMarkRecordSuccess(server.port, token, 18);
+    assert.equal(marked.res.status, 409);
+    assert.match(marked.data.error, /待人工核验|已经是成功状态/);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('admin records expose cancel for legacy unknown records without job id or manual flag', async () => {
   const server = await startServer('admin legacy unknown local cancel record', {}, {
     cards: [{
@@ -2601,6 +3091,11 @@ test('admin page exposes username login and sub admin account management ui', as
   assert.match(html, /page-accounts/);
   assert.match(html, /loadSubAdmins/);
   assert.match(html, /createSubAdminAccount/);
+  assert.match(html, /impersonateSubAdmin/);
+  assert.match(html, /returnToSuperAdmin/);
+  assert.match(html, /id="impersonationBar"/);
+  assert.match(html, /一键登录/);
+  assert.match(html, /\/api\/admin\/sub-admins\/\$\{encodeURIComponent\(id\)\}\/impersonate/);
   assert.match(html, /\/api\/admin\/sub-admins/);
   assert.match(html, /\/api\/admin\/me/);
 });
@@ -2624,6 +3119,19 @@ test('admin page exposes a dedicated system status page', async () => {
   assert.match(html, /内存使用率/);
   assert.match(html, /磁盘使用率/);
   assert.match(html, /data-page="system"[\s\S]*data-permission="manage_settings"|data-permission="manage_settings"[\s\S]*data-page="system"/);
+});
+
+test('admin page exposes a super-admin cost records page', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /page-costs/);
+  assert.match(html, /switchPage\('costs'\)/);
+  assert.match(html, /data-page="costs"[\s\S]*data-permission="manage_settings"|data-permission="manage_settings"[\s\S]*data-page="costs"/);
+  assert.match(html, /id="costRecordType"/);
+  assert.match(html, /id="costSummaryGrid"/);
+  assert.match(html, /loadCostRecords/);
+  assert.match(html, /\/api\/admin\/cost-records/);
+  assert.match(html, /进货/);
+  assert.match(html, /加权成本|加权/);
 });
 
 test('admin page script parses so login handlers are actually defined', async () => {
@@ -2660,8 +3168,22 @@ test('admin page renders creator usernames in cards and records tables', async (
 test('admin records expose manual review diagnostic actions', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /showRecordDiagnostics/);
+  assert.match(html, /\/api\/admin\/records\/\$\{encodeURIComponent\(recordId\)\}\/diagnose/);
+  assert.match(html, /upstreamJobStatusLooksSuccessful/);
+  assert.match(html, /上游返回 done/);
+  assert.match(html, /markRecordSuccess/);
+  assert.match(html, /\/api\/admin\/records\/\$\{encodeURIComponent\(recordId\)\}\/mark-success/);
+  assert.match(html, /设为成功/);
   assert.match(html, /manual_review_reason/);
   assert.match(html, /needs_manual_review/);
+});
+
+test('server reconciles manual-review jobs on a faster bounded background cadence', async () => {
+  const source = await fs.readFile(path.join(REPO_ROOT, 'server.js'), 'utf-8');
+  assert.match(source, /JOB_RECONCILE_INTERVAL_MS\s*=\s*10000/);
+  assert.match(source, /JOB_RECONCILE_BATCH_SIZE\s*=\s*100/);
+  assert.match(source, /JOB_RECONCILE_CONCURRENCY\s*=\s*10/);
+  assert.match(source, /runWithConcurrency/);
 });
 
 test('admin and user pages expose plus one year and queue estimates', async () => {

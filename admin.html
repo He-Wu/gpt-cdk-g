@@ -238,6 +238,23 @@
             color: var(--rose);
         }
 
+        .impersonation-bar {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+            padding: 12px 14px;
+            border: 1px solid rgba(251,191,36,0.24);
+            border-radius: 8px;
+            background: rgba(251,191,36,0.08);
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .impersonation-bar.active { display: flex; }
+        .impersonation-bar strong { color: var(--amber); }
+
         .mobile-topbar,
         .mobile-nav-overlay,
         .mobile-nav-drawer {
@@ -1527,6 +1544,7 @@
             .records-actions { justify-content: stretch; }
             .records-actions .btn { flex: 1 1 120px; }
             .records-state-line { align-items: flex-start; flex-direction: column; }
+            .impersonation-bar { flex-direction: column; align-items: stretch; }
             .records-table { min-width: 980px; }
             .user-notice-grid { grid-template-columns: 1fr; }
             .stat-card .stat-value { font-size: 24px; }
@@ -1599,6 +1617,9 @@
             <div class="nav-item" onclick="switchPage('generate')" data-page="generate">
                 <span class="nav-icon">🔑</span> 生成卡密
             </div>
+            <div class="nav-item" onclick="switchPage('costs')" data-page="costs" data-permission="manage_settings">
+                <span class="nav-icon">💰</span> 成本记录
+            </div>
             <div class="nav-item" onclick="switchPage('cards')" data-page="cards">
                 <span class="nav-icon">🗂️</span> 卡密管理
             </div>
@@ -1639,6 +1660,9 @@
             <div class="nav-item" onclick="switchPage('generate')" data-page="generate">
                 <span class="nav-icon">📝</span> 生成卡密
             </div>
+            <div class="nav-item" onclick="switchPage('costs')" data-page="costs" data-permission="manage_settings">
+                <span class="nav-icon">💰</span> 成本记录
+            </div>
             <div class="nav-item" onclick="switchPage('cards')" data-page="cards">
                 <span class="nav-icon">🗂️</span> 卡密管理
             </div>
@@ -1677,6 +1701,10 @@
                 </div>
             </div>
             <button class="mobile-menu-btn" id="mobileMenuBtn" type="button" onclick="toggleMobileNav()" aria-label="打开菜单">☰</button>
+        </div>
+        <div class="impersonation-bar" id="impersonationBar">
+            <span>正在以 <strong id="impersonationUsername">-</strong> 的子管理员视角查看数据</span>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="returnToSuperAdmin()">返回主管理员</button>
         </div>
 
         <!-- ===== 仪表盘页 ===== -->
@@ -1743,7 +1771,7 @@
                     </div>
                     <div class="form-group">
                         <label>类型</label>
-                        <select id="genType">
+                        <select id="genType" onchange="applyAverageCostToGenerateForm(true)">
                             <option value="plus">Plus</option>
                             <option value="plus_1y">Plus 1 年</option>
                             <option value="pro">Pro 5X</option>
@@ -1793,6 +1821,84 @@
                         </div>
                     </div>
                     <div class="codes-list" id="genCodesList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 成本记录页 ===== -->
+        <div class="page" id="page-costs" data-permission="manage_settings">
+            <div class="page-header">
+                <h2>成本记录</h2>
+                <p>记录 API 额度进货、损耗和库存校准，按卡种计算当前加权成本</p>
+            </div>
+            <div class="stats-grid" id="costSummaryGrid" style="margin-bottom: 18px;"></div>
+            <div class="panel">
+                <div class="panel-title" style="margin-bottom: 20px;">新增成本记录</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>记录类型</label>
+                        <select id="costRecordType">
+                            <option value="purchase">进货</option>
+                            <option value="loss">损耗</option>
+                            <option value="adjustment">库存校准</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>卡种</label>
+                        <select id="costCardType">
+                            <option value="plus">Plus 月卡</option>
+                            <option value="plus_1y">Plus 年卡</option>
+                            <option value="pro">Pro 5X</option>
+                            <option value="pro_20x">Pro 20X</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>数量</label>
+                        <input type="number" id="costQuantity" min="0.0001" step="0.0001" placeholder="例如：200">
+                    </div>
+                    <div class="form-group">
+                        <label>总成本</label>
+                        <input type="number" id="costTotalCost" min="0" step="0.01" placeholder="例如：1800">
+                    </div>
+                    <div class="form-group">
+                        <label>供应商 / 渠道</label>
+                        <input type="text" id="costSupplier" maxlength="80" placeholder="例如：上游 A">
+                    </div>
+                    <div class="form-group">
+                        <label>备注</label>
+                        <input type="text" id="costRemark" maxlength="200" placeholder="例如：4 月补货">
+                    </div>
+                    <div style="flex: 0 0 auto;">
+                        <button class="btn btn-primary" id="saveCostRecordBtn" onclick="saveCostRecord()" style="height: 42px;">
+                            💾 保存记录
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header" style="margin-bottom: 16px;">
+                    <div class="panel-title" style="margin:0;">记录明细</div>
+                    <button class="btn btn-ghost btn-sm" onclick="loadCostRecords()">刷新</button>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>类型</th>
+                                <th>卡种</th>
+                                <th>数量</th>
+                                <th>总成本</th>
+                                <th>单个成本</th>
+                                <th>供应商</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="costRecordsTableBody">
+                            <tr><td colspan="9"><div class="empty-state"><div class="icon">💰</div><p>打开页面后自动加载成本记录</p></div></td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -2365,6 +2471,7 @@
 <script>
     // ========== 状态 ==========
     let adminToken = localStorage.getItem('admin_token') || '';
+    const IMPERSONATION_PARENT_TOKEN_KEY = 'admin_parent_token';
     let cardsPage = 1;
     let recordsPage = 1;
     let recordsPageSize = 20;
@@ -2377,6 +2484,8 @@
     let currentRecords = [];
     let currentSubAdmins = [];
     let currentCards = [];
+    let currentCostSummary = null;
+    let costRecordsLoaded = false;
     let selectedCardCodes = new Set();
     let selectedRecordIds = new Set();
     let selectedStatsRange = '1h';
@@ -2393,9 +2502,15 @@
         { key: 'pro', label: 'Pro 5X', threshold: 5 },
         { key: 'pro_20x', label: 'Pro 20X', threshold: 5 }
     ];
+    const COST_RECORD_TYPES = {
+        purchase: '进货',
+        loss: '损耗',
+        adjustment: '库存校准'
+    };
     const PAGE_TITLES = {
         dashboard: '仪表盘',
         generate: '生成卡密',
+        costs: '成本记录',
         cards: '卡密管理',
         records: '兑换记录',
         'job-status': '任务查询',
@@ -2517,6 +2632,7 @@
         return {
             role: viewer.role || 'super_admin',
             username: viewer.username || 'super_admin',
+            impersonatedBy: viewer.impersonatedBy || viewer.impersonated_by || null,
             permissions: {
                 manage_settings: viewer.permissions?.manage_settings === true,
                 manage_accounts: viewer.permissions?.manage_accounts === true,
@@ -2538,6 +2654,11 @@
             const permission = node.getAttribute('data-permission');
             node.classList.toggle('hidden', permission ? !hasPermission(permission) : false);
         });
+        const impersonationBar = document.getElementById('impersonationBar');
+        const impersonationUsername = document.getElementById('impersonationUsername');
+        const isImpersonating = currentViewer?.role === 'sub_admin' && !!localStorage.getItem(IMPERSONATION_PARENT_TOKEN_KEY);
+        if (impersonationBar) impersonationBar.classList.toggle('active', isImpersonating);
+        if (impersonationUsername) impersonationUsername.textContent = currentViewer?.username || '-';
         applyDefaultCostToGenerateForm();
     }
 
@@ -2555,11 +2676,13 @@
                 adminToken = '';
                 currentViewer = null;
                 localStorage.removeItem('admin_token');
+                localStorage.removeItem(IMPERSONATION_PARENT_TOKEN_KEY);
             }
         } catch {
             adminToken = '';
             currentViewer = null;
             localStorage.removeItem('admin_token');
+            localStorage.removeItem(IMPERSONATION_PARENT_TOKEN_KEY);
         }
     }
 
@@ -2626,6 +2749,7 @@
         currentViewer = null;
         currentRecords = [];
         currentSubAdmins = [];
+        localStorage.removeItem(IMPERSONATION_PARENT_TOKEN_KEY);
         localStorage.removeItem('admin_token');
         setMobileNavOpen(false);
         document.getElementById('appLayout').classList.remove('active');
@@ -2639,6 +2763,26 @@
         document.getElementById('loginPage').style.display = 'none';
         document.getElementById('appLayout').classList.add('active');
         switchPage(getSafeDefaultPage());
+    }
+
+    async function returnToSuperAdmin() {
+        const parentToken = localStorage.getItem(IMPERSONATION_PARENT_TOKEN_KEY);
+        if (!parentToken) {
+            showToast('没有可返回的主管理员会话', 'error');
+            return;
+        }
+        adminFetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
+        adminToken = parentToken;
+        localStorage.setItem('admin_token', adminToken);
+        localStorage.removeItem(IMPERSONATION_PARENT_TOKEN_KEY);
+        currentViewer = null;
+        currentRecords = [];
+        currentSubAdmins = [];
+        currentCards = [];
+        selectedCardCodes.clear();
+        selectedRecordIds.clear();
+        await checkAuth();
+        showToast('已返回主管理员账号', 'success');
     }
 
     function setMobileNavOpen(open) {
@@ -2677,6 +2821,7 @@
 
         if (page === 'dashboard') loadStats();
         if (page === 'generate') applyDefaultCostToGenerateForm();
+        if (page === 'costs') loadCostRecords();
         if (page === 'cards') loadCards();
         if (page === 'records') loadRecords();
         if (page === 'job-status') resetAdminJobStatusResult();
@@ -2833,6 +2978,163 @@
         }
     }
 
+    // ========== 成本记录 ==========
+    function costRecordTypeLabel(type) {
+        return COST_RECORD_TYPES[type] || type || '-';
+    }
+
+    function getCostAverageForType(type) {
+        const value = currentCostSummary?.by_type?.[type]?.current_average_cost;
+        return Number.isFinite(Number(value)) ? Number(value) : getGenerateDefaultCost();
+    }
+
+    async function ensureCostSummaryLoaded() {
+        if (!hasPermission('manage_settings') || costRecordsLoaded) return;
+        try {
+            const res = await adminFetch('/api/admin/cost-records');
+            if (!res.ok) return;
+            const data = await res.json();
+            currentCostSummary = data.summary || null;
+            costRecordsLoaded = true;
+        } catch (err) {
+            console.warn('加载成本摘要失败:', err);
+        }
+    }
+
+    function renderCostSummary(summary) {
+        const grid = document.getElementById('costSummaryGrid');
+        if (!grid) return;
+        const byType = summary?.by_type || {};
+        grid.innerHTML = ['plus', 'plus_1y', 'pro', 'pro_20x'].map((type) => {
+            const item = byType[type] || {};
+            return `
+                <div class="stat-card">
+                    <div class="stat-label">${escapeHtml(typeLabel(type))}</div>
+                    <div class="stat-value">${formatMoney(item.current_average_cost ?? getGenerateDefaultCost())}</div>
+                    <div style="margin-top:8px;color:var(--text-secondary);font-size:12px;line-height:1.6;">
+                        进货 ${formatMoney(item.purchase_quantity ?? 0)} · 已生成 ${formatMoney(item.issued_quantity ?? 0)}<br>
+                        理论剩余 ${formatMoney(item.remaining_quantity ?? 0)} · 成本 ${formatMoney(item.remaining_cost ?? 0)}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderCostRecordRows(records) {
+        const tbody = document.getElementById('costRecordsTableBody');
+        if (!tbody) return;
+        if (!records.length) {
+            tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">💰</div><p>暂无成本记录</p></div></td></tr>`;
+            return;
+        }
+        tbody.innerHTML = records.map((record) => `
+            <tr>
+                <td style="color:var(--text-muted);font-size:12px;">${escapeHtml(record.created_at || '-')}</td>
+                <td><span class="badge badge-processing">${escapeHtml(costRecordTypeLabel(record.record_type))}</span></td>
+                <td><span class="badge badge-${escapeHtml(record.card_type)}">${escapeHtml(typeLabel(record.card_type))}</span></td>
+                <td>${formatMoney(record.quantity)}</td>
+                <td>${formatMoney(record.total_cost)}</td>
+                <td>${formatMoney(record.unit_cost)}</td>
+                <td style="color:var(--text-secondary);font-size:12px;">${escapeHtml(record.supplier || '-')}</td>
+                <td style="color:var(--text-secondary);font-size:12px;max-width:220px;">${escapeHtml(record.remark || '-')}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteCostRecord('${escapeHtml(record.id)}')">删除</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadCostRecords() {
+        const tbody = document.getElementById('costRecordsTableBody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">⏳</div><p>正在加载成本记录...</p></div></td></tr>`;
+        }
+        try {
+            const res = await adminFetch('/api/admin/cost-records');
+            const data = await res.json();
+            if (!res.ok) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">⚠️</div><p>${escapeHtml(data.error || '加载成本记录失败')}</p></div></td></tr>`;
+                return;
+            }
+            currentCostSummary = data.summary || null;
+            costRecordsLoaded = true;
+            renderCostSummary(currentCostSummary);
+            renderCostRecordRows(data.records || []);
+            applyAverageCostToGenerateForm(false);
+        } catch (err) {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">⚠️</div><p>网络错误，请稍后重试</p></div></td></tr>`;
+            showToast('加载成本记录失败: ' + err.message, 'error');
+        }
+    }
+
+    async function saveCostRecord() {
+        const btn = document.getElementById('saveCostRecordBtn');
+        const recordType = document.getElementById('costRecordType').value;
+        const cardType = document.getElementById('costCardType').value;
+        const quantity = Number(document.getElementById('costQuantity').value);
+        const totalCost = Number(document.getElementById('costTotalCost').value);
+        const supplier = document.getElementById('costSupplier').value.trim();
+        const remark = document.getElementById('costRemark').value.trim();
+
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            showToast('数量必须是大于 0 的数字', 'error');
+            return;
+        }
+        if (!Number.isFinite(totalCost) || totalCost < 0) {
+            showToast('总成本必须是不小于 0 的数字', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+        try {
+            const res = await adminFetch('/api/admin/cost-records', {
+                method: 'POST',
+                body: JSON.stringify({
+                    record_type: recordType,
+                    card_type: cardType,
+                    quantity,
+                    total_cost: totalCost,
+                    supplier,
+                    remark
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.error || '保存成本记录失败', 'error');
+                return;
+            }
+            document.getElementById('costQuantity').value = '';
+            document.getElementById('costTotalCost').value = '';
+            document.getElementById('costRemark').value = '';
+            showToast(data.message || '成本记录已保存', 'success');
+            await loadCostRecords();
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 保存记录';
+        }
+    }
+
+    async function deleteCostRecord(id) {
+        if (!id || !confirm('确定删除这条成本记录吗？')) return;
+        try {
+            const res = await adminFetch(`/api/admin/cost-records/${encodeURIComponent(id)}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.error || '删除失败', 'error');
+                return;
+            }
+            showToast(data.message || '成本记录已删除', 'success');
+            await loadCostRecords();
+        } catch (err) {
+            showToast('删除失败: ' + err.message, 'error');
+        }
+    }
+
     // ========== 生成卡密 ==========
     function applyDefaultCostToGenerateForm() {
         const costInput = document.getElementById('genCost');
@@ -2841,11 +3143,24 @@
         if (!costInput.value || Number(costInput.value) === 10) {
             costInput.value = String(defaultCost);
         }
+        ensureCostSummaryLoaded().then(() => applyAverageCostToGenerateForm(false));
         handleGenerateIssueTypeChange();
     }
 
     function getGenerateDefaultCost() {
         return Number.isFinite(Number(currentViewer?.defaultCost)) ? Number(currentViewer.defaultCost) : 10;
+    }
+
+    function applyAverageCostToGenerateForm(force = false) {
+        const costInput = document.getElementById('genCost');
+        const typeSelect = document.getElementById('genType');
+        const issueType = document.getElementById('genIssueType')?.value || 'normal';
+        if (!costInput || !typeSelect || issueType === 'compensation') return;
+        const averageCost = getCostAverageForType(typeSelect.value);
+        const current = Number(costInput.value);
+        if (force || !costInput.value || current === 10 || current === getGenerateDefaultCost()) {
+            costInput.value = String(averageCost);
+        }
     }
 
     function handleGenerateIssueTypeChange() {
@@ -2876,7 +3191,7 @@
                 costInput.placeholder = '提交后自动使用旧卡成本';
             } else {
                 costInput.placeholder = '默认成本';
-                if (!costInput.value) costInput.value = String(getGenerateDefaultCost());
+                if (!costInput.value) costInput.value = String(getCostAverageForType(document.getElementById('genType')?.value || 'plus'));
             }
             costInput.readOnly = isCompensation;
         }
@@ -3360,6 +3675,7 @@
                     <td style="color:var(--text-muted);font-size:12px;">${escapeHtml(item.created_at || '-')}</td>
                     <td>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button class="btn btn-primary btn-sm" type="button" onclick="impersonateSubAdmin('${escapeHtml(item.id)}')" ${item.status === 'disabled' ? 'disabled' : ''}>一键登录</button>
                             <button class="btn btn-ghost btn-sm" type="button" onclick="resetSubAdminPassword('${escapeHtml(item.id)}')" style="color:var(--amber);">重置密码</button>
                             <button class="btn btn-ghost btn-sm" type="button" onclick="toggleSubAdminStatus('${escapeHtml(item.id)}', ${item.status !== 'disabled'})" style="color:${item.status === 'disabled' ? 'var(--emerald)' : 'var(--rose)'};">${item.status === 'disabled' ? '启用' : '禁用'}</button>
                         </div>
@@ -3403,6 +3719,36 @@
         } finally {
             btn.disabled = false;
             btn.textContent = '创建子管理员';
+        }
+    }
+
+    async function impersonateSubAdmin(id) {
+        if (!hasPermission('manage_accounts')) return;
+        if (!id || !confirm('确认切换到这个子管理员账号查看数据？')) return;
+
+        try {
+            const res = await adminFetch(`/api/admin/sub-admins/${encodeURIComponent(id)}/impersonate`, {
+                method: 'POST'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '一键登录失败', 'error');
+                return;
+            }
+
+            localStorage.setItem(IMPERSONATION_PARENT_TOKEN_KEY, adminToken);
+            adminToken = data.token;
+            currentViewer = normalizeViewer(data);
+            currentRecords = [];
+            currentSubAdmins = [];
+            currentCards = [];
+            selectedCardCodes.clear();
+            selectedRecordIds.clear();
+            localStorage.setItem('admin_token', adminToken);
+            showApp();
+            showToast(data.message || `已切换到 ${currentViewer.username}`, 'success');
+        } catch (err) {
+            showToast('一键登录失败: ' + err.message, 'error');
         }
     }
 
@@ -3928,7 +4274,10 @@
     function recordActionButtons(record) {
         const actions = [];
         if (record.needs_manual_review || record.manual_review_reason || record.upstream_detail) {
-            actions.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="showRecordDiagnostics(${Number(record.id) || 0})" style="color:var(--amber);">诊断</button>`);
+            actions.push(`<button class="btn btn-ghost btn-sm" type="button" onclick="showRecordDiagnostics(${Number(record.id) || 0}, this)" style="color:var(--amber);">诊断</button>`);
+        }
+        if (canMarkRecordSuccess(record)) {
+            actions.push(recordMarkSuccessButton(record));
         }
         actions.push(recordCancelButton(record));
         return `<div class="record-action-group">${actions.join('')}</div>`;
@@ -3957,6 +4306,12 @@
             hasManualReviewSignal(record, normalizedStatus);
         if (isManualReviewWithoutJobId) return true;
         return !!record.job_id && RECORD_CANCELABLE_STATUSES.has(normalizedStatus);
+    }
+
+    function canMarkRecordSuccess(record) {
+        if (!record) return false;
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        return normalizedStatus !== 'done' && hasManualReviewSignal(record, normalizedStatus);
     }
 
     function getCurrentPageCancelableRecordIds() {
@@ -4030,12 +4385,18 @@
         return `<button class="btn btn-ghost btn-sm" type="button" data-record-cancel="${recordId}" onclick="cancelRecordJob('${jobId}', ${recordId}, this)" style="color:var(--rose);" title="${title}">取消</button>`;
     }
 
-    function showRecordDiagnostics(recordId) {
-        const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
-        if (!record) {
-            showToast('未找到诊断记录', 'error');
-            return;
-        }
+    function recordMarkSuccessButton(record) {
+        const recordId = Number(record.id) || 0;
+        return `<button class="btn btn-ghost btn-sm" type="button" data-record-success="${recordId}" onclick="markRecordSuccess(${recordId}, this)" style="color:var(--emerald);" title="人工核验成功后，将该兑换记录设置为成功">设为成功</button>`;
+    }
+
+    function upstreamJobStatusLooksSuccessful(payload) {
+        const normalizedStatus = normalizeAdminRecordStatus(payload?.status);
+        return normalizedStatus === 'done' && !(payload?.result && payload.result.ok === false);
+    }
+
+    function recordDiagnosticsText(record, diagnoseData = null) {
+        const upstream = diagnoseData?.upstream;
         const details = [
             `记录 ID: ${record.id || '-'}`,
             `Job ID: ${record.job_id || '-'}`,
@@ -4047,7 +4408,99 @@
             `upstream_detail: ${record.upstream_detail || '-'}`,
             `error_message: ${record.error_message || '-'}`
         ];
-        alert(details.join('\n'));
+        if (diagnoseData) {
+            details.push('');
+            details.push(`上游查询: ${diagnoseData.can_query_upstream ? '已查询' : '未查询'}`);
+            details.push(`上游 HTTP: ${diagnoseData.upstream_status_code ?? '-'}`);
+            details.push(`处理建议: ${diagnoseData.recommendation || '-'}`);
+            details.push('');
+            details.push('上游响应 JSON:');
+            details.push(JSON.stringify(upstream ?? {}, null, 2));
+        }
+        return details.join('\n');
+    }
+
+    async function showRecordDiagnostics(recordId, button) {
+        const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+        if (!record) {
+            showToast('未找到诊断记录', 'error');
+            return;
+        }
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '诊断中...';
+        }
+
+        try {
+            const res = await adminFetch(`/api/admin/records/${encodeURIComponent(recordId)}/diagnose?wait=0`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '诊断失败', 'error');
+                alert(recordDiagnosticsText(record, { upstream: data, upstream_status_code: res.status, recommendation: data.error || '诊断失败' }));
+                return;
+            }
+
+            const details = recordDiagnosticsText(record, data);
+            if (data.can_mark_success && upstreamJobStatusLooksSuccessful(data.upstream)) {
+                const confirmText = `${details}\n\n上游返回 done，点击确定一键校验为成功。`;
+                if (confirm(confirmText)) {
+                    await markRecordSuccess(recordId, null, { skipConfirm: true });
+                }
+                return;
+            }
+
+            alert(details);
+            if (!data.can_query_upstream) {
+                showToast('该记录没有 Job ID，无法查询上游接口', 'error');
+            } else {
+                showToast('诊断完成，当前不满足一键校验条件', 'info');
+            }
+        } catch (err) {
+            showToast('诊断失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '诊断';
+            }
+        }
+    }
+
+    async function markRecordSuccess(recordId, button, options = {}) {
+        if (!Number.isInteger(Number(recordId)) || Number(recordId) <= 0) {
+            showToast('记录 ID 无效', 'error');
+            return;
+        }
+        if (!options.skipConfirm && !confirm('确认人工核验成功，并将该兑换记录设置为成功吗？')) return;
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '设置中...';
+        }
+
+        try {
+            const res = await adminFetch(`/api/admin/records/${encodeURIComponent(recordId)}/mark-success`, {
+                method: 'POST'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '设置成功状态失败', 'error');
+                return;
+            }
+            showToast(data.message || '已设置为兑换成功', 'success');
+            loadRecords();
+            loadStats();
+            loadCards();
+        } catch (err) {
+            showToast('设置成功状态失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '设为成功';
+            }
+        }
     }
 
     async function requestRecordCancel(payload, options = {}) {

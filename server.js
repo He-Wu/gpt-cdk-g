@@ -25,8 +25,14 @@ const DATA_DIR = path.join(__dirname, 'data');
 const CARDS_FILE = path.join(DATA_DIR, 'cards.json');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const COST_RECORDS_FILE = path.join(DATA_DIR, 'cost-records.json');
 const CARD_TYPES = ['plus', 'plus_1y', 'pro', 'pro_20x'];
+const COST_RECORD_KINDS = ['purchase', 'loss', 'adjustment'];
 const DEFAULT_COMPENSATION_REASON = '充值未到账补卡';
+const JOB_RECONCILE_INTERVAL_MS = 10000;
+const JOB_RECONCILE_BATCH_SIZE = 100;
+const JOB_RECONCILE_CONCURRENCY = 10;
+const MANUAL_REVIEW_RECONCILE_WINDOW_MS = 60 * 60 * 1000;
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -73,12 +79,24 @@ function normalizeMoneyAmount(value, fallback = null) {
   return Math.round(amount * 100) / 100;
 }
 
+function normalizeQuantity(value, fallback = null) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return Math.round(amount * 10000) / 10000;
+}
+
 function normalizeDefaultCost(value) {
   return normalizeMoneyAmount(value, 10) ?? 10;
 }
 
 function normalizeCardRemark(value) {
   return String(value || '').trim().slice(0, 200);
+}
+
+function normalizeCostRecordKind(value) {
+  const normalized = String(value || 'purchase').trim().toLowerCase();
+  return COST_RECORD_KINDS.includes(normalized) ? normalized : null;
 }
 
 function normalizeMaintenanceMessages(raw = {}) {
@@ -242,6 +260,7 @@ function buildViewer(session) {
   return {
     role,
     username: session?.username || (isSuperAdmin ? 'super_admin' : null),
+    impersonatedBy: session?.impersonatedBy || null,
     defaultCost: getDefaultCost(),
     permissions: {
       manage_settings: isSuperAdmin,
@@ -297,21 +316,172 @@ function saveRecords(records) {
   fs.writeFileSync(RECORDS_FILE, JSON.stringify(records, null, 2), 'utf-8');
 }
 
+function normalizeCostRecord(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const recordType = normalizeCostRecordKind(raw.record_type ?? raw.recordType ?? raw.kind);
+  const cardType = String(raw.card_type ?? raw.cardType ?? raw.type ?? '').trim();
+  const quantity = normalizeQuantity(raw.quantity ?? raw.count, null);
+  const totalCost = normalizeMoneyAmount(raw.total_cost ?? raw.totalCost ?? raw.cost, null);
+  if (!recordType || !CARD_TYPES.includes(cardType) || quantity === null || totalCost === null) {
+    return null;
+  }
+  return {
+    id: String(raw.id || uuidv4()),
+    record_type: recordType,
+    card_type: cardType,
+    quantity,
+    total_cost: totalCost,
+    unit_cost: normalizeMoneyAmount(raw.unit_cost ?? raw.unitCost, totalCost / quantity),
+    supplier: String(raw.supplier || '').trim().slice(0, 80),
+    remark: normalizeCardRemark(raw.remark ?? raw.note),
+    created_at: raw.created_at || nowStr(),
+    created_by_username: raw.created_by_username || 'super_admin',
+    created_by_role: raw.created_by_role || 'super_admin'
+  };
+}
+
+function loadCostRecords() {
+  try {
+    if (fs.existsSync(COST_RECORDS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(COST_RECORDS_FILE, 'utf-8'));
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(normalizeCostRecord).filter(Boolean);
+    }
+  } catch (e) {
+    console.error('加载成本记录失败:', e.message);
+  }
+  return [];
+}
+
+function saveCostRecords(records) {
+  fs.writeFileSync(COST_RECORDS_FILE, JSON.stringify(records, null, 2), 'utf-8');
+}
+
 // 内存缓存 + 文件持久化
 let cards = loadCards();
 let records = loadRecords();
+let costRecords = loadCostRecords();
+
+function buildCostSummary() {
+  const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
+  const byType = {};
+  for (const type of CARD_TYPES) {
+    byType[type] = {
+      type,
+      purchase_quantity: 0,
+      purchase_cost: 0,
+      loss_quantity: 0,
+      loss_cost: 0,
+      adjustment_quantity: 0,
+      adjustment_cost: 0,
+      issued_quantity: 0,
+      issued_cost: 0,
+      remaining_quantity: 0,
+      remaining_cost: 0,
+      purchase_average_cost: null,
+      current_average_cost: getDefaultCost()
+    };
+  }
+
+  for (const record of costRecords) {
+    const bucket = byType[record.card_type];
+    if (!bucket) continue;
+    const quantity = Number(record.quantity) || 0;
+    const totalCost = Number(record.total_cost) || 0;
+    if (record.record_type === 'purchase') {
+      bucket.purchase_quantity += quantity;
+      bucket.purchase_cost += totalCost;
+    } else if (record.record_type === 'loss') {
+      bucket.loss_quantity += quantity;
+      bucket.loss_cost += totalCost;
+    } else if (record.record_type === 'adjustment') {
+      bucket.adjustment_quantity += quantity;
+      bucket.adjustment_cost += totalCost;
+    }
+  }
+
+  for (const card of cards) {
+    const bucket = byType[card.type];
+    if (!bucket) continue;
+    bucket.issued_quantity += 1;
+    bucket.issued_cost += normalizeMoneyAmount(card.cost, 0) || 0;
+  }
+
+  for (const bucket of Object.values(byType)) {
+    bucket.purchase_quantity = Math.round(bucket.purchase_quantity * 10000) / 10000;
+    bucket.purchase_cost = roundMoney(bucket.purchase_cost);
+    bucket.loss_quantity = Math.round(bucket.loss_quantity * 10000) / 10000;
+    bucket.loss_cost = roundMoney(bucket.loss_cost);
+    bucket.adjustment_quantity = Math.round(bucket.adjustment_quantity * 10000) / 10000;
+    bucket.adjustment_cost = roundMoney(bucket.adjustment_cost);
+    bucket.issued_cost = roundMoney(bucket.issued_cost);
+    const availableBeforeIssuedQuantity = bucket.purchase_quantity + bucket.adjustment_quantity - bucket.loss_quantity;
+    const availableBeforeIssuedCost = bucket.purchase_cost + bucket.adjustment_cost - bucket.loss_cost;
+    bucket.remaining_quantity = Math.round((availableBeforeIssuedQuantity - bucket.issued_quantity) * 10000) / 10000;
+    bucket.remaining_cost = roundMoney(availableBeforeIssuedCost - bucket.issued_cost);
+    bucket.purchase_average_cost = availableBeforeIssuedQuantity > 0
+      ? roundMoney(availableBeforeIssuedCost / availableBeforeIssuedQuantity)
+      : null;
+    bucket.current_average_cost = bucket.remaining_quantity > 0 && bucket.remaining_cost > 0
+      ? roundMoney(bucket.remaining_cost / bucket.remaining_quantity)
+      : (bucket.purchase_average_cost ?? getDefaultCost());
+  }
+
+  const totals = Object.values(byType).reduce((acc, item) => {
+    acc.purchase_quantity += item.purchase_quantity;
+    acc.purchase_cost += item.purchase_cost;
+    acc.loss_quantity += item.loss_quantity;
+    acc.loss_cost += item.loss_cost;
+    acc.adjustment_quantity += item.adjustment_quantity;
+    acc.adjustment_cost += item.adjustment_cost;
+    acc.issued_quantity += item.issued_quantity;
+    acc.issued_cost += item.issued_cost;
+    acc.remaining_quantity += item.remaining_quantity;
+    acc.remaining_cost += item.remaining_cost;
+    return acc;
+  }, {
+    purchase_quantity: 0,
+    purchase_cost: 0,
+    loss_quantity: 0,
+    loss_cost: 0,
+    adjustment_quantity: 0,
+    adjustment_cost: 0,
+    issued_quantity: 0,
+    issued_cost: 0,
+    remaining_quantity: 0,
+    remaining_cost: 0
+  });
+
+  Object.keys(totals).forEach((key) => {
+    totals[key] = key.endsWith('_cost')
+      ? roundMoney(totals[key])
+      : Math.round(totals[key] * 10000) / 10000;
+  });
+
+  return {
+    by_type: byType,
+    totals,
+    default_cost: getDefaultCost()
+  };
+}
+
+function getWeightedAverageCost(type) {
+  const summary = buildCostSummary();
+  return summary.by_type[type]?.current_average_cost ?? getDefaultCost();
+}
 
 // 定期保存（防止意外丢失）
 setInterval(() => {
   saveCards(cards);
   saveRecords(records);
+  saveCostRecords(costRecords);
 }, 30000);
 
 setInterval(() => {
   reconcilePendingJobs().catch((err) => {
     console.error('自动对账循环失败:', err);
   });
-}, 15000);
+}, JOB_RECONCILE_INTERVAL_MS);
 
 setTimeout(() => {
   reconcilePendingJobs().catch((err) => {
@@ -561,6 +731,36 @@ function findCancelableRecordById(recordId, session = null) {
 
 function isValidJobId(jobId) {
   return /^[a-zA-Z0-9_-]{4,128}$/.test(String(jobId || ''));
+}
+
+function upstreamJobStatusLooksSuccessful(payload) {
+  if (!payload || normalizeJobStatus(payload.status) !== 'done') return false;
+  if (payload.result && payload.result.ok === false) return false;
+  return true;
+}
+
+async function fetchUpstreamJobStatus(jobId, wait = 0) {
+  const upstreamUrl = getBaseUrl();
+  const jobRes = await fetch(`${upstreamUrl}/job/${jobId}?wait=${wait}`, {
+    headers: { 'X-API-Key': getApiKey() }
+  });
+  const raw = await jobRes.text();
+  const contentType = jobRes.headers.get('content-type') || 'application/json; charset=utf-8';
+
+  let payload = {};
+  if (raw) {
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      payload = { error: raw };
+    }
+  }
+
+  return {
+    statusCode: jobRes.status,
+    contentType,
+    payload
+  };
 }
 
 async function cancelJobViaUpstream(jobId) {
@@ -906,6 +1106,17 @@ function clearManualReviewDetails(record) {
   record.upstream_detail = null;
 }
 
+function ensureCardUsedForRecord(record) {
+  const cardCode = normalizeCardCode(record?.card_code);
+  const card = cards.find(c => normalizeCardCode(c.code) === cardCode);
+  if (!card || card.status === 'used') return;
+  card.status = 'used';
+  card.used_at = card.used_at || record.created_at || nowStr();
+  card.used_by = card.used_by || record.access_token_hash || null;
+  card.used_email = card.used_email || record.email || null;
+  saveCards(cards);
+}
+
 function summarizeUpstreamDetail(detail, fallback = null) {
   const raw = String(detail ?? '').trim();
   if (!raw) return fallback;
@@ -956,6 +1167,35 @@ function markRecordUncertain(record, message, status = 'unknown', details = {}) 
   record.upstream_status_code = Number.isInteger(details.upstream_status_code) ? details.upstream_status_code : null;
   record.upstream_detail = summarizeUpstreamDetail(details.upstream_detail, null);
   saveRecords(records);
+}
+
+function markManualReviewRecordSuccess(record, actor = 'super_admin') {
+  record.status = 'done';
+  record.error_message = null;
+  record.queue_position = null;
+  record.estimated_wait_seconds = null;
+  record.manual_resolution = 'success';
+  record.manual_resolved_at = nowStr();
+  record.manual_resolved_by = actor;
+  clearManualReviewDetails(record);
+  saveRecords(records);
+  ensureCardUsedForRecord(record);
+  return record;
+}
+
+function markManualReviewRecordFailed(record, jobData, actor = 'system_auto_reconcile') {
+  const upstreamError = summarizeUpstreamDetail(jobData?.error, '上游返回 failed');
+  record.status = 'failed';
+  record.error_message = upstreamError;
+  record.queue_position = null;
+  record.estimated_wait_seconds = null;
+  record.manual_resolution = 'failed';
+  record.manual_resolved_at = nowStr();
+  record.manual_resolved_by = actor;
+  clearManualReviewDetails(record);
+  refundCardForRecord(record);
+  saveRecords(records);
+  return record;
 }
 
 function updateQueueEstimate(record, jobData) {
@@ -1022,9 +1262,18 @@ async function refreshRecordFromUpstream(record, wait = 0) {
   return applyJobStatus(record.job_id, jobData) || record;
 }
 
-const JOB_RECONCILE_INTERVAL_MS = 15000;
-const JOB_RECONCILE_BATCH_SIZE = 20;
 let reconcileInFlight = false;
+
+async function runWithConcurrency(items, limit, worker) {
+  const queue = [...items];
+  const workerCount = Math.min(Math.max(1, limit), queue.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await worker(item);
+    }
+  }));
+}
 
 function getReconcilableRecords(limit = JOB_RECONCILE_BATCH_SIZE) {
   return records
@@ -1035,22 +1284,60 @@ function getReconcilableRecords(limit = JOB_RECONCILE_BATCH_SIZE) {
     .slice(0, limit);
 }
 
+function getManualReviewReconcilableRecords(limit = JOB_RECONCILE_BATCH_SIZE) {
+  const threshold = Date.now() - MANUAL_REVIEW_RECONCILE_WINDOW_MS;
+  return records
+    .filter((record) => {
+      if (!record.job_id) return false;
+      const normalizedStatus = normalizeJobStatus(record.status);
+      if (normalizedStatus === 'done' || normalizedStatus === 'failed') return false;
+      if (normalizedStatus === 'pending' || normalizedStatus === 'processing') return false;
+      if (!recordNeedsManualReview(record, normalizedStatus)) return false;
+      const createdAtTs = parseRecordCreatedAt(record.created_at);
+      return createdAtTs !== null && createdAtTs >= threshold;
+    })
+    .slice(0, limit);
+}
+
+async function reconcileManualReviewRecord(record) {
+  try {
+    const upstreamResult = await fetchUpstreamJobStatus(record.job_id, 0);
+    if (upstreamResult.statusCode !== 200) return record;
+    const jobData = upstreamResult.payload;
+    const upstreamStatus = normalizeJobStatus(jobData?.status);
+    if (upstreamJobStatusLooksSuccessful(jobData)) {
+      return markManualReviewRecordSuccess(record, 'system_auto_reconcile');
+    }
+    if (upstreamStatus === 'failed') {
+      return markManualReviewRecordFailed(record, jobData, 'system_auto_reconcile');
+    }
+    return record;
+  } catch (err) {
+    console.error(`自动核验人工记录 ${record.job_id} 失败:`, err.message);
+    return record;
+  }
+}
+
 async function reconcilePendingJobs() {
   if (reconcileInFlight) return;
   if (!getApiKey() || !getBaseUrl()) return;
 
   const pendingRecords = getReconcilableRecords();
-  if (!pendingRecords.length) return;
+  const manualReviewRecords = getManualReviewReconcilableRecords();
+  if (!pendingRecords.length && !manualReviewRecords.length) return;
 
   reconcileInFlight = true;
   try {
-    for (const record of pendingRecords) {
+    await runWithConcurrency(pendingRecords, JOB_RECONCILE_CONCURRENCY, async (record) => {
       try {
         await refreshRecordFromUpstream(record, 0);
       } catch (err) {
         console.error(`自动对账任务 ${record.job_id} 失败:`, err.message);
       }
-    }
+    });
+    await runWithConcurrency(manualReviewRecords, JOB_RECONCILE_CONCURRENCY, async (record) => {
+      await reconcileManualReviewRecord(record);
+    });
   } finally {
     reconcileInFlight = false;
   }
@@ -1217,6 +1504,31 @@ app.post('/api/admin/sub-admins/:id/status', adminAuth, requireSuperAdmin, (req,
   res.json({ message: enabled ? '子管理员已启用' : '子管理员已禁用', subAdmin: sanitizeSubAdmin(subAdmin) });
 });
 
+app.post('/api/admin/sub-admins/:id/impersonate', adminAuth, requireSuperAdmin, (req, res) => {
+  const subAdmin = getSubAdmins().find(item => item.id === req.params.id);
+  if (!subAdmin) {
+    return res.status(404).json({ error: '子管理员不存在' });
+  }
+  if (subAdmin.status === 'disabled') {
+    return res.status(409).json({ error: '子管理员已禁用，无法一键登录' });
+  }
+
+  const session = {
+    createdAt: Date.now(),
+    role: 'sub_admin',
+    username: subAdmin.username,
+    userId: subAdmin.id,
+    impersonatedBy: req.admin?.username || 'super_admin'
+  };
+  const token = generateSessionToken();
+  adminSessions.set(token, session);
+  res.json({
+    token,
+    message: `已切换到子管理员 ${subAdmin.username}`,
+    ...buildViewer(session)
+  });
+});
+
 // 获取系统设置
 app.get('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
   res.json({
@@ -1309,6 +1621,68 @@ app.get('/api/admin/system', adminAuth, requireSuperAdmin, async (req, res) => {
     console.error('读取系统状态失败:', err);
     res.status(500).json({ error: '读取系统状态失败', detail: err.message });
   }
+});
+
+// 成本 / 进货记录
+app.get('/api/admin/cost-records', adminAuth, requireSuperAdmin, (req, res) => {
+  res.json({
+    records: [...costRecords].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))),
+    summary: buildCostSummary()
+  });
+});
+
+app.post('/api/admin/cost-records', adminAuth, requireSuperAdmin, (req, res) => {
+  const recordType = normalizeCostRecordKind(req.body.record_type ?? req.body.recordType ?? req.body.kind);
+  const cardType = String(req.body.card_type ?? req.body.cardType ?? req.body.type ?? '').trim();
+  const quantity = normalizeQuantity(req.body.quantity ?? req.body.count, null);
+  const totalCost = normalizeMoneyAmount(req.body.total_cost ?? req.body.totalCost ?? req.body.cost, null);
+
+  if (!recordType) {
+    return res.status(400).json({ error: '记录类型必须是 purchase、loss 或 adjustment' });
+  }
+  if (!CARD_TYPES.includes(cardType)) {
+    return res.status(400).json({ error: '卡种必须是 plus、plus_1y、pro 或 pro_20x' });
+  }
+  if (quantity === null) {
+    return res.status(400).json({ error: '数量必须是大于 0 的数字' });
+  }
+  if (totalCost === null) {
+    return res.status(400).json({ error: '总成本必须是不小于 0 的数字' });
+  }
+
+  const record = normalizeCostRecord({
+    id: uuidv4(),
+    record_type: recordType,
+    card_type: cardType,
+    quantity,
+    total_cost: totalCost,
+    supplier: req.body.supplier,
+    remark: req.body.remark ?? req.body.note,
+    created_at: nowStr(),
+    created_by_username: req.admin?.username || 'super_admin',
+    created_by_role: req.admin?.role || 'super_admin'
+  });
+
+  costRecords.push(record);
+  saveCostRecords(costRecords);
+  res.json({
+    message: '成本记录已保存',
+    record,
+    summary: buildCostSummary()
+  });
+});
+
+app.delete('/api/admin/cost-records/:id', adminAuth, requireSuperAdmin, (req, res) => {
+  const before = costRecords.length;
+  costRecords = costRecords.filter((record) => record.id !== req.params.id);
+  if (costRecords.length === before) {
+    return res.status(404).json({ error: '成本记录不存在' });
+  }
+  saveCostRecords(costRecords);
+  res.json({
+    message: '成本记录已删除',
+    summary: buildCostSummary()
+  });
 });
 
 // 统计数据
@@ -1418,7 +1792,7 @@ app.post('/api/admin/cards/generate', adminAuth, (req, res) => {
     ?? req.body.source_code
     ?? req.body.sourceCode
   );
-  let cost = isCompensation ? null : normalizeMoneyAmount(req.body.cost, getDefaultCost());
+  let cost = isCompensation ? null : normalizeMoneyAmount(req.body.cost, getWeightedAverageCost(type));
   const salePrice = isCompensation ? 0 : normalizeMoneyAmount(
     req.body.sale_price ?? req.body.salePrice ?? req.body.price,
     null
@@ -1752,6 +2126,115 @@ app.get('/api/admin/records', adminAuth, (req, res) => {
   const paged = filtered.slice(offset, offset + ps);
 
   res.json({ total, page: pg, pageSize: ps, records: paged });
+});
+
+// 管理后台人工核验成功：将不确定记录确认为兑换成功
+app.post('/api/admin/records/:id/mark-success', adminAuth, (req, res) => {
+  const recordId = Number(req.params.id);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    return res.status(400).json({ error: '记录 ID 无效' });
+  }
+
+  const record = records.find(r => r.id === recordId && recordBelongsToSession(r, req.admin));
+  if (!record) {
+    return res.status(404).json({ error: '未找到兑换记录' });
+  }
+
+  const normalizedStatus = normalizeJobStatus(record.status);
+  if (!recordNeedsManualReview(record, normalizedStatus)) {
+    return res.status(409).json({ error: '只有待人工核验的记录可以设置成功' });
+  }
+  if (normalizedStatus === 'done') {
+    return res.status(409).json({ error: '该记录已经是成功状态' });
+  }
+
+  markManualReviewRecordSuccess(record, req.admin?.username || 'super_admin');
+
+  res.json({
+    message: '已设置为兑换成功',
+    status: 'done',
+    record: {
+      ...record,
+      status: 'done',
+      needs_manual_review: false,
+      error_message: null
+    }
+  });
+});
+
+// 管理后台兑换记录诊断：按记录查询上游 Job 状态，但不自动改写本地记录
+app.get('/api/admin/records/:id/diagnose', adminAuth, async (req, res) => {
+  const recordId = Number(req.params.id);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    return res.status(400).json({ error: '记录 ID 无效' });
+  }
+
+  const record = records.find(r => r.id === recordId && recordBelongsToSession(r, req.admin));
+  if (!record) {
+    return res.status(404).json({ error: '未找到兑换记录' });
+  }
+
+  const normalizedStatus = normalizeJobStatus(record.status);
+  const local = {
+    id: record.id,
+    card_code: record.card_code,
+    card_type: record.card_type,
+    email: record.email,
+    job_id: record.job_id || null,
+    status: normalizedStatus,
+    needs_manual_review: recordNeedsManualReview(record, normalizedStatus),
+    error_message: fallbackRecordErrorMessage(record),
+    manual_review_reason: record.manual_review_reason || null,
+    manual_review_stage: record.manual_review_stage || null,
+    upstream_detail: record.upstream_detail || null
+  };
+
+  if (!record.job_id) {
+    return res.json({
+      local,
+      can_query_upstream: false,
+      upstream_status_code: null,
+      upstream: null,
+      can_mark_success: false,
+      recommendation: '该记录没有 Job ID，无法查询上游接口'
+    });
+  }
+
+  if (!getApiKey() || !getBaseUrl()) {
+    return res.status(503).json({ error: '服务尚未配置，请管理员先完成 API 设置' });
+  }
+
+  const wait = Math.min(Math.max(0, parseInt(req.query.wait, 10) || 0), 30);
+
+  try {
+    const upstreamResult = await fetchUpstreamJobStatus(record.job_id, wait);
+    const upstreamStatus = normalizeJobStatus(upstreamResult.payload?.status);
+    const canMarkSuccess = recordNeedsManualReview(record, normalizedStatus) &&
+      upstreamResult.statusCode === 200 &&
+      upstreamJobStatusLooksSuccessful(upstreamResult.payload);
+    let recommendation = '上游未返回成功，请按上游状态继续处理';
+    if (canMarkSuccess) {
+      recommendation = '上游返回成功，可以一键校验为成功';
+    } else if (upstreamStatus === 'failed') {
+      recommendation = '上游返回失败，文档说明该 Job 已自动退款，请按实际情况处理本地记录';
+    } else if (upstreamStatus === 'pending' || upstreamStatus === 'processing') {
+      recommendation = '上游仍在处理中，暂不建议设置成功';
+    } else if (upstreamResult.statusCode === 404) {
+      recommendation = '上游 Job 不存在或已过期，仍需人工核验最终状态';
+    }
+
+    return res.json({
+      local,
+      can_query_upstream: true,
+      upstream_status_code: upstreamResult.statusCode,
+      upstream: upstreamResult.payload,
+      can_mark_success: canMarkSuccess,
+      recommendation
+    });
+  } catch (err) {
+    console.error('管理后台诊断兑换记录失败:', err);
+    return res.status(502).json({ error: '诊断请求失败，请稍后重试' });
+  }
 });
 
 // 禁用卡密
@@ -2116,25 +2599,10 @@ app.get('/api/admin/job-status/:jobId', adminAuth, requireSuperAdmin, async (req
   const wait = Math.min(Math.max(0, parseInt(req.query.wait, 10) || 0), 30);
 
   try {
-    const upstreamUrl = getBaseUrl();
-    const jobRes = await fetch(`${upstreamUrl}/job/${jobId}?wait=${wait}`, {
-      headers: { 'X-API-Key': getApiKey() }
-    });
-    const raw = await jobRes.text();
-    const contentType = jobRes.headers.get('content-type') || 'application/json; charset=utf-8';
-
-    let payload = {};
-    if (raw) {
-      try {
-        payload = JSON.parse(raw);
-      } catch {
-        payload = { error: raw };
-      }
-    }
-
-    res.status(jobRes.status);
-    res.setHeader('Content-Type', contentType);
-    res.send(JSON.stringify(payload));
+    const upstreamResult = await fetchUpstreamJobStatus(jobId, wait);
+    res.status(upstreamResult.statusCode);
+    res.setHeader('Content-Type', upstreamResult.contentType);
+    res.send(JSON.stringify(upstreamResult.payload));
   } catch (err) {
     console.error('管理后台查询任务状态失败:', err);
     res.status(502).json({ error: '查询任务状态失败，请稍后重试' });
@@ -2459,6 +2927,7 @@ process.on('SIGINT', () => {
   console.log('\n正在保存数据...');
   saveCards(cards);
   saveRecords(records);
+  saveCostRecords(costRecords);
   console.log('数据已保存，退出。');
   process.exit(0);
 });
@@ -2466,6 +2935,7 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   saveCards(cards);
   saveRecords(records);
+  saveCostRecords(costRecords);
   process.exit(0);
 });
 
