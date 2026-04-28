@@ -1099,6 +1099,16 @@ function refundCardForRecord(record) {
   saveCards(cards);
 }
 
+function cardHasSuccessfulRedeemRecord(record) {
+  const cardCode = normalizeCardCode(record?.card_code);
+  if (!cardCode) return false;
+  return records.some((item) =>
+    item !== record &&
+    normalizeCardCode(item.card_code) === cardCode &&
+    normalizeJobStatus(item.status) === 'done'
+  );
+}
+
 function clearManualReviewDetails(record) {
   if (!record) return;
   record.needs_manual_review = false;
@@ -1242,7 +1252,7 @@ function markManualReviewRecordSuccess(record, actor = 'super_admin') {
   return record;
 }
 
-function markManualReviewRecordFailed(record, jobData, actor = 'system_auto_reconcile') {
+function markManualReviewRecordFailed(record, jobData, actor = 'system_auto_reconcile', options = {}) {
   const upstreamError = summarizeUpstreamDetail(jobData?.error, '上游返回 failed');
   record.status = 'failed';
   record.error_message = upstreamError;
@@ -1252,9 +1262,18 @@ function markManualReviewRecordFailed(record, jobData, actor = 'system_auto_reco
   record.manual_resolved_at = nowStr();
   record.manual_resolved_by = actor;
   clearManualReviewDetails(record);
-  refundCardForRecord(record);
+  if (!options.skipRefund) {
+    refundCardForRecord(record);
+  }
   saveRecords(records);
   return record;
+}
+
+function markExpiredManualReviewRecordFailed(record, actor = 'super_admin') {
+  const hasSuccessfulRedeem = cardHasSuccessfulRedeemRecord(record);
+  return markManualReviewRecordFailed(record, {
+    error: hasSuccessfulRedeem ? '管理员人工设为失败，卡密已有成功兑换记录，未退回卡密' : '管理员人工设为失败，卡密已退回'
+  }, actor, { skipRefund: hasSuccessfulRedeem });
 }
 
 function updateQueueEstimate(record, jobData) {
@@ -2217,6 +2236,36 @@ app.post('/api/admin/records/:id/mark-success', adminAuth, (req, res) => {
       status: 'done',
       needs_manual_review: false,
       error_message: null
+    }
+  });
+});
+
+// 管理后台人工核验失败：仅将已过期待核验记录确认为失败并退回卡密
+app.post('/api/admin/records/:id/mark-failed', adminAuth, (req, res) => {
+  const recordId = Number(req.params.id);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    return res.status(400).json({ error: '记录 ID 无效' });
+  }
+
+  const record = records.find(r => r.id === recordId && recordBelongsToSession(r, req.admin));
+  if (!record) {
+    return res.status(404).json({ error: '未找到兑换记录' });
+  }
+
+  const normalizedStatus = normalizeJobStatus(record.status);
+  if (normalizedStatus !== 'expired' || !recordNeedsManualReview(record, normalizedStatus)) {
+    return res.status(409).json({ error: '只有已过期待核验的记录可以设置失败' });
+  }
+
+  markExpiredManualReviewRecordFailed(record, req.admin?.username || 'super_admin');
+
+  res.json({
+    message: '已设置为失败，卡密已退回',
+    status: 'failed',
+    record: {
+      ...record,
+      status: 'failed',
+      needs_manual_review: false
     }
   });
 });

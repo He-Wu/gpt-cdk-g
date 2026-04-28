@@ -338,6 +338,13 @@ async function adminMarkRecordSuccess(port, token, recordId) {
   });
 }
 
+async function adminMarkRecordFailed(port, token, recordId) {
+  return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/mark-failed`, {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token }
+  });
+}
+
 async function adminDiagnoseRecord(port, token, recordId, wait = 0) {
   return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/diagnose?wait=${wait}`, {
     headers: { 'X-Admin-Token': token }
@@ -1788,6 +1795,20 @@ test('user page exposes chinese and english language switching', async () => {
   assert.doesNotMatch(html, /'query\.searchButton': '.*&nbsp;/);
 });
 
+test('frontend pages use custom modal dialogs instead of native browser dialogs', async () => {
+  const adminHtml = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  const userHtml = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  for (const [name, source] of [['admin.html', adminHtml], ['index.html', userHtml]]) {
+    assert.doesNotMatch(source, /\balert\s*\(/, `${name} should not use alert()`);
+    assert.doesNotMatch(source, /\bconfirm\s*\(/, `${name} should not use confirm()`);
+    assert.doesNotMatch(source, /\bprompt\s*\(/, `${name} should not use prompt()`);
+  }
+  assert.match(adminHtml, /admin-modal-overlay/);
+  assert.match(adminHtml, /showAdminConfirm/);
+  assert.match(userHtml, /user-modal-overlay/);
+  assert.match(userHtml, /showUserConfirm/);
+});
+
 test('user notice is rendered from public settings instead of hardcoded warning copy', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
   assert.match(html, /id="userNotice"/);
@@ -1955,6 +1976,17 @@ test('admin records page exposes bulk cancel selection controls', async () => {
   assert.match(html, /toggleRecordSelection/);
   assert.match(html, /applyBulkRecordCancel/);
   assert.match(html, /批量取消/);
+});
+
+test('admin records expired filter exposes mark failed controls instead of cancel controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /bulkMarkFailedRecordsBtn/);
+  assert.match(html, /applyBulkRecordMarkFailed/);
+  assert.match(html, /isExpiredRecordsFilterActive/);
+  assert.match(html, /recordMarkFailedButton/);
+  assert.match(html, /\/api\/admin\/records\/\$\{encodeURIComponent\(recordId\)\}\/mark-failed/);
+  assert.match(html, /设为失败/);
+  assert.match(html, /recordsFilterStatus'\)\?\.value\s*===\s*'expired'/);
 });
 
 test('admin records keep cancel available for manual-review rows without job id', async () => {
@@ -2529,6 +2561,150 @@ test('admin can mark manual-review records as successful after verification', as
     const query = await queryCard(server.port, 'MANUAL-SUCCESS-LOCAL-0001');
     assert.equal(query.res.status, 200);
     assert.equal(query.data.status, 'used');
+    assert.equal(query.data.redeem_status, 'done');
+    assert.equal(query.data.needs_manual_review, false);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin can mark expired manual-review records as failed and refund the card', async () => {
+  const server = await startServer('admin mark expired manual review failed', {}, {
+    cards: [{
+      code: 'EXPIRED-MARK-FAILED-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token',
+      used_email: 'user@example.com'
+    }],
+    records: [{
+      id: 27,
+      card_code: 'EXPIRED-MARK-FAILED-0001',
+      card_type: 'plus',
+      created_by_username: null,
+      created_by_role: null,
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-expired-mark-failed',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const marked = await adminMarkRecordFailed(server.port, token, 27);
+    assert.equal(marked.res.status, 200);
+    assert.equal(marked.data.status, 'failed');
+    assert.equal(marked.data.record.status, 'failed');
+    assert.equal(marked.data.record.needs_manual_review, false);
+    assert.equal(marked.data.record.manual_resolution, 'failed');
+    assert.equal(marked.data.record.manual_resolved_by, 'super_admin');
+
+    const expiredRecords = await requestJson(server.port, '/api/admin/records?status=expired&search=EXPIRED-MARK-FAILED-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(expiredRecords.res.status, 200);
+    assert.equal(expiredRecords.data.total, 0);
+
+    const failedRecords = await requestJson(server.port, '/api/admin/records?status=failed&search=EXPIRED-MARK-FAILED-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(failedRecords.res.status, 200);
+    assert.equal(failedRecords.data.total, 1);
+    assert.equal(failedRecords.data.records[0].status, 'failed');
+
+    const query = await queryCard(server.port, 'EXPIRED-MARK-FAILED-0001');
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'unused');
+    assert.equal(query.data.redeem_status, 'failed');
+    assert.equal(query.data.needs_manual_review, false);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin mark failed keeps card used when the same card already has a successful redemption', async () => {
+  const server = await startServer('admin mark expired failed preserves successful card', {}, {
+    cards: [{
+      code: 'EXPIRED-MARK-FAILED-DONE-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:10:00',
+      used_by: 'hash-token-success',
+      used_email: 'success@example.com'
+    }],
+    records: [{
+      id: 31,
+      card_code: 'EXPIRED-MARK-FAILED-DONE-0001',
+      card_type: 'plus',
+      created_by_username: null,
+      created_by_role: null,
+      email: 'old@example.com',
+      access_token_hash: 'hash-token-expired',
+      job_id: 'job-expired-before-success',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }, {
+      id: 32,
+      card_code: 'EXPIRED-MARK-FAILED-DONE-0001',
+      card_type: 'plus',
+      created_by_username: null,
+      created_by_role: null,
+      email: 'success@example.com',
+      access_token_hash: 'hash-token-success',
+      job_id: 'job-success-after-expired',
+      status: 'done',
+      error_message: null,
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: false,
+      manual_review_reason: null,
+      manual_review_stage: null,
+      upstream_status_code: null,
+      upstream_detail: null,
+      created_at: '2026/4/24 12:10:00',
+      ip_address: '::ffff:172.22.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const marked = await adminMarkRecordFailed(server.port, token, 31);
+    assert.equal(marked.res.status, 200);
+    assert.equal(marked.data.status, 'failed');
+    assert.equal(marked.data.record.status, 'failed');
+    assert.equal(marked.data.record.needs_manual_review, false);
+    assert.match(marked.data.record.error_message, /已有成功兑换记录|未退回卡密/);
+
+    const query = await queryCard(server.port, 'EXPIRED-MARK-FAILED-DONE-0001');
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.email, 'success@example.com');
     assert.equal(query.data.redeem_status, 'done');
     assert.equal(query.data.needs_manual_review, false);
   } finally {
@@ -3153,6 +3329,14 @@ test('admin page script parses so login handlers are actually defined', async ()
   assert.ok(match, 'expected inline admin script');
   assert.doesNotThrow(() => new Function(match[1]));
   assert.match(match[1], /async function adminLogin\(/);
+});
+
+test('user page script parses after modal dialog wiring', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  const match = html.match(/<script>([\s\S]*)<\/script>\s*<\/body>/);
+  assert.ok(match, 'expected inline user script');
+  assert.doesNotThrow(() => new Function(match[1]));
+  assert.match(match[1], /function showUserModal\(/);
 });
 
 test('admin page preserves readable chinese copy for core ui labels', async () => {

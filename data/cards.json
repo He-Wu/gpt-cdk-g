@@ -67331,14 +67331,14 @@
     "id": 5572,
     "code": "CDK-PLUS-DK2NH-GHQJX-9MKAP-Q9CX9-WXL5N",
     "type": "plus",
-    "status": "unused",
+    "status": "used",
     "created_at": "2026/4/26 17:02:49",
-    "used_at": null,
-    "used_by": null,
+    "used_at": "2026/4/28 20:22:51",
+    "used_by": "296da2d4aca7c14d",
     "batch_id": "ba816946",
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
-    "used_email": null
+    "used_email": "dundun8411@gmail.com"
   },
   {
     "id": 5573,
@@ -117276,10 +117276,10 @@
   {
     "id": 9351,
     "type": "plus",
-    "status": "used",
+    "status": "unused",
     "created_at": "2026/4/28 08:45:05",
-    "used_at": "2026/4/28 21:33:04",
-    "used_by": "ddf57ac1328b368b",
+    "used_at": null,
+    "used_by": null,
     "remark": "微信",
     "cost": 10,
     "sale_price": 18,
@@ -117290,7 +117290,7 @@
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
     "code": "CDK-PLUS-M6LQ3-6U857-XARF3-8WLLJ-YNY7R",
-    "used_email": "kaipingleehongkong@gmail.com"
+    "used_email": null
   },
   {
     "id": 9352,
@@ -130708,8 +130708,8 @@
     "type": "plus",
     "status": "used",
     "created_at": "2026/4/28 14:32:13",
-    "used_at": "2026/4/28 20:48:14",
-    "used_by": "aef5b303381c6072",
+    "used_at": "2026/4/28 20:22:57",
+    "used_by": "365ff53c7da7de82",
     "remark": "wechat",
     "cost": 11.69,
     "sale_price": 25,
@@ -130720,7 +130720,7 @@
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
     "code": "CDK-PLUS-ZPN6V-NYQHK-2NPLP-YGTKY-KF7KH",
-    "used_email": "dafnasochi79@gmail.com"
+    "used_email": "oleg.vine3421@gmail.com"
   },
   {
     "id": 10062,
@@ -139396,25 +139396,6 @@
   {
     "id": 10529,
     "type": "plus",
-    "status": "used",
-    "created_at": "2026/4/28 20:08:59",
-    "used_at": "2026/4/28 20:46:22",
-    "used_by": "cc36fad0d2dac390",
-    "remark": "周",
-    "cost": 11.69,
-    "sale_price": 24,
-    "issue_type": "normal",
-    "compensation_reason": null,
-    "compensation_for_code": null,
-    "batch_id": "301aba60",
-    "created_by_username": "super_admin",
-    "created_by_role": "super_admin",
-    "code": "CDK-PLUS-83NU6-VKZZC-CD9QK-S95F5-AB2W7",
-    "used_email": "test45444@outlook.com"
-  },
-  {
-    "id": 10530,
-    "type": "plus",
     "status": "unused",
     "created_at": "2026/4/28 20:08:59",
     "used_at": null,
@@ -139428,8 +139409,27 @@
     "batch_id": "301aba60",
     "created_by_username": "super_admin",
     "created_by_role": "super_admin",
-    "code": "CDK-PLUS-FLAPM-V9MUV-27ZYT-J5MBK-L4U5F",
+    "code": "CDK-PLUS-83NU6-VKZZC-CD9QK-S95F5-AB2W7",
     "used_email": null
+  },
+  {
+    "id": 10530,
+    "type": "plus",
+    "status": "used",
+    "created_at": "2026/4/28 20:08:59",
+    "used_at": "2026/4/28 20:21:40",
+    "used_by": "7f2b8bee3fd0471b",
+    "remark": "周",
+    "cost": 11.69,
+    "sale_price": 24,
+    "issue_type": "normal",
+    "compensation_reason": null,
+    "compensation_for_code": null,
+    "batch_id": "301aba60",
+    "created_by_username": "super_admin",
+    "created_by_role": "super_admin",
+    "code": "CDK-PLUS-FLAPM-V9MUV-27ZYT-J5MBK-L4U5F",
+    "used_email": "995586238@qq.com"
   },
   {
     "id": 10531,

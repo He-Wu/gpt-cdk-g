@@ -1407,6 +1407,113 @@
         .toast.success { border-color: rgba(52,211,153,0.3); }
         .toast.error { border-color: rgba(251,113,133,0.3); }
 
+        .admin-modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(3, 5, 12, 0.74);
+            backdrop-filter: blur(14px);
+            animation: modalFadeIn 0.16s ease-out;
+        }
+
+        .admin-modal {
+            width: min(520px, 100%);
+            max-height: min(78vh, 720px);
+            display: flex;
+            flex-direction: column;
+            background: #11131d;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 14px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.48), 0 0 0 1px rgba(129,140,248,0.06);
+            overflow: hidden;
+            animation: modalRiseIn 0.18s ease-out;
+        }
+
+        .admin-modal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 18px 20px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .admin-modal-icon {
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: rgba(129,140,248,0.14);
+            color: var(--accent);
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .admin-modal.warning .admin-modal-icon { background: rgba(251,191,36,0.14); color: var(--amber); }
+        .admin-modal.danger .admin-modal-icon,
+        .admin-modal.error .admin-modal-icon { background: rgba(251,113,133,0.14); color: var(--rose); }
+        .admin-modal.success .admin-modal-icon { background: rgba(52,211,153,0.14); color: var(--emerald); }
+
+        .admin-modal-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.35;
+        }
+
+        .admin-modal-body {
+            padding: 16px 20px 4px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.75;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+
+        .admin-modal-input {
+            width: calc(100% - 40px);
+            margin: 14px 20px 4px;
+            padding: 12px 14px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font: inherit;
+            outline: none;
+        }
+
+        .admin-modal-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(129,140,248,0.12);
+        }
+
+        .admin-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 18px 20px 20px;
+        }
+
+        .admin-modal-actions .btn {
+            min-width: 86px;
+            justify-content: center;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes modalRiseIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
         @keyframes slideInRight {
             from { opacity: 0; transform: translateX(30px); }
             to { opacity: 1; transform: translateX(0); }
@@ -2113,6 +2220,7 @@
                     </div>
                     <div class="records-actions">
                         <button class="btn btn-ghost btn-sm" type="button" id="bulkCancelSelectedRecordsBtn" onclick="applyBulkRecordCancel()">批量取消</button>
+                        <button class="btn btn-ghost btn-sm hidden" type="button" id="bulkMarkFailedRecordsBtn" onclick="applyBulkRecordMarkFailed()" style="color:var(--rose);">批量设为失败</button>
                         <button class="btn btn-ghost btn-sm" type="button" id="recordsResetBtn" onclick="resetRecordsFilters()">清空筛选</button>
                         <button class="btn btn-ghost btn-sm" type="button" id="recordsRefreshBtn" onclick="loadRecords()">刷新记录</button>
                     </div>
@@ -3118,7 +3226,11 @@
     }
 
     async function deleteCostRecord(id) {
-        if (!id || !confirm('确定删除这条成本记录吗？')) return;
+        if (!id || !(await showAdminConfirm('确定删除这条成本记录吗？', {
+            title: '删除成本记录',
+            variant: 'danger',
+            confirmText: '删除'
+        }))) return;
         try {
             const res = await adminFetch(`/api/admin/cost-records/${encodeURIComponent(id)}`, {
                 method: 'DELETE'
@@ -3356,6 +3468,90 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    function showAdminModal(options = {}) {
+        const {
+            title = '提示',
+            message = '',
+            variant = 'info',
+            confirmText = '确定',
+            cancelText = '',
+            input = null
+        } = options;
+
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            const iconMap = { info: 'i', warning: '!', danger: '!', error: '!', success: '✓' };
+            overlay.className = 'admin-modal-overlay';
+            overlay.innerHTML = `
+                <div class="admin-modal ${escapeHtml(variant)}" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
+                    <div class="admin-modal-header">
+                        <div class="admin-modal-icon">${escapeHtml(iconMap[variant] || iconMap.info)}</div>
+                        <div class="admin-modal-title" id="adminModalTitle">${escapeHtml(title)}</div>
+                    </div>
+                    <div class="admin-modal-body"></div>
+                    ${input ? '<input class="admin-modal-input" />' : ''}
+                    <div class="admin-modal-actions">
+                        ${cancelText ? `<button type="button" class="btn btn-ghost" data-modal-cancel>${escapeHtml(cancelText)}</button>` : ''}
+                        <button type="button" class="btn btn-primary" data-modal-confirm>${escapeHtml(confirmText)}</button>
+                    </div>
+                </div>
+            `;
+
+            const body = overlay.querySelector('.admin-modal-body');
+            const confirmBtn = overlay.querySelector('[data-modal-confirm]');
+            const cancelBtn = overlay.querySelector('[data-modal-cancel]');
+            const inputEl = overlay.querySelector('.admin-modal-input');
+
+            body.textContent = message;
+            if (inputEl) {
+                inputEl.type = input.type || 'text';
+                inputEl.placeholder = input.placeholder || '';
+                inputEl.value = input.value || '';
+            }
+
+            const cleanup = (value) => {
+                document.removeEventListener('keydown', onKeydown);
+                overlay.remove();
+                resolve(value);
+            };
+            const onKeydown = (event) => {
+                if (event.key === 'Escape') cleanup(input ? null : false);
+                if (event.key === 'Enter' && (inputEl ? document.activeElement === inputEl : true)) {
+                    cleanup(inputEl ? inputEl.value : true);
+                }
+            };
+
+            confirmBtn.addEventListener('click', () => cleanup(inputEl ? inputEl.value : true));
+            if (cancelBtn) cancelBtn.addEventListener('click', () => cleanup(input ? null : false));
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) cleanup(input ? null : false);
+            });
+            document.addEventListener('keydown', onKeydown);
+            document.body.appendChild(overlay);
+            (inputEl || confirmBtn).focus();
+        });
+    }
+
+    function showAdminAlert(message, options = {}) {
+        return showAdminModal({ title: '提示', variant: 'info', confirmText: '知道了', ...options, message });
+    }
+
+    function showAdminConfirm(message, options = {}) {
+        return showAdminModal({ title: '确认操作', variant: 'warning', confirmText: '确认', cancelText: '取消', ...options, message });
+    }
+
+    function showAdminPrompt(message, options = {}) {
+        return showAdminModal({
+            title: '请输入',
+            variant: 'info',
+            confirmText: '确认',
+            cancelText: '取消',
+            ...options,
+            message,
+            input: options.input || { type: 'text' }
+        });
     }
 
     function renderAdminBatchQueryResult(items) {
@@ -3608,7 +3804,11 @@
             return;
         }
 
-        if (!confirm(`确认替换 ${codes.length} 张卡密？成功后旧卡会被禁用，新卡会立即生成。`)) {
+        if (!(await showAdminConfirm(`确认替换 ${codes.length} 张卡密？成功后旧卡会被禁用，新卡会立即生成。`, {
+            title: '批量替换卡密',
+            variant: 'warning',
+            confirmText: '确认替换'
+        }))) {
             return;
         }
 
@@ -3724,7 +3924,10 @@
 
     async function impersonateSubAdmin(id) {
         if (!hasPermission('manage_accounts')) return;
-        if (!id || !confirm('确认切换到这个子管理员账号查看数据？')) return;
+        if (!id || !(await showAdminConfirm('确认切换到这个子管理员账号查看数据？当前主管理员会话会保留，可随时返回。', {
+            title: '一键登录子管理员',
+            confirmText: '切换账号'
+        }))) return;
 
         try {
             const res = await adminFetch(`/api/admin/sub-admins/${encodeURIComponent(id)}/impersonate`, {
@@ -3754,7 +3957,11 @@
 
     async function resetSubAdminPassword(id) {
         if (!hasPermission('manage_accounts')) return;
-        const newPassword = prompt('请输入新的子管理员密码（至少 8 位）');
+        const newPassword = await showAdminPrompt('请输入新的子管理员密码（至少 8 位）', {
+            title: '重置子管理员密码',
+            confirmText: '重置密码',
+            input: { type: 'password', placeholder: '至少 8 位' }
+        });
         if (newPassword === null) return;
 
         try {
@@ -4054,7 +4261,7 @@
             selectedRecordIds = new Set(
                 Array.from(selectedRecordIds).filter((recordId) => {
                     const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
-                    return canCancelRecord(record);
+                    return canSelectRecordForBulkAction(record);
                 })
             );
 
@@ -4170,6 +4377,9 @@
         const activeCount = currentRecords.filter((record) => ['pending', 'processing'].includes(normalizeAdminRecordStatus(record.status))).length;
         const failedCount = currentRecords.filter((record) => normalizeAdminRecordStatus(record.status) === 'failed').length;
         const cancelableCount = getCurrentPageCancelableRecordIds().length;
+        const failReadyCount = getCurrentPageMarkFailedRecordIds().length;
+        const bulkActionLabel = isExpiredRecordsFilterActive() ? '可设失败' : '可取消';
+        const bulkActionDetail = isExpiredRecordsFilterActive() ? '当前页可批量设为失败' : '当前页可批量取消';
         const pageSize = Number(data.pageSize || 20);
         const pageTotal = currentRecords.length;
         const total = Number(data.total ?? pageTotal);
@@ -4179,7 +4389,7 @@
             renderRecordsFocusCard('待人工核验', manualCount, '本页需优先处理', 'attention'),
             renderRecordsFocusCard('进行中', activeCount, '排队中 / 处理中'),
             renderRecordsFocusCard('失败', failedCount, '本页失败记录', failedCount > 0 ? 'danger' : ''),
-            renderRecordsFocusCard('可取消', cancelableCount, '当前页可批量取消')
+            renderRecordsFocusCard(bulkActionLabel, isExpiredRecordsFilterActive() ? failReadyCount : cancelableCount, bulkActionDetail)
         ].join('');
     }
 
@@ -4194,12 +4404,12 @@
     }
 
     function renderRecordSelectCell(record) {
-        if (!canCancelRecord(record)) return '-';
+        if (!canSelectRecordForBulkAction(record)) return '-';
         const recordId = Number(record.id);
         return `
             <div class="record-select-pack">
                 <input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(recordId) ? 'checked' : ''} onchange="toggleRecordSelection(${recordId}, this.checked)">
-                ${recordCancelButton(record)}
+                ${isExpiredRecordsFilterActive() ? recordMarkFailedButton(record) : recordCancelButton(record)}
             </div>
         `;
     }
@@ -4279,7 +4489,7 @@
         if (canMarkRecordSuccess(record)) {
             actions.push(recordMarkSuccessButton(record));
         }
-        actions.push(recordCancelButton(record));
+        actions.push(canMarkRecordFailed(record) ? recordMarkFailedButton(record) : recordCancelButton(record));
         return `<div class="record-action-group">${actions.join('')}</div>`;
     }
 
@@ -4314,6 +4524,20 @@
         return normalizedStatus !== 'done' && hasManualReviewSignal(record, normalizedStatus);
     }
 
+    function canMarkRecordFailed(record) {
+        if (!record) return false;
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        return normalizedStatus === 'expired' && hasManualReviewSignal(record, normalizedStatus);
+    }
+
+    function isExpiredRecordsFilterActive() {
+        return document.getElementById('recordsFilterStatus')?.value === 'expired';
+    }
+
+    function canSelectRecordForBulkAction(record) {
+        return isExpiredRecordsFilterActive() ? canMarkRecordFailed(record) : canCancelRecord(record);
+    }
+
     function getCurrentPageCancelableRecordIds() {
         return currentRecords
             .filter((item) => canCancelRecord(item))
@@ -4321,10 +4545,21 @@
             .filter((id) => Number.isInteger(id) && id > 0);
     }
 
+    function getCurrentPageMarkFailedRecordIds() {
+        return currentRecords
+            .filter((item) => canMarkRecordFailed(item))
+            .map((item) => Number(item.id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+    }
+
+    function getCurrentPageSelectableRecordIds() {
+        return isExpiredRecordsFilterActive() ? getCurrentPageMarkFailedRecordIds() : getCurrentPageCancelableRecordIds();
+    }
+
     function updateRecordSelectAllState() {
         const selectAll = document.getElementById('recordsSelectAll');
         if (!selectAll) return;
-        const selectableIds = getCurrentPageCancelableRecordIds();
+        const selectableIds = getCurrentPageSelectableRecordIds();
         if (!selectableIds.length) {
             selectAll.checked = false;
             selectAll.indeterminate = false;
@@ -4338,17 +4573,26 @@
     }
 
     function updateBulkRecordCancelButton() {
-        const button = document.getElementById('bulkCancelSelectedRecordsBtn');
+        const cancelButton = document.getElementById('bulkCancelSelectedRecordsBtn');
+        const failButton = document.getElementById('bulkMarkFailedRecordsBtn');
         const hint = document.getElementById('recordsSelectionHint');
+        const expiredMode = isExpiredRecordsFilterActive();
         const cancelableCount = getCurrentPageCancelableRecordIds().length;
-        if (button) {
-            button.disabled = selectedRecordIds.size === 0;
-            button.textContent = selectedRecordIds.size > 0 ? `批量取消 (${selectedRecordIds.size})` : '批量取消';
+        const failReadyCount = getCurrentPageMarkFailedRecordIds().length;
+        if (cancelButton) {
+            cancelButton.classList.toggle('hidden', expiredMode);
+            cancelButton.disabled = selectedRecordIds.size === 0;
+            cancelButton.textContent = selectedRecordIds.size > 0 ? `批量取消 (${selectedRecordIds.size})` : '批量取消';
+        }
+        if (failButton) {
+            failButton.classList.toggle('hidden', !expiredMode);
+            failButton.disabled = selectedRecordIds.size === 0;
+            failButton.textContent = selectedRecordIds.size > 0 ? `批量设为失败 (${selectedRecordIds.size})` : '批量设为失败';
         }
         if (hint) {
             hint.textContent = selectedRecordIds.size > 0
-                ? `已选择 ${selectedRecordIds.size} 条，可取消 ${cancelableCount} 条`
-                : `当前页可取消 ${cancelableCount} 条`;
+                ? (expiredMode ? `已选择 ${selectedRecordIds.size} 条，可设为失败 ${failReadyCount} 条` : `已选择 ${selectedRecordIds.size} 条，可取消 ${cancelableCount} 条`)
+                : (expiredMode ? `当前页可设为失败 ${failReadyCount} 条` : `当前页可取消 ${cancelableCount} 条`);
         }
         updateRecordSelectAllState();
     }
@@ -4362,7 +4606,7 @@
     }
 
     function toggleAllRecordSelections(checked) {
-        getCurrentPageCancelableRecordIds().forEach((recordId) => {
+        getCurrentPageSelectableRecordIds().forEach((recordId) => {
             if (checked) selectedRecordIds.add(recordId);
             else selectedRecordIds.delete(recordId);
         });
@@ -4388,6 +4632,14 @@
     function recordMarkSuccessButton(record) {
         const recordId = Number(record.id) || 0;
         return `<button class="btn btn-ghost btn-sm" type="button" data-record-success="${recordId}" onclick="markRecordSuccess(${recordId}, this)" style="color:var(--emerald);" title="人工核验成功后，将该兑换记录设置为成功">设为成功</button>`;
+    }
+
+    function recordMarkFailedButton(record) {
+        const recordId = Number(record.id) || 0;
+        if (!canMarkRecordFailed(record)) {
+            return `<button class="btn btn-ghost btn-sm" disabled title="该记录当前不可设为失败">设为失败</button>`;
+        }
+        return `<button class="btn btn-ghost btn-sm" type="button" data-record-failed="${recordId}" onclick="markRecordFailed(${recordId}, this)" style="color:var(--rose);" title="将已过期待核验记录设为失败并退回卡密">设为失败</button>`;
     }
 
     function upstreamJobStatusLooksSuccessful(payload) {
@@ -4438,20 +4690,31 @@
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 showToast(data.error || '诊断失败', 'error');
-                alert(recordDiagnosticsText(record, { upstream: data, upstream_status_code: res.status, recommendation: data.error || '诊断失败' }));
+                await showAdminAlert(recordDiagnosticsText(record, { upstream: data, upstream_status_code: res.status, recommendation: data.error || '诊断失败' }), {
+                    title: '诊断失败',
+                    variant: 'error'
+                });
                 return;
             }
 
             const details = recordDiagnosticsText(record, data);
             if (data.can_mark_success && upstreamJobStatusLooksSuccessful(data.upstream)) {
                 const confirmText = `${details}\n\n上游返回 done，点击确定一键校验为成功。`;
-                if (confirm(confirmText)) {
+                if (await showAdminConfirm(confirmText, {
+                    title: '诊断结果',
+                    variant: 'success',
+                    confirmText: '设为成功',
+                    cancelText: '关闭'
+                })) {
                     await markRecordSuccess(recordId, null, { skipConfirm: true });
                 }
                 return;
             }
 
-            alert(details);
+            await showAdminAlert(details, {
+                title: '诊断结果',
+                variant: data.can_query_upstream ? 'info' : 'warning'
+            });
             if (!data.can_query_upstream) {
                 showToast('该记录没有 Job ID，无法查询上游接口', 'error');
             } else {
@@ -4472,7 +4735,11 @@
             showToast('记录 ID 无效', 'error');
             return;
         }
-        if (!options.skipConfirm && !confirm('确认人工核验成功，并将该兑换记录设置为成功吗？')) return;
+        if (!options.skipConfirm && !(await showAdminConfirm('确认人工核验成功，并将该兑换记录设置为成功吗？', {
+            title: '设置兑换成功',
+            variant: 'success',
+            confirmText: '设为成功'
+        }))) return;
 
         const originalText = button ? button.textContent : '';
         if (button) {
@@ -4499,6 +4766,49 @@
             if (button) {
                 button.disabled = false;
                 button.textContent = originalText || '设为成功';
+            }
+        }
+    }
+
+    async function markRecordFailed(recordId, button, options = {}) {
+        if (!Number.isInteger(Number(recordId)) || Number(recordId) <= 0) {
+            showToast('记录 ID 无效', 'error');
+            return { ok: false };
+        }
+        if (!options.skipConfirm && !(await showAdminConfirm('确认将该已过期待核验记录设置为失败并退回卡密吗？设置后会从当前“已过期待核验”列表移除。', {
+            title: '设置兑换失败',
+            variant: 'danger',
+            confirmText: '设为失败'
+        }))) return { ok: false };
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '设置中...';
+        }
+
+        try {
+            const res = await adminFetch(`/api/admin/records/${encodeURIComponent(recordId)}/mark-failed`, {
+                method: 'POST'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '设置失败状态失败', 'error');
+                return { ok: false, data };
+            }
+            showToast(data.message || '已设置为失败，卡密已退回', 'success');
+            selectedRecordIds.delete(Number(recordId));
+            loadRecords();
+            loadStats();
+            loadCards();
+            return { ok: true, data };
+        } catch (err) {
+            showToast('设置失败状态失败: ' + err.message, 'error');
+            return { ok: false, data: { error: err.message } };
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '设为失败';
             }
         }
     }
@@ -4534,7 +4844,11 @@
         const confirmText = hasJobId
             ? ('\u786e\u8ba4\u53d6\u6d88\u4efb\u52a1 ' + jobId + ' \u5417\uff1f')
             : '\u8be5\u8bb0\u5f55\u6ca1\u6709 Job ID\uff0c\u5c06\u76f4\u63a5\u4eba\u5de5\u53d6\u6d88\u5e76\u9000\u56de\u5361\u5bc6\uff0c\u786e\u8ba4\u7ee7\u7eed\u5417\uff1f';
-        if (!confirm(confirmText)) return;
+        if (!(await showAdminConfirm(confirmText, {
+            title: '取消兑换记录',
+            variant: 'danger',
+            confirmText: '确认取消'
+        }))) return;
 
         const originalText = button ? button.textContent : '';
         if (button) {
@@ -4573,7 +4887,11 @@
             updateBulkRecordCancelButton();
             return;
         }
-        if (!confirm('\u786e\u8ba4\u6279\u91cf\u53d6\u6d88\u9009\u4e2d\u7684 ' + selectedIds.length + ' \u6761\u8bb0\u5f55\u5417\uff1f')) return;
+        if (!(await showAdminConfirm('\u786e\u8ba4\u6279\u91cf\u53d6\u6d88\u9009\u4e2d\u7684 ' + selectedIds.length + ' \u6761\u8bb0\u5f55\u5417\uff1f', {
+            title: '批量取消兑换',
+            variant: 'danger',
+            confirmText: '批量取消'
+        }))) return;
         const button = document.getElementById('bulkCancelSelectedRecordsBtn');
         const originalText = button ? button.textContent : '';
         if (button) {
@@ -4618,6 +4936,90 @@
         } finally {
             if (button) {
                 button.textContent = originalText || '批量取消';
+            }
+            updateBulkRecordCancelButton();
+        }
+    }
+
+    async function requestRecordMarkFailed(recordId, options = {}) {
+        const { silent = false } = options;
+        const res = await adminFetch(`/api/admin/records/${encodeURIComponent(recordId)}/mark-failed`, {
+            method: 'POST'
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (!silent) {
+                showToast(data.error || '设置失败状态失败', 'error');
+            }
+            return { ok: false, data };
+        }
+
+        if (!silent) {
+            showToast(data.message || '已设置为失败，卡密已退回', 'success');
+        }
+        return { ok: true, data };
+    }
+
+    async function applyBulkRecordMarkFailed() {
+        if (!isExpiredRecordsFilterActive()) {
+            showToast('请先筛选“已过期待核验”状态', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        const selectedIds = Array.from(selectedRecordIds).filter((recordId) => {
+            const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+            return canMarkRecordFailed(record);
+        });
+
+        if (!selectedIds.length) {
+            showToast('请先选择可设为失败的已过期待核验记录', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        if (!(await showAdminConfirm('确认批量将选中的 ' + selectedIds.length + ' 条已过期待核验记录设为失败并退回卡密吗？', {
+            title: '批量设为失败',
+            variant: 'danger',
+            confirmText: '批量设为失败'
+        }))) return;
+
+        const button = document.getElementById('bulkMarkFailedRecordsBtn');
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '批量设置中...';
+        }
+
+        let successCount = 0;
+        let failureCount = 0;
+
+        try {
+            for (const recordId of selectedIds) {
+                const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+                if (!canMarkRecordFailed(record)) {
+                    failureCount++;
+                    selectedRecordIds.delete(recordId);
+                    continue;
+                }
+
+                const result = await requestRecordMarkFailed(recordId, { silent: true });
+                if (result.ok) {
+                    successCount++;
+                    selectedRecordIds.delete(recordId);
+                } else {
+                    failureCount++;
+                }
+            }
+
+            showToast(`批量设为失败完成：成功 ${successCount} 条${failureCount ? `，失败 ${failureCount} 条` : ''}`, failureCount ? 'error' : 'success');
+            loadRecords();
+            loadStats();
+            loadCards();
+        } catch (err) {
+            showToast('批量设为失败失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.textContent = originalText || '批量设为失败';
             }
             updateBulkRecordCancelButton();
         }

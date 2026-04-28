@@ -996,6 +996,98 @@
             0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
             40% { transform: scale(1.4); opacity: 1; }
         }
+
+        .user-modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 3000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(5, 6, 14, 0.72);
+            backdrop-filter: blur(16px);
+            animation: userModalFadeIn 0.16s ease-out;
+        }
+
+        .user-modal {
+            width: min(460px, 100%);
+            max-height: min(76vh, 640px);
+            display: flex;
+            flex-direction: column;
+            background: rgba(22, 24, 34, 0.98);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 18px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08);
+            overflow: hidden;
+            animation: userModalRiseIn 0.18s ease-out;
+        }
+
+        .user-modal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 20px 22px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .user-modal-icon {
+            width: 38px;
+            height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            background: rgba(129,140,248,0.14);
+            color: var(--accent-light);
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .user-modal.warning .user-modal-icon { background: rgba(251,191,36,0.14); color: var(--warning); }
+        .user-modal.error .user-modal-icon,
+        .user-modal.danger .user-modal-icon { background: rgba(251,113,133,0.14); color: var(--error); }
+        .user-modal.success .user-modal-icon { background: rgba(52,211,153,0.14); color: var(--success); }
+
+        .user-modal-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.35;
+        }
+
+        .user-modal-body {
+            padding: 16px 22px 4px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.75;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+
+        .user-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 18px 22px 22px;
+        }
+
+        .user-modal-actions .btn {
+            width: auto;
+            min-width: 88px;
+            padding: 10px 16px;
+            justify-content: center;
+        }
+
+        @keyframes userModalFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes userModalRiseIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -1382,6 +1474,12 @@
                 'common.cancelNetwork': '取消失败：网络错误，请稍后重试',
                 'common.networkError': '网络错误，请检查连接',
                 'common.networkErrorWithMessage': '网络错误: {message}',
+                'modal.ok': '知道了',
+                'modal.cancel': '取消',
+                'modal.confirm': '确认',
+                'modal.noticeTitle': '提示',
+                'modal.confirmTitle': '确认操作',
+                'modal.errorTitle': '操作失败',
                 'validation.codeRequired': '请输入卡密',
                 'validation.codePrefix': '卡密必须以 CDK- 开头',
                 'validation.codeType': '类型错误，应为 CDK-PLUS-…、CDK-PLUS_1Y-…、CDK-PRO-… 或 CDK-PRO_20X-…',
@@ -1519,6 +1617,12 @@
                 'common.cancelNetwork': 'Cancel failed: network error. Please try again later.',
                 'common.networkError': 'Network error. Please check your connection.',
                 'common.networkErrorWithMessage': 'Network error: {message}',
+                'modal.ok': 'Got it',
+                'modal.cancel': 'Cancel',
+                'modal.confirm': 'Confirm',
+                'modal.noticeTitle': 'Notice',
+                'modal.confirmTitle': 'Confirm action',
+                'modal.errorTitle': 'Action failed',
                 'validation.codeRequired': 'Please enter a CDK',
                 'validation.codePrefix': 'CDK must start with CDK-',
                 'validation.codeType': 'Invalid type. Use CDK-PLUS-..., CDK-PLUS_1Y-..., CDK-PRO-..., or CDK-PRO_20X-...',
@@ -1543,6 +1647,76 @@
             const dictionary = I18N[currentLanguage] || I18N.zh;
             const fallback = I18N.zh[key] || key;
             return String(dictionary[key] || fallback).replace(/\{(\w+)\}/g, (_, name) => replacements[name] ?? '');
+        }
+
+        function showUserModal(options = {}) {
+            const {
+                title = t('modal.noticeTitle'),
+                message = '',
+                variant = 'info',
+                confirmText = t('modal.ok'),
+                cancelText = ''
+            } = options;
+
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                const iconMap = { info: 'i', warning: '!', danger: '!', error: '!', success: '✓' };
+                overlay.className = 'user-modal-overlay';
+                overlay.innerHTML = `
+                    <div class="user-modal ${escapeHtml(variant)}" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+                        <div class="user-modal-header">
+                            <div class="user-modal-icon">${escapeHtml(iconMap[variant] || iconMap.info)}</div>
+                            <div class="user-modal-title" id="userModalTitle"></div>
+                        </div>
+                        <div class="user-modal-body"></div>
+                        <div class="user-modal-actions">
+                            ${cancelText ? `<button type="button" class="btn btn-outline" data-modal-cancel>${escapeHtml(cancelText)}</button>` : ''}
+                            <button type="button" class="btn btn-primary" data-modal-confirm>${escapeHtml(confirmText)}</button>
+                        </div>
+                    </div>
+                `;
+
+                const titleEl = overlay.querySelector('.user-modal-title');
+                const bodyEl = overlay.querySelector('.user-modal-body');
+                const confirmBtn = overlay.querySelector('[data-modal-confirm]');
+                const cancelBtn = overlay.querySelector('[data-modal-cancel]');
+                titleEl.textContent = title;
+                bodyEl.textContent = message;
+
+                const cleanup = (value) => {
+                    document.removeEventListener('keydown', onKeydown);
+                    overlay.remove();
+                    resolve(value);
+                };
+                const onKeydown = (event) => {
+                    if (event.key === 'Escape') cleanup(false);
+                    if (event.key === 'Enter') cleanup(true);
+                };
+
+                confirmBtn.addEventListener('click', () => cleanup(true));
+                if (cancelBtn) cancelBtn.addEventListener('click', () => cleanup(false));
+                overlay.addEventListener('click', (event) => {
+                    if (event.target === overlay) cleanup(false);
+                });
+                document.addEventListener('keydown', onKeydown);
+                document.body.appendChild(overlay);
+                confirmBtn.focus();
+            });
+        }
+
+        function showUserAlert(message, options = {}) {
+            return showUserModal({ title: t('modal.noticeTitle'), variant: 'info', confirmText: t('modal.ok'), ...options, message });
+        }
+
+        function showUserConfirm(message, options = {}) {
+            return showUserModal({
+                title: t('modal.confirmTitle'),
+                variant: 'warning',
+                confirmText: t('modal.confirm'),
+                cancelText: t('modal.cancel'),
+                ...options,
+                message
+            });
         }
 
         function normalizeChannelName(value) {
@@ -2035,7 +2209,10 @@
                 startPolling();
 
             } catch (err) {
-                alert(t('common.networkErrorWithMessage', { message: err.message }));
+                await showUserAlert(t('common.networkErrorWithMessage', { message: err.message }), {
+                    title: t('modal.errorTitle'),
+                    variant: 'error'
+                });
                 btn.disabled = false;
                 btn.textContent = t('redeem.submitButton');
             }
@@ -2143,10 +2320,13 @@
 
         async function cancelTaskByJobId(jobId, button) {
             if (!jobId) {
-                alert(t('common.cancelNoJob'));
+                await showUserAlert(t('common.cancelNoJob'), {
+                    title: t('modal.errorTitle'),
+                    variant: 'error'
+                });
                 return;
             }
-            if (!confirm(t('common.cancelConfirm'))) return;
+            if (!(await showUserConfirm(t('common.cancelConfirm')))) return;
 
             const oldText = button ? button.textContent : '';
             if (button) {
@@ -2162,7 +2342,10 @@
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    alert(data.error || t('common.cancelFailed'));
+                    await showUserAlert(data.error || t('common.cancelFailed'), {
+                        title: t('modal.errorTitle'),
+                        variant: 'error'
+                    });
                     return;
                 }
 
@@ -2170,11 +2353,17 @@
                     isPolling = false;
                     showJobStatus({ job_id: jobId, status: data.status || 'failed', error: t('common.cancelled') });
                 }
-                alert(data.message || t('common.cancelSuccess'));
+                await showUserAlert(data.message || t('common.cancelSuccess'), {
+                    title: t('modal.noticeTitle'),
+                    variant: 'success'
+                });
                 const queryCode = document.getElementById('queryCodeInput')?.value.trim();
                 if (queryCode) queryCard();
             } catch (err) {
-                alert(t('common.cancelNetwork'));
+                await showUserAlert(t('common.cancelNetwork'), {
+                    title: t('modal.errorTitle'),
+                    variant: 'error'
+                });
             } finally {
                 if (button) {
                     button.disabled = false;
@@ -2265,7 +2454,10 @@
 
                 if (!res.ok) {
                     // 卡密不再可用（如被禁用），全重置
-                    alert(t('retry.cardUnavailable', { error: data.error || t('common.unknown') }));
+                    await showUserAlert(t('retry.cardUnavailable', { error: data.error || t('common.unknown') }), {
+                        title: t('modal.errorTitle'),
+                        variant: 'error'
+                    });
                     resetForm();
                     return;
                 }
@@ -2303,7 +2495,10 @@
                 setTimeout(() => step2.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
 
             } catch (err) {
-                alert(t('retry.networkError'));
+                await showUserAlert(t('retry.networkError'), {
+                    title: t('modal.errorTitle'),
+                    variant: 'error'
+                });
             } finally {
                 retryBtn.disabled = false;
                 retryBtn.textContent = t('job.retryRedeem');
