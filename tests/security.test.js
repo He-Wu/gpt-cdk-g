@@ -1419,12 +1419,14 @@ test('submit network errors keep detailed upstream diagnostics without job id', 
   }
 });
 
-test('submit TLS invalid session id errors are retried once and classified clearly', async () => {
+test('submit TLS invalid session id errors are retried up to five attempts and classified clearly', async () => {
   const source = await fs.readFile(path.join(REPO_ROOT, 'server.js'), 'utf-8');
+  assert.match(source, /SUBMIT_TLS_MAX_ATTEMPTS\s*=\s*5/);
   assert.match(source, /TLS_SUBMIT_RETRY_CODES\s*=\s*new Set\(\['ERR_SSL_INVALID_SESSION_ID'\]\)/);
   assert.match(source, /isRetryableSubmitTlsError/);
   assert.match(source, /submitUpstreamRedeem/);
-  assert.match(source, /attempt\s*<\s*2/);
+  assert.match(source, /attempt\s*<\s*SUBMIT_TLS_MAX_ATTEMPTS/);
+  assert.match(source, /attempt\s*<\s*SUBMIT_TLS_MAX_ATTEMPTS\s*-\s*1/);
   assert.match(source, /submit_tls_handshake_error/);
   assert.match(source, /上游 TLS 握手失败/);
   assert.doesNotMatch(source, /ECONNREFUSED'[\s\S]*TLS_SUBMIT_RETRY_CODES/);

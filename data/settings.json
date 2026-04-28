@@ -3,7 +3,7 @@
   "baseUrl": "https://grknik3qae.localto.net",
   "adminPassword": "20000304.Hj",
   "maintenanceEnabled": false,
-  "maintenanceMessage": "维护一下添加设备提高处理速度",
+  "maintenanceMessage": "今天可能会重启比较多次\n优化一下稳定性",
   "subAdmins": [
     {
       "id": "51a652ea-0f32-4fba-9772-c186b63f78bc",
@@ -23,11 +23,11 @@
   "typedMaintenance": {
     "plus": {
       "enabled": false,
-      "message": ""
+      "message": "DNS 解析未生效，先暂停一会"
     },
     "plus_1y": {
-      "enabled": false,
-      "message": ""
+      "enabled": true,
+      "message": "年卡已绝版，未使用请联系管理"
     },
     "pro": {
       "enabled": false,
@@ -39,14 +39,14 @@
     }
   },
   "userNotice": {
-    "enabled": false,
-    "zhTitle": "升级成功",
-    "zhBody": "哈哈哈",
-    "enTitle": "update success",
-    "enBody": "hahaha"
+    "enabled": true,
+    "zhTitle": "pro 20x恢复",
+    "zhBody": "plus月/pro 5x/pro 20x 可用\n其中plus需要排队，/pro 5x/pro 20x 无需排队",
+    "enTitle": "Update completed.",
+    "enBody": "> The service has now returned to normal.\n> Pro 20x is temporarily offline.\n> Pro 5x has been restored.\n>\n> Team is currently not supported. Older accounts have been tested and can now be recharged. Please test and provide feedback."
   },
-  "maintenanceMessageZh": "维护一下添加设备提高处理速度",
-  "maintenanceMessageEn": "维护一下添加设备提高处理速度En",
-  "channelName": "666",
-  "defaultCost": 11
+  "channelName": "",
+  "maintenanceMessageZh": "今天可能会重启比较多次\n优化一下稳定性",
+  "maintenanceMessageEn": "Maintenance in progress, expected to take about one hour. There are too many people in the queue, so we’re increasing the processing speed!",
+  "defaultCost": 12
 }

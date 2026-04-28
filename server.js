@@ -33,6 +33,7 @@ const JOB_RECONCILE_INTERVAL_MS = 10000;
 const JOB_RECONCILE_BATCH_SIZE = 100;
 const JOB_RECONCILE_CONCURRENCY = 10;
 const MANUAL_REVIEW_RECONCILE_WINDOW_MS = 60 * 60 * 1000;
+const SUBMIT_TLS_MAX_ATTEMPTS = 5;
 const TLS_SUBMIT_RETRY_CODES = new Set(['ERR_SSL_INVALID_SESSION_ID']);
 
 // 确保数据目录存在
@@ -1172,7 +1173,7 @@ function buildSubmitNetworkReviewDetails(err, fetchErrorDetail) {
 
 async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow) {
   let lastError = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < SUBMIT_TLS_MAX_ATTEMPTS; attempt += 1) {
     try {
       return await fetch(`${upstreamUrl}/submit`, {
         method: 'POST',
@@ -1187,8 +1188,8 @@ async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow) {
       });
     } catch (err) {
       lastError = err;
-      if (attempt === 0 && isRetryableSubmitTlsError(err)) {
-        console.warn('上游 /submit TLS 握手失败，正在自动重试一次:', describeFetchError(err));
+      if (attempt < SUBMIT_TLS_MAX_ATTEMPTS - 1 && isRetryableSubmitTlsError(err)) {
+        console.warn(`上游 /submit TLS 握手失败，正在自动重试第 ${attempt + 2} 次:`, describeFetchError(err));
         await new Promise((resolve) => setTimeout(resolve, 150));
         continue;
       }
