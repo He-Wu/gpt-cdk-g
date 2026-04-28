@@ -1163,22 +1163,27 @@ function isRetryableSubmitTlsError(err) {
 }
 
 function buildSubmitNetworkReviewDetails(err, fetchErrorDetail) {
-  if (isRetryableSubmitTlsError(err)) {
-    const detail = summarizeUpstreamDetail(`上游 TLS 握手失败（已自动重试）: ${fetchErrorDetail}`, fetchErrorDetail);
-    return {
-      message: `提交请求结果不确定: ${detail}`,
-      manual_review_reason: '上游 TLS 握手失败，无法建立 HTTPS 连接，未拿到提交结果',
-      manual_review_stage: 'submit_tls_handshake_error',
-      upstream_detail: detail
-    };
-  }
-
   return {
     message: `提交请求结果不确定: ${fetchErrorDetail}`,
     manual_review_reason: '请求上游时出现网络错误，无法确认是否已成功受理',
     manual_review_stage: 'submit_network_error',
     upstream_detail: fetchErrorDetail
   };
+}
+
+function markSubmitTlsExhaustedFailed(record, fetchErrorDetail) {
+  const errorMessage = summarizeUpstreamDetail(
+    `连续 5 次 TLS 握手失败，卡密已退回，请稍后重试: ${fetchErrorDetail}`,
+    '连续 5 次 TLS 握手失败，卡密已退回，请稍后重试'
+  );
+  refundCardForRecord(record);
+  record.status = 'failed';
+  record.error_message = errorMessage;
+  record.queue_position = null;
+  record.estimated_wait_seconds = null;
+  clearManualReviewDetails(record);
+  saveRecords(records);
+  return errorMessage;
 }
 
 async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow) {
@@ -2610,8 +2615,16 @@ app.post('/api/card/redeem', async (req, res) => {
 
   } catch (err) {
     const fetchErrorDetail = describeFetchError(err);
-    const reviewDetails = buildSubmitNetworkReviewDetails(err, fetchErrorDetail);
     console.error('兑换请求失败:', fetchErrorDetail, err);
+    if (isRetryableSubmitTlsError(err)) {
+      const errorMessage = markSubmitTlsExhaustedFailed(record, fetchErrorDetail);
+      return res.status(502).json({
+        error: errorMessage,
+        status: 'failed',
+        email: sessionEmail || null
+      });
+    }
+    const reviewDetails = buildSubmitNetworkReviewDetails(err, fetchErrorDetail);
     markRecordUncertain(record, reviewDetails.message, 'unknown', reviewDetails);
     res.status(502).json({
       error: '兑换提交状态不确定，卡密已锁定，请联系管理员人工核验',
