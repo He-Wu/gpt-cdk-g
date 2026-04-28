@@ -33,6 +33,7 @@ const JOB_RECONCILE_INTERVAL_MS = 10000;
 const JOB_RECONCILE_BATCH_SIZE = 100;
 const JOB_RECONCILE_CONCURRENCY = 10;
 const MANUAL_REVIEW_RECONCILE_WINDOW_MS = 60 * 60 * 1000;
+const TLS_SUBMIT_RETRY_CODES = new Set(['ERR_SSL_INVALID_SESSION_ID']);
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -1138,6 +1139,63 @@ function describeFetchError(err) {
   }
 
   return summarizeUpstreamDetail(parts.join('; '), err?.message || 'fetch failed');
+}
+
+function getFetchErrorCode(err) {
+  return err?.cause?.code || err?.code || '';
+}
+
+function isRetryableSubmitTlsError(err) {
+  const code = getFetchErrorCode(err);
+  const message = `${err?.message || ''} ${err?.cause?.message || ''}`.toLowerCase();
+  return TLS_SUBMIT_RETRY_CODES.has(code) || message.includes('tls_process_server_hello:invalid session id');
+}
+
+function buildSubmitNetworkReviewDetails(err, fetchErrorDetail) {
+  if (isRetryableSubmitTlsError(err)) {
+    const detail = summarizeUpstreamDetail(`上游 TLS 握手失败（已自动重试）: ${fetchErrorDetail}`, fetchErrorDetail);
+    return {
+      message: `提交请求结果不确定: ${detail}`,
+      manual_review_reason: '上游 TLS 握手失败，无法建立 HTTPS 连接，未拿到提交结果',
+      manual_review_stage: 'submit_tls_handshake_error',
+      upstream_detail: detail
+    };
+  }
+
+  return {
+    message: `提交请求结果不确定: ${fetchErrorDetail}`,
+    manual_review_reason: '请求上游时出现网络错误，无法确认是否已成功受理',
+    manual_review_stage: 'submit_network_error',
+    upstream_detail: fetchErrorDetail
+  };
+}
+
+async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetch(`${upstreamUrl}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': getApiKey()
+        },
+        body: JSON.stringify({
+          access_token: accessToken,
+          workflow
+        })
+      });
+    } catch (err) {
+      lastError = err;
+      if (attempt === 0 && isRetryableSubmitTlsError(err)) {
+        console.warn('上游 /submit TLS 握手失败，正在自动重试一次:', describeFetchError(err));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 }
 
 function fallbackRecordErrorMessage(record, status = null) {
@@ -2413,17 +2471,7 @@ app.post('/api/card/redeem', async (req, res) => {
   // 调用上游 API
   try {
     const upstreamUrl = getBaseUrl();
-    const submitRes = await fetch(`${upstreamUrl}/submit`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': getApiKey()
-      },
-      body: JSON.stringify({
-        access_token: access_token,
-        workflow: card.type
-      })
-    });
+    const submitRes = await submitUpstreamRedeem(upstreamUrl, access_token, card.type);
 
     const submitText = await submitRes.text();
     let submitData = null;
@@ -2512,12 +2560,9 @@ app.post('/api/card/redeem', async (req, res) => {
 
   } catch (err) {
     const fetchErrorDetail = describeFetchError(err);
+    const reviewDetails = buildSubmitNetworkReviewDetails(err, fetchErrorDetail);
     console.error('兑换请求失败:', fetchErrorDetail, err);
-    markRecordUncertain(record, `提交请求结果不确定: ${fetchErrorDetail}`, 'unknown', {
-      manual_review_reason: '请求上游时出现网络错误，无法确认是否已成功受理',
-      manual_review_stage: 'submit_network_error',
-      upstream_detail: fetchErrorDetail
-    });
+    markRecordUncertain(record, reviewDetails.message, 'unknown', reviewDetails);
     res.status(502).json({
       error: '兑换提交状态不确定，卡密已锁定，请联系管理员人工核验',
       status: 'unknown',

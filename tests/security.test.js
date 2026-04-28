@@ -1419,6 +1419,17 @@ test('submit network errors keep detailed upstream diagnostics without job id', 
   }
 });
 
+test('submit TLS invalid session id errors are retried once and classified clearly', async () => {
+  const source = await fs.readFile(path.join(REPO_ROOT, 'server.js'), 'utf-8');
+  assert.match(source, /TLS_SUBMIT_RETRY_CODES\s*=\s*new Set\(\['ERR_SSL_INVALID_SESSION_ID'\]\)/);
+  assert.match(source, /isRetryableSubmitTlsError/);
+  assert.match(source, /submitUpstreamRedeem/);
+  assert.match(source, /attempt\s*<\s*2/);
+  assert.match(source, /submit_tls_handshake_error/);
+  assert.match(source, /上游 TLS 握手失败/);
+  assert.doesNotMatch(source, /ECONNREFUSED'[\s\S]*TLS_SUBMIT_RETRY_CODES/);
+});
+
 test('submit queue full refunds the card without manual review', async () => {
   const upstream = await startMockUpstream((req, res) => {
     if (req.method === 'POST' && req.url === '/submit') {
