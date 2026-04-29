@@ -2104,13 +2104,18 @@
                             <input type="datetime-local" id="cardsUsedTo" onchange="handleCardsFilterChange()">
                         </div>
                         <div class="form-group search-input">
-                            <input type="text" id="cardsSearch" placeholder="搜索卡密..."
+                            <input type="text" id="cardsSearch" placeholder="搜索卡密/批次/生成人..."
+                                oninput="debounceSearch()">
+                        </div>
+                        <div class="form-group search-input">
+                            <input type="text" id="cardsRemarkSearch" placeholder="按备注查询..."
                                 oninput="debounceSearch()">
                         </div>
                     </div>
                     <div class="bulk-action-buttons" data-permission="manage_cards">
                         <button class="btn btn-ghost btn-sm" type="button" id="bulkDisableSelectedBtn" onclick="applyBulkCardAction('disable', 'selected')">批量禁用</button>
                         <button class="btn btn-ghost btn-sm" type="button" id="bulkEnableSelectedBtn" onclick="applyBulkCardAction('enable', 'selected')">批量启用</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkDisableRemarkResultsBtn" onclick="applyBulkDisableRemarkResults()">批量禁用备注结果</button>
                     </div>
                 </div>
                 <div class="table-wrapper">
@@ -2205,6 +2210,30 @@
                             </select>
                         </div>
                         <div class="form-group">
+                            <label for="recordsJobIdFilter">Job ID</label>
+                            <select id="recordsJobIdFilter" onchange="handleRecordsFilterChange()">
+                                <option value="all">全部</option>
+                                <option value="yes">有 Job ID</option>
+                                <option value="no">无 Job ID</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="recordsManualReviewFilter">人工核验</label>
+                            <select id="recordsManualReviewFilter" onchange="handleRecordsFilterChange()">
+                                <option value="all">全部</option>
+                                <option value="yes">需要人工核验</option>
+                                <option value="no">无需人工核验</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="recordsErrorFilter">异常信息</label>
+                            <select id="recordsErrorFilter" onchange="handleRecordsFilterChange()">
+                                <option value="all">全部</option>
+                                <option value="yes">有异常信息</option>
+                                <option value="no">无异常信息</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label for="recordsDateFrom">开始日期</label>
                             <input type="date" id="recordsDateFrom" onchange="handleRecordsFilterChange()">
                         </div>
@@ -2221,6 +2250,9 @@
                     <div class="records-actions">
                         <button class="btn btn-ghost btn-sm" type="button" id="bulkCancelSelectedRecordsBtn" onclick="applyBulkRecordCancel()">批量取消</button>
                         <button class="btn btn-ghost btn-sm hidden" type="button" id="bulkMarkFailedRecordsBtn" onclick="applyBulkRecordMarkFailed()" style="color:var(--rose);">批量设为失败</button>
+                        <button class="btn btn-ghost btn-sm hidden" type="button" id="bulkRestoreFromJobRecordsBtn" onclick="applyBulkRecordRestoreFromJob()" style="color:var(--emerald);">批量恢复到队列</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkUndoRefundRecordsBtn" onclick="applyBulkRecordUndoRefund()" style="color:var(--emerald);">批量取消退回</button>
+                        <button class="btn btn-ghost btn-sm" type="button" id="bulkDeleteSelectedRecordsBtn" onclick="applyBulkRecordDelete()" style="color:var(--rose);">批量删除</button>
                         <button class="btn btn-ghost btn-sm" type="button" id="recordsResetBtn" onclick="resetRecordsFilters()">清空筛选</button>
                         <button class="btn btn-ghost btn-sm" type="button" id="recordsRefreshBtn" onclick="loadRecords()">刷新记录</button>
                     </div>
@@ -2450,6 +2482,30 @@
                     <div>
                         <button class="btn btn-primary" id="saveUserBrandingBtn" onclick="saveUserBranding()">
                             💾 保存用户页展示
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="customerRateLimitPanel">
+                <div class="panel-title" style="margin-bottom:4px;">访问频率限制</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
+                    控制用户查询、批量查询、兑换接口是否按 IP 做频率限制。关闭时不限制 IP 访问频率。
+                </p>
+                <div style="display:flex; flex-direction:column; gap:16px; max-width:560px;">
+                    <div class="toggle-row">
+                        <div class="toggle-info">
+                            <div class="toggle-label">IP 频率限制</div>
+                            <div class="toggle-desc">开启后恢复同 IP 每分钟请求限制；不开则不限制</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="customerRateLimitsEnabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="saveCustomerRateLimitBtn" onclick="saveCustomerRateLimitSettings()">
+                            保存访问频率配置
                         </button>
                     </div>
                 </div>
@@ -3659,8 +3715,11 @@
         const hasDisabled = selectedCodes.some((code) => currentCards.find((item) => item.code === code)?.status === 'disabled');
         const disableBtn = document.getElementById('bulkDisableSelectedBtn');
         const enableBtn = document.getElementById('bulkEnableSelectedBtn');
+        const remarkBtn = document.getElementById('bulkDisableRemarkResultsBtn');
+        const remark = document.getElementById('cardsRemarkSearch')?.value.trim() || '';
         if (disableBtn) disableBtn.disabled = !hasUnused;
         if (enableBtn) enableBtn.disabled = !hasDisabled;
+        if (remarkBtn) remarkBtn.disabled = !remark;
         updateCardsSelectAllState();
     }
 
@@ -3739,6 +3798,53 @@
             if (btn) {
                 btn.disabled = false;
                 btn.textContent = oldText || (action === 'disable' ? '批量禁用' : '批量启用');
+            }
+            updateBulkCardButtons();
+        }
+    }
+
+    async function applyBulkDisableRemarkResults() {
+        if (!hasPermission('manage_cards')) return;
+        const remark = document.getElementById('cardsRemarkSearch')?.value.trim() || '';
+        if (!remark) {
+            showToast('请先输入备注查询内容', 'error');
+            return;
+        }
+        if (!(await showAdminConfirm(`确认禁用所有备注包含「${remark}」且未使用的卡密？单次最多处理 500 张。`, {
+            title: '按备注批量禁用',
+            variant: 'danger',
+            confirmText: '批量禁用'
+        }))) {
+            return;
+        }
+
+        const btn = document.getElementById('bulkDisableRemarkResultsBtn');
+        const oldText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 处理中...';
+        }
+
+        try {
+            const res = await adminFetch('/api/admin/cards/disable-by-remark', {
+                method: 'POST',
+                body: JSON.stringify({ remark })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '按备注批量禁用失败', 'error');
+                return;
+            }
+            selectedCardCodes.clear();
+            showToast(data.message || `成功禁用 ${data.disabled || 0} 张卡密`, 'success');
+            await loadCards();
+            loadStats();
+        } catch (err) {
+            showToast('按备注批量禁用失败: ' + err.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = oldText || '批量禁用备注结果';
             }
             updateBulkCardButtons();
         }
@@ -4003,6 +4109,7 @@
         const status = document.getElementById('cardsFilterStatus').value;
         const type = document.getElementById('cardsFilterType').value;
         const search = document.getElementById('cardsSearch').value;
+        const remark = document.getElementById('cardsRemarkSearch')?.value.trim() || '';
         const createdFrom = document.getElementById('cardsCreatedFrom')?.value || '';
         const createdTo = document.getElementById('cardsCreatedTo')?.value || '';
         const usedFrom = document.getElementById('cardsUsedFrom')?.value || '';
@@ -4010,6 +4117,7 @@
 
         const params = new URLSearchParams({ page: cardsPage, pageSize: 15, status, type });
         if (search) params.set('search', search);
+        if (remark) params.set('remark', remark);
         if (createdFrom) params.set('created_from', createdFrom);
         if (createdTo) params.set('created_to', createdTo);
         if (usedFrom) params.set('used_from', usedFrom);
@@ -4076,6 +4184,7 @@
 
     function debounceSearch() {
         clearTimeout(searchTimer);
+        updateBulkCardButtons();
         searchTimer = setTimeout(() => { handleCardsFilterChange(); }, 300);
     }
 
@@ -4206,6 +4315,9 @@
     async function loadRecords() {
         const status = document.getElementById('recordsFilterStatus').value;
         const type = document.getElementById('recordsFilterType').value;
+        const jobIdFilter = document.getElementById('recordsJobIdFilter')?.value || 'all';
+        const manualReviewFilter = document.getElementById('recordsManualReviewFilter')?.value || 'all';
+        const errorFilter = document.getElementById('recordsErrorFilter')?.value || 'all';
         const dateFrom = document.getElementById('recordsDateFrom').value;
         const dateTo = document.getElementById('recordsDateTo').value;
         const search = document.getElementById('recordsSearch').value.trim();
@@ -4216,11 +4328,14 @@
         recordsPageSize = [20, 50, 100].includes(selectedPageSize) ? selectedPageSize : 20;
 
         const params = new URLSearchParams({ page: recordsPage, pageSize: recordsPageSize, status, type });
+        if (jobIdFilter !== 'all') params.set('has_job_id', jobIdFilter);
+        if (manualReviewFilter !== 'all') params.set('manual_review', manualReviewFilter);
+        if (errorFilter !== 'all') params.set('has_error', errorFilter);
         if (dateFrom) params.set('date_from', dateFrom);
         if (dateTo) params.set('date_to', dateTo);
         if (search) params.set('search', search);
 
-        renderRecordsActiveFilters({ status, type, dateFrom, dateTo, search });
+        renderRecordsActiveFilters({ status, type, jobIdFilter, manualReviewFilter, errorFilter, dateFrom, dateTo, search });
         if (refreshBtn) {
             refreshBtn.disabled = true;
             refreshBtn.textContent = '刷新中...';
@@ -4261,7 +4376,7 @@
             selectedRecordIds = new Set(
                 Array.from(selectedRecordIds).filter((recordId) => {
                     const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
-                    return canSelectRecordForBulkAction(record);
+                    return !!record;
                 })
             );
 
@@ -4344,6 +4459,9 @@
     function resetRecordsFilters() {
         document.getElementById('recordsFilterStatus').value = 'all';
         document.getElementById('recordsFilterType').value = 'all';
+        document.getElementById('recordsJobIdFilter').value = 'all';
+        document.getElementById('recordsManualReviewFilter').value = 'all';
+        document.getElementById('recordsErrorFilter').value = 'all';
         document.getElementById('recordsDateFrom').value = '';
         document.getElementById('recordsDateTo').value = '';
         document.getElementById('recordsSearch').value = '';
@@ -4356,12 +4474,15 @@
         return option?.textContent || value;
     }
 
-    function renderRecordsActiveFilters({ status, type, dateFrom, dateTo, search }) {
+    function renderRecordsActiveFilters({ status, type, jobIdFilter, manualReviewFilter, errorFilter, dateFrom, dateTo, search }) {
         const box = document.getElementById('recordsActiveFilters');
         if (!box) return;
         const chips = [];
         if (status && status !== 'all') chips.push(`状态: ${getSelectLabel('recordsFilterStatus', status)}`);
         if (type && type !== 'all') chips.push(`类型: ${getSelectLabel('recordsFilterType', type)}`);
+        if (jobIdFilter && jobIdFilter !== 'all') chips.push(`Job ID: ${getSelectLabel('recordsJobIdFilter', jobIdFilter)}`);
+        if (manualReviewFilter && manualReviewFilter !== 'all') chips.push(`人工核验: ${getSelectLabel('recordsManualReviewFilter', manualReviewFilter)}`);
+        if (errorFilter && errorFilter !== 'all') chips.push(`异常信息: ${getSelectLabel('recordsErrorFilter', errorFilter)}`);
         if (dateFrom) chips.push(`开始: ${dateFrom}`);
         if (dateTo) chips.push(`结束: ${dateTo}`);
         if (search) chips.push(`搜索: ${search}`);
@@ -4404,12 +4525,19 @@
     }
 
     function renderRecordSelectCell(record) {
-        if (!canSelectRecordForBulkAction(record)) return '-';
         const recordId = Number(record.id);
+        if (!Number.isInteger(recordId) || recordId <= 0) return '-';
+        const expiredMode = isExpiredRecordsFilterActive();
+        const quickAction = expiredMode
+            ? [
+                canRestoreRecordFromJob(record) ? recordRestoreFromJobButton(record) : '',
+                canMarkRecordFailed(record) ? recordMarkFailedButton(record) : ''
+            ].join('')
+            : (canUndoRefundRecord(record) ? recordUndoRefundButton(record) : (canCancelRecord(record) ? recordCancelButton(record) : ''));
         return `
             <div class="record-select-pack">
                 <input type="checkbox" class="record-select-checkbox" ${selectedRecordIds.has(recordId) ? 'checked' : ''} onchange="toggleRecordSelection(${recordId}, this.checked)">
-                ${isExpiredRecordsFilterActive() ? recordMarkFailedButton(record) : recordCancelButton(record)}
+                ${quickAction}
             </div>
         `;
     }
@@ -4489,7 +4617,19 @@
         if (canMarkRecordSuccess(record)) {
             actions.push(recordMarkSuccessButton(record));
         }
-        actions.push(canMarkRecordFailed(record) ? recordMarkFailedButton(record) : recordCancelButton(record));
+        if (canRestoreRecordFromJob(record)) {
+            actions.push(recordRestoreFromJobButton(record));
+        }
+        if (canUndoRefundRecord(record)) {
+            actions.push(recordUndoRefundButton(record));
+        }
+        if (canMarkRecordFailed(record)) {
+            actions.push(recordMarkFailedButton(record));
+        } else if (canCancelRecord(record)) {
+            actions.push(recordCancelButton(record));
+        } else {
+            actions.push(recordDeleteButton(record));
+        }
         return `<div class="record-action-group">${actions.join('')}</div>`;
     }
 
@@ -4530,6 +4670,18 @@
         return normalizedStatus === 'expired' && hasManualReviewSignal(record, normalizedStatus);
     }
 
+    function canRestoreRecordFromJob(record) {
+        if (!record?.job_id) return false;
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        return normalizedStatus === 'expired' && hasManualReviewSignal(record, normalizedStatus);
+    }
+
+    function canUndoRefundRecord(record) {
+        if (!record) return false;
+        const normalizedStatus = normalizeAdminRecordStatus(record.status);
+        return normalizedStatus === 'failed';
+    }
+
     function isExpiredRecordsFilterActive() {
         return document.getElementById('recordsFilterStatus')?.value === 'expired';
     }
@@ -4552,8 +4704,24 @@
             .filter((id) => Number.isInteger(id) && id > 0);
     }
 
+    function getCurrentPageRestoreFromJobRecordIds() {
+        return currentRecords
+            .filter((item) => canRestoreRecordFromJob(item))
+            .map((item) => Number(item.id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+    }
+
+    function getCurrentPageUndoRefundRecordIds() {
+        return currentRecords
+            .filter((item) => canUndoRefundRecord(item))
+            .map((item) => Number(item.id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+    }
+
     function getCurrentPageSelectableRecordIds() {
-        return isExpiredRecordsFilterActive() ? getCurrentPageMarkFailedRecordIds() : getCurrentPageCancelableRecordIds();
+        return currentRecords
+            .map((item) => Number(item.id))
+            .filter((id) => Number.isInteger(id) && id > 0);
     }
 
     function updateRecordSelectAllState() {
@@ -4575,10 +4743,16 @@
     function updateBulkRecordCancelButton() {
         const cancelButton = document.getElementById('bulkCancelSelectedRecordsBtn');
         const failButton = document.getElementById('bulkMarkFailedRecordsBtn');
+        const restoreButton = document.getElementById('bulkRestoreFromJobRecordsBtn');
+        const undoRefundButton = document.getElementById('bulkUndoRefundRecordsBtn');
+        const deleteButton = document.getElementById('bulkDeleteSelectedRecordsBtn');
         const hint = document.getElementById('recordsSelectionHint');
         const expiredMode = isExpiredRecordsFilterActive();
         const cancelableCount = getCurrentPageCancelableRecordIds().length;
         const failReadyCount = getCurrentPageMarkFailedRecordIds().length;
+        const restoreReadyCount = getCurrentPageRestoreFromJobRecordIds().length;
+        const undoRefundReadyCount = getCurrentPageUndoRefundRecordIds().length;
+        const deletableCount = getCurrentPageSelectableRecordIds().length;
         if (cancelButton) {
             cancelButton.classList.toggle('hidden', expiredMode);
             cancelButton.disabled = selectedRecordIds.size === 0;
@@ -4589,10 +4763,23 @@
             failButton.disabled = selectedRecordIds.size === 0;
             failButton.textContent = selectedRecordIds.size > 0 ? `批量设为失败 (${selectedRecordIds.size})` : '批量设为失败';
         }
+        if (restoreButton) {
+            restoreButton.classList.toggle('hidden', !expiredMode);
+            restoreButton.disabled = selectedRecordIds.size === 0;
+            restoreButton.textContent = selectedRecordIds.size > 0 ? `批量恢复到队列 (${selectedRecordIds.size})` : '批量恢复到队列';
+        }
+        if (undoRefundButton) {
+            undoRefundButton.disabled = selectedRecordIds.size === 0;
+            undoRefundButton.textContent = selectedRecordIds.size > 0 ? `批量取消退回 (${selectedRecordIds.size})` : '批量取消退回';
+        }
+        if (deleteButton) {
+            deleteButton.disabled = selectedRecordIds.size === 0;
+            deleteButton.textContent = selectedRecordIds.size > 0 ? `批量删除 (${selectedRecordIds.size})` : '批量删除';
+        }
         if (hint) {
             hint.textContent = selectedRecordIds.size > 0
-                ? (expiredMode ? `已选择 ${selectedRecordIds.size} 条，可设为失败 ${failReadyCount} 条` : `已选择 ${selectedRecordIds.size} 条，可取消 ${cancelableCount} 条`)
-                : (expiredMode ? `当前页可设为失败 ${failReadyCount} 条` : `当前页可取消 ${cancelableCount} 条`);
+                ? (expiredMode ? `已选择 ${selectedRecordIds.size} 条，可恢复 ${restoreReadyCount} 条，可设为失败 ${failReadyCount} 条，可取消退回 ${undoRefundReadyCount} 条，可删除 ${deletableCount} 条` : `已选择 ${selectedRecordIds.size} 条，可取消 ${cancelableCount} 条，可取消退回 ${undoRefundReadyCount} 条，可删除 ${deletableCount} 条`)
+                : (expiredMode ? `当前页可恢复 ${restoreReadyCount} 条，可设为失败 ${failReadyCount} 条，可取消退回 ${undoRefundReadyCount} 条，可删除 ${deletableCount} 条` : `当前页可取消 ${cancelableCount} 条，可取消退回 ${undoRefundReadyCount} 条，可删除 ${deletableCount} 条`);
         }
         updateRecordSelectAllState();
     }
@@ -4640,6 +4827,30 @@
             return `<button class="btn btn-ghost btn-sm" disabled title="该记录当前不可设为失败">设为失败</button>`;
         }
         return `<button class="btn btn-ghost btn-sm" type="button" data-record-failed="${recordId}" onclick="markRecordFailed(${recordId}, this)" style="color:var(--rose);" title="将已过期待核验记录设为失败并退回卡密">设为失败</button>`;
+    }
+
+    function recordUndoRefundButton(record) {
+        const recordId = Number(record.id) || 0;
+        if (!canUndoRefundRecord(record)) {
+            return `<button class="btn btn-ghost btn-sm" disabled title="该记录当前不可取消退回">取消退回</button>`;
+        }
+        return `<button class="btn btn-ghost btn-sm" type="button" data-record-undo-refund="${recordId}" onclick="undoRecordRefund(${recordId}, this)" style="color:var(--emerald);" title="撤销退卡：记录设为成功，卡密改为已使用">取消退回</button>`;
+    }
+
+    function recordRestoreFromJobButton(record) {
+        const recordId = Number(record.id) || 0;
+        if (!canRestoreRecordFromJob(record)) {
+            return `<button class="btn btn-ghost btn-sm" disabled title="该记录缺少可查询的 Job ID">恢复到队列</button>`;
+        }
+        return `<button class="btn btn-ghost btn-sm" type="button" data-record-restore="${recordId}" onclick="restoreRecordFromJob(${recordId}, this)" style="color:var(--emerald);" title="查询上游 Job，并按返回状态恢复为排队/处理中">恢复到队列</button>`;
+    }
+
+    function recordDeleteButton(record) {
+        const recordId = Number(record.id) || 0;
+        if (!Number.isInteger(recordId) || recordId <= 0) {
+            return '-';
+        }
+        return `<button class="btn btn-ghost btn-sm" type="button" data-record-delete="${recordId}" onclick="deleteRecord(${recordId}, this)" style="color:var(--rose);" title="删除这条兑换记录，不改变卡密状态">删除</button>`;
     }
 
     function upstreamJobStatusLooksSuccessful(payload) {
@@ -4767,6 +4978,64 @@
                 button.disabled = false;
                 button.textContent = originalText || '设为成功';
             }
+        }
+    }
+
+    async function requestRecordUndoRefund(recordId, options = {}) {
+        const { silent = false } = options;
+        const res = await adminFetch(`/api/admin/records/${encodeURIComponent(recordId)}/undo-refund`, {
+            method: 'POST'
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (!silent) {
+                showToast(data.error || '取消退回失败', 'error');
+            }
+            return { ok: false, data };
+        }
+
+        if (!silent) {
+            showToast(data.message || '已取消退回，记录已设置为成功', 'success');
+        }
+        return { ok: true, data };
+    }
+
+    async function undoRecordRefund(recordId, button, options = {}) {
+        if (!Number.isInteger(Number(recordId)) || Number(recordId) <= 0) {
+            showToast('记录 ID 无效', 'error');
+            return { ok: false };
+        }
+        if (!options.skipConfirm && !(await showAdminConfirm('确认取消退回吗？记录会设为成功，错误信息会清空，卡密会改为已使用。', {
+            title: '取消退回',
+            variant: 'success',
+            confirmText: '取消退回'
+        }))) return { ok: false };
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '处理中...';
+        }
+
+        try {
+            const result = await requestRecordUndoRefund(recordId);
+            if (result.ok) {
+                selectedRecordIds.delete(Number(recordId));
+                loadRecords();
+                loadStats();
+                loadCards();
+            }
+            return result;
+        } catch (err) {
+            showToast('取消退回失败: ' + err.message, 'error');
+            return { ok: false, data: { error: err.message } };
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '取消退回';
+            }
+            updateBulkRecordCancelButton();
         }
     }
 
@@ -4936,6 +5205,273 @@
         } finally {
             if (button) {
                 button.textContent = originalText || '批量取消';
+            }
+            updateBulkRecordCancelButton();
+        }
+    }
+
+    async function requestRecordDelete(recordIds, options = {}) {
+        const { silent = false } = options;
+        const res = await adminFetch('/api/admin/records', {
+            method: 'DELETE',
+            body: JSON.stringify({ ids: recordIds })
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (!silent) {
+                showToast(data.error || '删除兑换记录失败', 'error');
+            }
+            return { ok: false, data };
+        }
+
+        if (!silent) {
+            showToast(data.message || `已删除 ${data.deleted_count || 0} 条兑换记录`, 'success');
+        }
+        return { ok: true, data };
+    }
+
+    async function applyBulkRecordDelete() {
+        const selectedIds = Array.from(selectedRecordIds)
+            .map((recordId) => Number(recordId))
+            .filter((recordId) => {
+                const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+                return !!record;
+            });
+
+        if (!selectedIds.length) {
+            showToast('请先选择要删除的兑换记录', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        if (!(await showAdminConfirm(`确认删除选中的 ${selectedIds.length} 条兑换记录吗？删除后不会改变卡密状态。`, {
+            title: '批量删除兑换记录',
+            variant: 'danger',
+            confirmText: '批量删除'
+        }))) return;
+
+        const button = document.getElementById('bulkDeleteSelectedRecordsBtn');
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '删除中...';
+        }
+
+        try {
+            const result = await requestRecordDelete(selectedIds);
+            if (result.ok) {
+                const deletedIds = Array.isArray(result.data?.deleted_ids) ? result.data.deleted_ids.map(Number) : selectedIds;
+                deletedIds.forEach((recordId) => selectedRecordIds.delete(recordId));
+                loadRecords();
+                loadStats();
+            }
+        } catch (err) {
+            showToast('批量删除失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '批量删除';
+            }
+            updateBulkRecordCancelButton();
+        }
+    }
+
+    async function applyBulkRecordUndoRefund() {
+        const selectedIds = Array.from(selectedRecordIds).filter((recordId) => {
+            const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+            return canUndoRefundRecord(record);
+        });
+
+        if (!selectedIds.length) {
+            showToast('请先选择可取消退回的失败记录', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        if (!(await showAdminConfirm('确认批量取消退回选中的 ' + selectedIds.length + ' 条失败记录吗？记录会设为成功，错误信息会清空，卡密会改为已使用。', {
+            title: '批量取消退回',
+            variant: 'success',
+            confirmText: '批量取消退回'
+        }))) return;
+
+        const button = document.getElementById('bulkUndoRefundRecordsBtn');
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '批量处理中...';
+        }
+
+        try {
+            const res = await adminFetch('/api/admin/records/undo-refund', {
+                method: 'POST',
+                body: JSON.stringify({ ids: selectedIds })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '批量取消退回失败', 'error');
+                return;
+            }
+            const updatedIds = Array.isArray(data.updated_ids) ? data.updated_ids.map(Number) : [];
+            updatedIds.forEach((recordId) => selectedRecordIds.delete(recordId));
+            const skippedCount = Number(data.skipped_count) || 0;
+            showToast(`批量取消退回完成：成功 ${data.updated_count || 0} 条${skippedCount ? `，跳过 ${skippedCount} 条` : ''}`, skippedCount ? 'error' : 'success');
+            loadRecords();
+            loadStats();
+            loadCards();
+        } catch (err) {
+            showToast('批量取消退回失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '批量取消退回';
+            }
+            updateBulkRecordCancelButton();
+        }
+    }
+
+    async function deleteRecord(recordId, button) {
+        const numericId = Number(recordId);
+        if (!Number.isInteger(numericId) || numericId <= 0) {
+            showToast('记录 ID 无效', 'error');
+            return;
+        }
+        if (!(await showAdminConfirm('确认删除这条兑换记录吗？删除后不会改变卡密状态。', {
+            title: '删除兑换记录',
+            variant: 'danger',
+            confirmText: '删除'
+        }))) return;
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '删除中...';
+        }
+
+        try {
+            const result = await requestRecordDelete([numericId]);
+            if (result.ok) {
+                selectedRecordIds.delete(numericId);
+                loadRecords();
+                loadStats();
+            }
+        } catch (err) {
+            showToast('删除失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '删除';
+            }
+            updateBulkRecordCancelButton();
+        }
+    }
+
+    async function requestRecordRestoreFromJob(recordId, options = {}) {
+        const { silent = false } = options;
+        const res = await adminFetch(`/api/admin/records/${encodeURIComponent(recordId)}/restore-from-job`, {
+            method: 'POST'
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (!silent) {
+                showToast(data.error || '恢复到队列失败', 'error');
+            }
+            return { ok: false, data };
+        }
+
+        if (!silent) {
+            showToast(data.message || '已按上游 Job 结果恢复记录状态', 'success');
+        }
+        return { ok: true, data };
+    }
+
+    async function restoreRecordFromJob(recordId, button, options = {}) {
+        if (!Number.isInteger(Number(recordId)) || Number(recordId) <= 0) {
+            showToast('记录 ID 无效', 'error');
+            return { ok: false };
+        }
+        if (!options.skipConfirm && !(await showAdminConfirm('确认查询上游 Job，并按返回结果恢复这条已过期待核验记录吗？', {
+            title: '恢复到队列',
+            variant: 'success',
+            confirmText: '恢复到队列'
+        }))) return { ok: false };
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '恢复中...';
+        }
+
+        try {
+            const result = await requestRecordRestoreFromJob(recordId);
+            if (result.ok) {
+                selectedRecordIds.delete(Number(recordId));
+                loadRecords();
+                loadStats();
+                loadCards();
+            }
+            return result;
+        } catch (err) {
+            showToast('恢复到队列失败: ' + err.message, 'error');
+            return { ok: false, data: { error: err.message } };
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || '恢复到队列';
+            }
+        }
+    }
+
+    async function applyBulkRecordRestoreFromJob() {
+        if (!isExpiredRecordsFilterActive()) {
+            showToast('请先筛选“已过期待核验”状态', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        const selectedIds = Array.from(selectedRecordIds).filter((recordId) => {
+            const record = currentRecords.find((item) => Number(item.id) === Number(recordId));
+            return canRestoreRecordFromJob(record);
+        });
+
+        if (!selectedIds.length) {
+            showToast('请先选择带 Job ID 的已过期待核验记录', 'error');
+            updateBulkRecordCancelButton();
+            return;
+        }
+        if (!(await showAdminConfirm('确认批量查询上游 Job，并按返回结果恢复选中的 ' + selectedIds.length + ' 条记录吗？', {
+            title: '批量恢复到队列',
+            variant: 'success',
+            confirmText: '批量恢复到队列'
+        }))) return;
+
+        const button = document.getElementById('bulkRestoreFromJobRecordsBtn');
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '恢复中...';
+        }
+
+        try {
+            const res = await adminFetch('/api/admin/records/restore-from-job', {
+                method: 'POST',
+                body: JSON.stringify({ ids: selectedIds })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.error || '批量恢复到队列失败', 'error');
+                return;
+            }
+            const restoredIds = Array.isArray(data.restored_ids) ? data.restored_ids.map(Number) : [];
+            restoredIds.forEach((recordId) => selectedRecordIds.delete(recordId));
+            const failedCount = Number(data.failed_count) || 0;
+            showToast(`批量恢复完成：成功 ${data.restored_count || 0} 条${failedCount ? `，失败 ${failedCount} 条` : ''}`, failedCount ? 'error' : 'success');
+            loadRecords();
+            loadStats();
+            loadCards();
+        } catch (err) {
+            showToast('批量恢复到队列失败: ' + err.message, 'error');
+        } finally {
+            if (button) {
+                button.textContent = originalText || '批量恢复到队列';
             }
             updateBulkRecordCancelButton();
         }
@@ -5257,6 +5793,8 @@
                 : '请输入 API Key';
             document.getElementById('settingsChannelName').value = data.channelName || '';
             document.getElementById('settingsDefaultCost').value = String(Number.isFinite(Number(data.defaultCost)) ? Number(data.defaultCost) : 10);
+            const rateLimitToggle = document.getElementById('customerRateLimitsEnabled');
+            if (rateLimitToggle) rateLimitToggle.checked = data.customerRateLimitsEnabled === true;
             currentViewer = normalizeViewer({ ...(currentViewer || {}), defaultCost: data.defaultCost });
             applyDefaultCostToGenerateForm();
             applyUserNoticeToForm(data.userNotice);
@@ -5334,6 +5872,31 @@
         } finally {
             btn.disabled = false;
             btn.textContent = '💾 保存用户页展示';
+        }
+    }
+
+    async function saveCustomerRateLimitSettings() {
+        const btn = document.getElementById('saveCustomerRateLimitBtn');
+        const customerRateLimitsEnabled = document.getElementById('customerRateLimitsEnabled').checked;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 保存中...';
+        try {
+            const res = await adminFetch('/api/admin/settings', {
+                method: 'POST',
+                body: JSON.stringify({ customerRateLimitsEnabled })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showToast(data.error || '保存访问频率配置失败', 'error');
+                return;
+            }
+            document.getElementById('customerRateLimitsEnabled').checked = data.customerRateLimitsEnabled === true;
+            showToast(data.customerRateLimitsEnabled ? 'IP 频率限制已开启' : 'IP 频率限制已关闭', 'success');
+        } catch (err) {
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '保存访问频率配置';
         }
     }
 

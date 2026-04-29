@@ -54,6 +54,15 @@ async function waitForServer(port, child) {
   throw new Error('server did not become ready in time');
 }
 
+async function waitUntil(predicate, timeoutMs = 10_000, intervalMs = 50) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error('condition was not met in time');
+}
+
 async function startServer(testName, env = {}, seed = {}) {
   const cwd = await makeTempProject(testName);
   const port = await getFreePort();
@@ -338,10 +347,48 @@ async function adminMarkRecordSuccess(port, token, recordId) {
   });
 }
 
+async function adminUndoRecordRefund(port, token, recordId) {
+  return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/undo-refund`, {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token }
+  });
+}
+
 async function adminMarkRecordFailed(port, token, recordId) {
   return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/mark-failed`, {
     method: 'POST',
     headers: { 'X-Admin-Token': token }
+  });
+}
+
+async function adminRestoreRecordFromJob(port, token, recordId) {
+  return requestJson(port, `/api/admin/records/${encodeURIComponent(recordId)}/restore-from-job`, {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token }
+  });
+}
+
+async function adminBulkRestoreRecordsFromJob(port, token, ids) {
+  return requestJson(port, '/api/admin/records/restore-from-job', {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token },
+    body: JSON.stringify({ ids })
+  });
+}
+
+async function adminBulkUndoRecordRefunds(port, token, ids) {
+  return requestJson(port, '/api/admin/records/undo-refund', {
+    method: 'POST',
+    headers: { 'X-Admin-Token': token },
+    body: JSON.stringify({ ids })
+  });
+}
+
+async function adminDeleteRecords(port, token, ids) {
+  return requestJson(port, '/api/admin/records', {
+    method: 'DELETE',
+    headers: { 'X-Admin-Token': token },
+    body: JSON.stringify({ ids })
   });
 }
 
@@ -403,8 +450,10 @@ test('login rate limiting ignores spoofed x-forwarded-for headers', async () => 
 });
 
 test('trusted proxy real ip is saved on redeem records', async () => {
+  let submitHeaders = null;
   const upstream = await startMockUpstream((req, res) => {
     if (req.method === 'POST' && req.url === '/submit') {
+      submitHeaders = req.headers;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ job_id: 'job-real-ip' }));
       return;
@@ -428,12 +477,16 @@ test('trusted proxy real ip is saved on redeem records', async () => {
       })
     });
     assert.equal(redeem.res.status, 200);
+    assert.equal(redeem.data.job_id, 'job-real-ip');
+    assert.equal(redeem.data.status, 'processing');
 
     const recordsRes = await requestJson(server.port, `/api/admin/records?search=${encodeURIComponent(code)}`, {
       headers: { 'X-Admin-Token': token }
     });
     assert.equal(recordsRes.res.status, 200);
     assert.equal(recordsRes.data.records[0].ip_address, '203.0.113.66');
+    assert.equal(submitHeaders['x-forwarded-for'], '203.0.113.66');
+    assert.equal(submitHeaders['x-real-ip'], '203.0.113.66');
   } finally {
     await server.stop();
     await upstream.stop();
@@ -517,6 +570,36 @@ test('admin settings can configure public user page channel name', async () => {
     const status = await requestJson(server.port, '/api/status');
     assert.equal(status.res.status, 200);
     assert.equal(status.data.channelName, '91');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin settings can configure customer ip rate limits', async () => {
+  const server = await startServer('customer ip rate limit settings');
+
+  try {
+    const token = await loginAdmin(server.port);
+
+    const initial = await requestJson(server.port, '/api/admin/settings', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(initial.res.status, 200);
+    assert.equal(initial.data.customerRateLimitsEnabled, false);
+
+    const saved = await requestJson(server.port, '/api/admin/settings', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ customerRateLimitsEnabled: true })
+    });
+    assert.equal(saved.res.status, 200);
+    assert.equal(saved.data.customerRateLimitsEnabled, true);
+
+    const adminSettings = await requestJson(server.port, '/api/admin/settings', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(adminSettings.res.status, 200);
+    assert.equal(adminSettings.data.customerRateLimitsEnabled, true);
   } finally {
     await server.stop();
   }
@@ -1129,6 +1212,79 @@ test('admin records can be searched by card code job id email ip or error', asyn
   }
 });
 
+test('admin records support structured presence filters for job id manual review and errors', async () => {
+  const server = await startServer('admin records presence filters', {}, {
+    records: [
+      {
+        id: 1,
+        card_code: 'FILTER-JOB-YES-0001',
+        card_type: 'plus',
+        email: 'job@example.com',
+        job_id: 'job-present',
+        status: 'done',
+        error_message: null,
+        created_at: '2026/4/23 12:00:00',
+        ip_address: '203.0.113.10'
+      },
+      {
+        id: 2,
+        card_code: 'FILTER-JOB-NO-0002',
+        card_type: 'plus',
+        email: 'manual@example.com',
+        job_id: null,
+        status: 'unknown',
+        error_message: '提交状态不确定',
+        needs_manual_review: true,
+        manual_review_reason: '需要人工核验',
+        created_at: '2026/4/23 12:01:00',
+        ip_address: '203.0.113.20'
+      },
+      {
+        id: 3,
+        card_code: 'FILTER-FAILED-0003',
+        card_type: 'pro',
+        email: 'failed@example.com',
+        job_id: 'job-failed',
+        status: 'failed',
+        error_message: '卡密已退回',
+        created_at: '2026/4/23 12:02:00',
+        ip_address: '203.0.113.30'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const auth = { headers: { 'X-Admin-Token': token } };
+
+    const withJob = await requestJson(server.port, '/api/admin/records?has_job_id=yes&pageSize=100', auth);
+    assert.equal(withJob.res.status, 200);
+    assert.deepEqual(withJob.data.records.map((record) => record.id), [3, 1]);
+
+    const withoutJob = await requestJson(server.port, '/api/admin/records?has_job_id=no&pageSize=100', auth);
+    assert.equal(withoutJob.res.status, 200);
+    assert.deepEqual(withoutJob.data.records.map((record) => record.id), [2]);
+
+    const manualReview = await requestJson(server.port, '/api/admin/records?manual_review=yes&pageSize=100', auth);
+    assert.equal(manualReview.res.status, 200);
+    assert.deepEqual(manualReview.data.records.map((record) => record.id), [2]);
+
+    const withoutManualReview = await requestJson(server.port, '/api/admin/records?manual_review=no&pageSize=100', auth);
+    assert.equal(withoutManualReview.res.status, 200);
+    assert.deepEqual(withoutManualReview.data.records.map((record) => record.id), [3, 1]);
+
+    const withError = await requestJson(server.port, '/api/admin/records?has_error=yes&pageSize=100', auth);
+    assert.equal(withError.res.status, 200);
+    assert.deepEqual(withError.data.records.map((record) => record.id), [3, 2]);
+
+    const withoutError = await requestJson(server.port, '/api/admin/records?has_error=no&pageSize=100', auth);
+    assert.equal(withoutError.res.status, 200);
+    assert.deepEqual(withoutError.data.records.map((record) => record.id), [1]);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('super admin can create a sub admin who logs in with username and generates attributed cards', async () => {
   const server = await startServer('sub admin create and login');
 
@@ -1308,6 +1464,104 @@ test('sub admins can only access their own cards and records and cannot open adm
   }
 });
 
+test('admin can batch delete only manageable redeem records', async () => {
+  const server = await startServer('admin batch delete redeem records', {}, {
+    settings: {
+      adminPassword: 'correct horse battery staple',
+      apiKey: '',
+      baseUrl: '',
+      subAdmins: [
+        {
+          id: 'sub-1',
+          username: 'alice_ops',
+          passwordHash: 'plain:sub-admin-pass-123',
+          status: 'active',
+          created_at: '2026/4/24 10:00:00'
+        }
+      ]
+    },
+    cards: [
+      {
+        id: 1,
+        code: 'CDK-PLUS-DELAA-AAAAA-AAAAA-AAAAA-AAAAA',
+        type: 'plus',
+        status: 'used',
+        created_at: '2026/4/24 10:10:00',
+        used_at: '2026/4/24 10:30:00',
+        used_by: 'hash-sub',
+        batch_id: 'sub-a',
+        created_by_username: 'alice_ops',
+        created_by_role: 'sub_admin'
+      },
+      {
+        id: 2,
+        code: 'CDK-PRO-DELRR-BBBBB-BBBBB-BBBBB-BBBBB',
+        type: 'pro',
+        status: 'used',
+        created_at: '2026/4/24 10:20:00',
+        used_at: '2026/4/24 10:40:00',
+        used_by: 'hash-root',
+        batch_id: 'root-a',
+        created_by_username: 'super_admin',
+        created_by_role: 'super_admin'
+      }
+    ],
+    records: [
+      {
+        id: 11,
+        card_code: 'CDK-PLUS-DELAA-AAAAA-AAAAA-AAAAA-AAAAA',
+        card_type: 'plus',
+        job_id: 'job-delete-sub',
+        status: 'done',
+        error_message: null,
+        created_at: '2026/4/24 10:30:00',
+        ip_address: '203.0.113.10',
+        created_by_username: 'alice_ops',
+        created_by_role: 'sub_admin'
+      },
+      {
+        id: 12,
+        card_code: 'CDK-PRO-DELRR-BBBBB-BBBBB-BBBBB-BBBBB',
+        card_type: 'pro',
+        job_id: 'job-delete-root',
+        status: 'failed',
+        error_message: 'manual failure',
+        created_at: '2026/4/24 10:40:00',
+        ip_address: '203.0.113.20',
+        created_by_username: 'super_admin',
+        created_by_role: 'super_admin'
+      }
+    ]
+  });
+
+  try {
+    const subLogin = await loginSubAdmin(server.port, 'alice_ops', 'sub-admin-pass-123');
+    assert.equal(subLogin.res.status, 200);
+
+    const deleted = await adminDeleteRecords(server.port, subLogin.data.token, [11, 12, 999]);
+    assert.equal(deleted.res.status, 200);
+    assert.equal(deleted.data.requested_count, 3);
+    assert.equal(deleted.data.deleted_count, 1);
+    assert.equal(deleted.data.skipped_count, 2);
+    assert.deepEqual(deleted.data.deleted_ids, [11]);
+
+    const subRecords = await requestJson(server.port, '/api/admin/records?pageSize=100', {
+      headers: { 'X-Admin-Token': subLogin.data.token }
+    });
+    assert.equal(subRecords.res.status, 200);
+    assert.equal(subRecords.data.total, 0);
+
+    const adminToken = await loginAdmin(server.port);
+    const allRecords = await requestJson(server.port, '/api/admin/records?pageSize=100', {
+      headers: { 'X-Admin-Token': adminToken }
+    });
+    assert.equal(allRecords.res.status, 200);
+    assert.deepEqual(allRecords.data.records.map((record) => record.id), [12]);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('admin cards support created and used minute range filtering', async () => {
   const server = await startServer('admin cards datetime range filters', {}, {
     cards: [
@@ -1366,6 +1620,91 @@ test('admin cards support created and used minute range filtering', async () => 
   }
 });
 
+test('admin cards support remark filtering and disabling matching unused cards', async () => {
+  const server = await startServer('admin cards remark filter bulk disable', {}, {
+    cards: [
+      {
+        id: 1,
+        code: 'CDK-PLUS-REMRK-AAAAA-AAAAA-AAAAA-AAAAA',
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:10:00',
+        used_at: null,
+        used_by: null,
+        remark: '退款批次-A',
+        batch_id: 'remark-a'
+      },
+      {
+        id: 2,
+        code: 'CDK-PRO-REMRK-BBBBB-BBBBB-BBBBB-BBBBB',
+        type: 'pro',
+        status: 'unused',
+        created_at: '2026/4/24 10:11:00',
+        used_at: null,
+        used_by: null,
+        remark: '退款批次-A',
+        batch_id: 'remark-a'
+      },
+      {
+        id: 3,
+        code: 'CDK-PLUS-REMRK-CCCCC-CCCCC-CCCCC-CCCCC',
+        type: 'plus',
+        status: 'used',
+        created_at: '2026/4/24 10:12:00',
+        used_at: '2026/4/24 10:30:00',
+        used_by: 'hash-used',
+        remark: '退款批次-A',
+        batch_id: 'remark-a'
+      },
+      {
+        id: 4,
+        code: 'CDK-PLUS-OTHER-DDDDD-DDDDD-DDDDD-DDDDD',
+        type: 'plus',
+        status: 'unused',
+        created_at: '2026/4/24 10:13:00',
+        used_at: null,
+        used_by: null,
+        remark: '其他批次',
+        batch_id: 'remark-b'
+      }
+    ]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const filtered = await requestJson(
+      server.port,
+      `/api/admin/cards?remark=${encodeURIComponent('退款批次-A')}&pageSize=100`,
+      { headers: { 'X-Admin-Token': token } }
+    );
+    assert.equal(filtered.res.status, 200);
+    assert.equal(filtered.data.total, 3);
+    assert.ok(filtered.data.cards.every((card) => card.remark === '退款批次-A'));
+
+    const disabled = await requestJson(server.port, '/api/admin/cards/disable-by-remark', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ remark: '退款批次-A' })
+    });
+    assert.equal(disabled.res.status, 200);
+    assert.equal(disabled.data.disabled, 2);
+    assert.equal(disabled.data.matched, 3);
+    assert.equal(disabled.data.skipped, 1);
+
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?pageSize=100', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(cardsRes.res.status, 200);
+    const statuses = new Map(cardsRes.data.cards.map((card) => [card.code, card.status]));
+    assert.equal(statuses.get('CDK-PLUS-REMRK-AAAAA-AAAAA-AAAAA-AAAAA'), 'disabled');
+    assert.equal(statuses.get('CDK-PRO-REMRK-BBBBB-BBBBB-BBBBB-BBBBB'), 'disabled');
+    assert.equal(statuses.get('CDK-PLUS-REMRK-CCCCC-CCCCC-CCCCC-CCCCC'), 'used');
+    assert.equal(statuses.get('CDK-PLUS-OTHER-DDDDD-DDDDD-DDDDD-DDDDD'), 'unused');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('uncertain submit success keeps card locked for manual review instead of refunding', async () => {
   const upstream = await startMockUpstream((req, res) => {
     if (req.method === 'POST' && req.url === '/submit') {
@@ -1399,8 +1738,8 @@ test('uncertain submit success keeps card locked for manual review instead of re
   }
 });
 
-test('submit network errors keep detailed upstream diagnostics without job id', async () => {
-  const server = await startServer('submit network error diagnostics');
+test('submit network errors fail and refund without manual lock', async () => {
+  const server = await startServer('submit network error refund');
   const deadPort = await getFreePort();
 
   try {
@@ -1410,17 +1749,18 @@ test('submit network errors keep detailed upstream diagnostics without job id', 
 
     const redeem = await redeemCard(server.port, code);
     assert.equal(redeem.res.status, 502);
-    assert.equal(redeem.data.status, 'unknown');
+    assert.equal(redeem.data.status, 'failed');
 
     const query = await queryCard(server.port, code);
     assert.equal(query.res.status, 200);
-    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.status, 'unused');
     assert.equal(query.data.job_id, null);
-    assert.equal(query.data.redeem_status, 'unknown');
-    assert.equal(query.data.needs_manual_review, true);
-    assert.equal(query.data.manual_review_stage, 'submit_network_error');
-    assert.match(query.data.upstream_detail || '', /fetch failed/i);
-    assert.match(query.data.upstream_detail || '', /ECONNREFUSED|connect/i);
+    assert.equal(query.data.redeem_status, 'failed');
+    assert.equal(query.data.needs_manual_review, false);
+    assert.equal(query.data.manual_review_stage, null);
+    assert.match(query.data.redeem_error || '', /提交请求失败，卡密已退回/);
+    assert.match(query.data.redeem_error || '', /fetch failed/i);
+    assert.match(query.data.redeem_error || '', /ECONNREFUSED|connect/i);
   } finally {
     await server.stop();
   }
@@ -1428,18 +1768,21 @@ test('submit network errors keep detailed upstream diagnostics without job id', 
 
 test('submit TLS invalid session id errors retry five times then fail and refund without manual lock', async () => {
   const source = await fs.readFile(path.join(REPO_ROOT, 'server.js'), 'utf-8');
-  assert.match(source, /SUBMIT_TLS_MAX_ATTEMPTS\s*=\s*5/);
+  assert.match(source, /SUBMIT_RETRY_MAX_ATTEMPTS\s*=\s*5/);
   assert.match(source, /TLS_SUBMIT_RETRY_CODES\s*=\s*new Set\(\['ERR_SSL_INVALID_SESSION_ID'\]\)/);
-  assert.match(source, /isRetryableSubmitTlsError/);
+  assert.match(source, /SUBMIT_TIMEOUT_RETRY_CODES\s*=\s*new Set\(\[[\s\S]*'ETIMEDOUT'[\s\S]*'UND_ERR_CONNECT_TIMEOUT'[\s\S]*'UND_ERR_HEADERS_TIMEOUT'[\s\S]*'UND_ERR_BODY_TIMEOUT'[\s\S]*\]\)/);
+  assert.match(source, /isRetryableSubmitError/);
   assert.match(source, /submitUpstreamRedeem/);
-  assert.match(source, /attempt\s*<\s*SUBMIT_TLS_MAX_ATTEMPTS/);
-  assert.match(source, /attempt\s*<\s*SUBMIT_TLS_MAX_ATTEMPTS\s*-\s*1/);
-  assert.match(source, /markSubmitTlsExhaustedFailed/);
+  assert.match(source, /attempt\s*<\s*SUBMIT_RETRY_MAX_ATTEMPTS/);
+  assert.match(source, /attempt\s*<\s*SUBMIT_RETRY_MAX_ATTEMPTS\s*-\s*1/);
+  assert.match(source, /markRetryableSubmitExhaustedFailed/);
   assert.match(source, /连续 5 次 TLS 握手失败/);
+  assert.match(source, /连续 5 次提交超时/);
   assert.match(source, /refundCardForRecord\(record\)/);
   assert.match(source, /clearManualReviewDetails\(record\)/);
   assert.doesNotMatch(source, /manual_review_stage:\s*'submit_tls_handshake_error'/);
   assert.doesNotMatch(source, /ECONNREFUSED'[\s\S]*TLS_SUBMIT_RETRY_CODES/);
+  assert.doesNotMatch(source, /ECONNRESET'[\s\S]*SUBMIT_TIMEOUT_RETRY_CODES/);
 });
 
 test('submit queue full refunds the card without manual review', async () => {
@@ -1468,6 +1811,58 @@ test('submit queue full refunds the card without manual review', async () => {
     assert.equal(query.data.redeem_status, 'failed');
     assert.equal(query.data.needs_manual_review, false);
     assert.equal(query.data.upstream_status_code, null);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('submit html http errors fail and refund without manual review', async () => {
+  let submitCount = 0;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'POST' && req.url === '/submit') {
+      submitCount += 1;
+      res.writeHead(502, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Access Denied | Localtonet WAF</title></head><body>Bad gateway</body></html>');
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('submit html http error refunds card');
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+    const code = await generateOneCard(server.port, token);
+
+    const redeem = await redeemCard(server.port, code);
+    assert.equal(redeem.res.status, 502);
+    assert.equal(redeem.data.status, 'failed');
+    assert.equal(redeem.data.error, '队伍已满500，未入队，当人数少于500时，可入队');
+    assert.doesNotMatch(redeem.data.error, /DOCTYPE|<html|<head|<style/i);
+
+    const query = await queryCard(server.port, code);
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'unused');
+    assert.equal(query.data.job_id, null);
+    assert.equal(query.data.redeem_status, 'failed');
+    assert.equal(query.data.needs_manual_review, false);
+    assert.equal(query.data.manual_review_stage, null);
+    assert.equal(query.data.redeem_error, '队伍已满500，未入队，当人数少于500时，可入队');
+    assert.doesNotMatch(query.data.redeem_error || '', /提交状态不确定/);
+    assert.doesNotMatch(query.data.redeem_error || '', /DOCTYPE|<html|<head|<style/i);
+
+    const secondCode = await generateOneCard(server.port, token);
+    const secondRedeem = await redeemCard(server.port, secondCode);
+    assert.equal(secondRedeem.res.status, 429);
+    assert.equal(secondRedeem.data.status, 'failed');
+    assert.equal(secondRedeem.data.error, '队伍已满500，未入队，当人数少于500时，可入队');
+    assert.equal(submitCount, 1);
+
+    const secondQuery = await queryCard(server.port, secondCode);
+    assert.equal(secondQuery.res.status, 200);
+    assert.equal(secondQuery.data.status, 'unused');
+    assert.equal(secondQuery.data.redeem_status, null);
   } finally {
     await server.stop();
     await upstream.stop();
@@ -1767,10 +2162,91 @@ test('admin batch card query returns multiple card states through the admin endp
   }
 });
 
+test('public customer endpoints do not rate limit repeated identical parameters when disabled', async () => {
+  const server = await startServer('public repeated customer params without ip limits', {
+    CUSTOMER_RATE_LIMITS_ENABLED: '0'
+  });
+
+  try {
+    for (let i = 0; i < 12; i += 1) {
+      const result = await queryCard(server.port, 'CDK-PLUS-RATEA-SAMEA-AAAAA-AAAAA-AAAAA');
+      assert.notEqual(result.res.status, 429);
+    }
+
+    for (let i = 0; i < 12; i += 1) {
+      const result = await queryCardsBatch(server.port, ['CDK-PLUS-RATEB-SAMEB-BBBBB-BBBBB-BBBBB']);
+      assert.notEqual(result.res.status, 429);
+    }
+
+    for (let i = 0; i < 12; i += 1) {
+      const result = await redeemCard(server.port, 'CDK-PLUS-RATEC-SAMEC-CCCCC-CCCCC-CCCCC');
+      assert.notEqual(result.res.status, 429);
+    }
+  } finally {
+    await server.stop();
+  }
+});
+
+test('public customer endpoints do not rate limit many different parameters when disabled', async () => {
+  const server = await startServer('public varied customer params without ip limits', {
+    CUSTOMER_RATE_LIMITS_ENABLED: '0'
+  });
+
+  try {
+    for (let i = 0; i < 35; i += 1) {
+      const result = await queryCard(server.port, `CDK-PLUS-VARYA-${String(i).padStart(2, '0')}AAA-AAAAA-AAAAA-AAAAA`);
+      assert.notEqual(result.res.status, 429);
+    }
+  } finally {
+    await server.stop();
+  }
+});
+
+test('public customer endpoints rate limit by ip when enabled in system settings', async () => {
+  const repeatedServer = await startServer('public repeated customer ip rate limits enabled', {}, {
+    settings: { customerRateLimitsEnabled: true }
+  });
+  const variedServer = await startServer('public varied customer ip rate limits enabled', {}, {
+    settings: { customerRateLimitsEnabled: true }
+  });
+
+  try {
+    for (let i = 0; i < 10; i += 1) {
+      const result = await queryCard(repeatedServer.port, 'CDK-PLUS-RATEA-SAMEA-AAAAA-AAAAA-AAAAA');
+      assert.notEqual(result.res.status, 429);
+    }
+    const limitedQuery = await queryCard(repeatedServer.port, 'CDK-PLUS-RATEA-SAMEA-AAAAA-AAAAA-AAAAA');
+    assert.equal(limitedQuery.res.status, 429);
+
+    for (let i = 0; i < 30; i += 1) {
+      const result = await queryCard(variedServer.port, `CDK-PLUS-VARYA-${String(i).padStart(2, '0')}AAA-AAAAA-AAAAA-AAAAA`);
+      assert.notEqual(result.res.status, 429);
+    }
+    const variedLimitedQuery = await queryCard(variedServer.port, 'CDK-PLUS-VARYA-LIMIT-AAAAA-AAAAA-AAAAA');
+    assert.equal(variedLimitedQuery.res.status, 429);
+  } finally {
+    await repeatedServer.stop();
+    await variedServer.stop();
+  }
+});
+
 test('query page renders redeem status even when the card was refunded', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
   assert.doesNotMatch(html, /const\s+redeemRows\s*=\s*data\.used_at\s*\?/);
   assert.match(html, /const\s+redeemRows\s*=\s*data\.redeem_status\s*\?/);
+});
+
+test('redeem page does not invent a job id for manual-review submit responses', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.doesNotMatch(html, /job_id:\s*data\.job_id\s*\|\|\s*['"]unknown['"]/);
+  assert.match(html, /job_id:\s*data\.job_id\s*\|\|\s*null/);
+});
+
+test('user home queue summary can fall back to any supported workflow', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /QUEUE_SUMMARY_WORKFLOW_ORDER/);
+  assert.match(html, /\['plus', 'plus_1y', 'pro', 'pro_20x'\]/);
+  assert.doesNotMatch(html, /if \(!queues\?\.plus\)/);
 });
 
 test('user page exposes batch card query controls and results table', async () => {
@@ -1935,6 +2411,13 @@ test('admin and user pages expose channel name branding controls', async () => {
   assert.match(userHtml, /brandTitle\(\)/);
 });
 
+test('admin page exposes customer ip rate limit controls in system settings', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="customerRateLimitsEnabled"/);
+  assert.match(html, /saveCustomerRateLimitSettings/);
+  assert.match(html, /customerRateLimitsEnabled/);
+});
+
 test('admin dashboard exposes redeem summary range controls and summary grid', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /redeemSummaryPanel/);
@@ -1988,6 +2471,30 @@ test('admin records page exposes bulk cancel selection controls', async () => {
   assert.match(html, /批量取消/);
 });
 
+test('admin records page exposes bulk delete selection controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /bulkDeleteSelectedRecordsBtn/);
+  assert.match(html, /applyBulkRecordDelete/);
+  assert.match(html, /requestRecordDelete/);
+  assert.match(html, /\/api\/admin\/records/);
+  assert.match(html, /method:\s*'DELETE'/);
+  assert.match(html, /批量删除/);
+});
+
+test('admin records failed rows expose undo refund instead of disabled cancel', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /bulkUndoRefundRecordsBtn/);
+  assert.match(html, /canUndoRefundRecord/);
+  assert.match(html, /recordUndoRefundButton/);
+  assert.match(html, /undoRecordRefund\(/);
+  assert.match(html, /applyBulkRecordUndoRefund/);
+  assert.match(html, /\/api\/admin\/records\/undo-refund/);
+  assert.match(html, /\/api\/admin\/records\/\$\{encodeURIComponent\(recordId\)\}\/undo-refund/);
+  assert.match(html, /取消退回/);
+  assert.match(html, /if \(canCancelRecord\(record\)\)/);
+  assert.doesNotMatch(html, /canMarkRecordFailed\(record\)\s*\?\s*recordMarkFailedButton\(record\)\s*:\s*recordCancelButton\(record\)/);
+});
+
 test('admin records expired filter exposes mark failed controls instead of cancel controls', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /bulkMarkFailedRecordsBtn/);
@@ -1997,6 +2504,17 @@ test('admin records expired filter exposes mark failed controls instead of cance
   assert.match(html, /\/api\/admin\/records\/\$\{encodeURIComponent\(recordId\)\}\/mark-failed/);
   assert.match(html, /设为失败/);
   assert.match(html, /recordsFilterStatus'\)\?\.value\s*===\s*'expired'/);
+});
+
+test('admin records expired filter exposes restore from job controls', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /bulkRestoreFromJobRecordsBtn/);
+  assert.match(html, /applyBulkRecordRestoreFromJob/);
+  assert.match(html, /recordRestoreFromJobButton/);
+  assert.match(html, /requestRecordRestoreFromJob/);
+  assert.match(html, /\/api\/admin\/records\/\$\{encodeURIComponent\(recordId\)\}\/restore-from-job/);
+  assert.match(html, /\/api\/admin\/records\/restore-from-job/);
+  assert.match(html, /恢复到队列/);
 });
 
 test('admin records keep cancel available for manual-review rows without job id', async () => {
@@ -2464,6 +2982,40 @@ test('card queue endpoint proxies upstream queue data for the requested workflow
   }
 });
 
+test('card queue endpoint falls back to fake full queue when upstream is blocked', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/queue') {
+      res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!DOCTYPE html><html><head><title>Access Denied | Localtonet WAF</title></head><body>blocked</body></html>');
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('queue fallback fake full queue', {}, {
+    settings: { apiKey: 'test-api-key', baseUrl: upstream.baseUrl }
+  });
+
+  try {
+    const allQueues = await requestJson(server.port, '/api/card/queue');
+    assert.equal(allQueues.res.status, 200);
+    assert.equal(allQueues.data.fallback, true);
+    assert.equal(allQueues.data.queues.plus.pending, 500);
+    assert.equal(allQueues.data.queues.plus_1y.pending, 500);
+    assert.equal(allQueues.data.queues.pro.pending, 500);
+    assert.equal(allQueues.data.queues.pro_20x.pending, 500);
+
+    const plusQueue = await requestJson(server.port, '/api/card/queue?workflow=plus');
+    assert.equal(plusQueue.res.status, 200);
+    assert.equal(plusQueue.data.fallback, true);
+    assert.equal(plusQueue.data.workflow, 'plus');
+    assert.equal(plusQueue.data.queue.pending, 500);
+    assert.equal(plusQueue.data.queue.estimated_next_wait_seconds, 3000);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
 test('admin cancel refunds manual-review records without job id by local record id', async () => {
   const server = await startServer('admin cancel refunds local manual review record', {}, {
     cards: [{
@@ -2646,6 +3198,165 @@ test('admin can mark expired manual-review records as failed and refund the card
   }
 });
 
+test('admin can undo refunded failed records back to success and mark cards used', async () => {
+  const server = await startServer('admin undo refunded failed record', {}, {
+    cards: [{
+      code: 'UNDO-REFUND-FAILED-0001',
+      type: 'plus',
+      status: 'unused',
+      created_at: '2026/4/24 12:00:00',
+      used_at: null,
+      used_by: null,
+      used_email: null
+    }],
+    records: [{
+      id: 29,
+      card_code: 'UNDO-REFUND-FAILED-0001',
+      card_type: 'plus',
+      email: 'undo@example.com',
+      access_token_hash: 'hash-undo',
+      job_id: 'job-undo-refund',
+      status: 'failed',
+      error_message: '管理员人工设为失败，卡密已退回',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: false,
+      manual_review_reason: null,
+      manual_review_stage: null,
+      manual_resolution: 'failed',
+      manual_resolved_by: 'super_admin',
+      upstream_status_code: null,
+      upstream_detail: null,
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const undone = await adminUndoRecordRefund(server.port, token, 29);
+    assert.equal(undone.res.status, 200);
+    assert.equal(undone.data.status, 'done');
+    assert.equal(undone.data.record.status, 'done');
+    assert.equal(undone.data.record.error_message, null);
+    assert.equal(undone.data.record.needs_manual_review, false);
+    assert.equal(undone.data.record.manual_resolution, 'success');
+    assert.equal(undone.data.record.manual_resolved_by, 'super_admin');
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?search=UNDO-REFUND-FAILED-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    assert.equal(recordsRes.data.records[0].status, 'done');
+    assert.equal(recordsRes.data.records[0].error_message, null);
+
+    const query = await queryCard(server.port, 'UNDO-REFUND-FAILED-0001');
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.email, 'undo@example.com');
+    assert.equal(query.data.redeem_status, 'done');
+    assert.equal(query.data.redeem_error, null);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('admin can bulk undo refunded failed records and skips non-failed records', async () => {
+  const server = await startServer('admin bulk undo refunded failed records', {}, {
+    cards: [{
+      code: 'BULK-UNDO-REFUND-0001',
+      type: 'plus',
+      status: 'unused',
+      created_at: '2026/4/24 12:00:00',
+      used_at: null,
+      used_by: null,
+      used_email: null
+    }, {
+      code: 'BULK-UNDO-REFUND-0002',
+      type: 'pro',
+      status: 'unused',
+      created_at: '2026/4/24 12:00:00',
+      used_at: null,
+      used_by: null,
+      used_email: null
+    }, {
+      code: 'BULK-UNDO-SKIP-0003',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:02:00',
+      used_by: 'hash-skip',
+      used_email: 'skip@example.com'
+    }],
+    records: [{
+      id: 61,
+      card_code: 'BULK-UNDO-REFUND-0001',
+      card_type: 'plus',
+      email: 'one@example.com',
+      access_token_hash: 'hash-one',
+      job_id: 'job-bulk-undo-one',
+      status: 'failed',
+      error_message: '管理员人工设为失败，卡密已退回',
+      workflow: 'plus',
+      created_at: '2026/4/24 12:01:00'
+    }, {
+      id: 62,
+      card_code: 'BULK-UNDO-REFUND-0002',
+      card_type: 'pro',
+      email: 'two@example.com',
+      access_token_hash: 'hash-two',
+      job_id: 'job-bulk-undo-two',
+      status: 'failed',
+      error_message: '提交请求失败，卡密已退回',
+      workflow: 'pro',
+      created_at: '2026/4/24 12:02:00'
+    }, {
+      id: 63,
+      card_code: 'BULK-UNDO-SKIP-0003',
+      card_type: 'plus',
+      email: 'skip@example.com',
+      access_token_hash: 'hash-skip',
+      job_id: 'job-bulk-undo-skip',
+      status: 'pending',
+      error_message: null,
+      workflow: 'plus',
+      created_at: '2026/4/24 12:03:00'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    const undone = await adminBulkUndoRecordRefunds(server.port, token, [61, 62, 63]);
+    assert.equal(undone.res.status, 200);
+    assert.equal(undone.data.updated_count, 2);
+    assert.equal(undone.data.skipped_count, 1);
+    assert.deepEqual(undone.data.updated_ids, [61, 62]);
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?pageSize=100&search=BULK-UNDO', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    const recordsById = Object.fromEntries(recordsRes.data.records.map((record) => [record.id, record]));
+    assert.equal(recordsById[61].status, 'done');
+    assert.equal(recordsById[61].error_message, null);
+    assert.equal(recordsById[62].status, 'done');
+    assert.equal(recordsById[62].error_message, null);
+    assert.equal(recordsById[63].status, 'pending');
+
+    const cardsRes = await requestJson(server.port, '/api/admin/cards?pageSize=100&search=BULK-UNDO', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(cardsRes.res.status, 200);
+    const cardsByCode = Object.fromEntries(cardsRes.data.cards.map((card) => [card.code, card]));
+    assert.equal(cardsByCode['BULK-UNDO-REFUND-0001'].status, 'used');
+    assert.equal(cardsByCode['BULK-UNDO-REFUND-0002'].status, 'used');
+    assert.equal(cardsByCode['BULK-UNDO-SKIP-0003'].status, 'used');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('admin mark failed keeps card used when the same card already has a successful redemption', async () => {
   const server = await startServer('admin mark expired failed preserves successful card', {}, {
     cards: [{
@@ -2710,6 +3421,8 @@ test('admin mark failed keeps card used when the same card already has a success
     assert.equal(marked.data.record.status, 'failed');
     assert.equal(marked.data.record.needs_manual_review, false);
     assert.match(marked.data.record.error_message, /已有成功兑换记录|未退回卡密/);
+    assert.match(marked.data.message, /未退回卡密/);
+    assert.doesNotMatch(marked.data.message, /卡密已退回/);
 
     const query = await queryCard(server.port, 'EXPIRED-MARK-FAILED-DONE-0001');
     assert.equal(query.res.status, 200);
@@ -2719,6 +3432,206 @@ test('admin mark failed keeps card used when the same card already has a success
     assert.equal(query.data.needs_manual_review, false);
   } finally {
     await server.stop();
+  }
+});
+
+test('admin can restore expired manual-review records from upstream job status', async () => {
+  let receivedHeaders = null;
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.method === 'GET' && req.url === '/job/job-expired-restore?wait=0') {
+      receivedHeaders = req.headers;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: 'job-expired-restore',
+        status: 'pending',
+        workflow: 'plus',
+        queue_position: 2,
+        estimated_wait_seconds: 360
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('admin restore expired record from job', {}, {
+    cards: [{
+      code: 'EXPIRED-RESTORE-JOB-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token',
+      used_email: 'user@example.com'
+    }],
+    records: [{
+      id: 41,
+      card_code: 'EXPIRED-RESTORE-JOB-0001',
+      card_type: 'plus',
+      created_by_username: null,
+      created_by_role: null,
+      email: 'user@example.com',
+      access_token_hash: 'hash-token',
+      job_id: 'job-expired-restore',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+
+    const restored = await adminRestoreRecordFromJob(server.port, token, 41);
+    assert.equal(restored.res.status, 200);
+    assert.equal(restored.data.status, 'pending');
+    assert.equal(restored.data.record.status, 'pending');
+    assert.equal(restored.data.record.needs_manual_review, false);
+    assert.equal(restored.data.record.manual_review_reason, null);
+    assert.equal(restored.data.record.queue_position, 2);
+    assert.equal(restored.data.record.estimated_wait_seconds, 360);
+    assert.equal(receivedHeaders['x-api-key'], 'test-api-key');
+
+    const expiredRecords = await requestJson(server.port, '/api/admin/records?status=expired&search=EXPIRED-RESTORE-JOB-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(expiredRecords.res.status, 200);
+    assert.equal(expiredRecords.data.total, 0);
+
+    const pendingRecords = await requestJson(server.port, '/api/admin/records?status=pending&search=EXPIRED-RESTORE-JOB-0001', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(pendingRecords.res.status, 200);
+    assert.equal(pendingRecords.data.total, 1);
+    assert.equal(pendingRecords.data.records[0].needs_manual_review, false);
+    assert.equal(pendingRecords.data.records[0].error_message, null);
+
+    const query = await queryCard(server.port, 'EXPIRED-RESTORE-JOB-0001');
+    assert.equal(query.res.status, 200);
+    assert.equal(query.data.status, 'used');
+    assert.equal(query.data.redeem_status, 'pending');
+    assert.equal(query.data.needs_manual_review, false);
+    assert.equal(query.data.queue_position, 2);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('admin can bulk restore expired manual-review records from upstream job status', async () => {
+  const upstreamJobs = {
+    'job-expired-bulk-one': {
+      job_id: 'job-expired-bulk-one',
+      status: 'pending',
+      workflow: 'plus',
+      queue_position: 1,
+      estimated_wait_seconds: 180
+    },
+    'job-expired-bulk-two': {
+      job_id: 'job-expired-bulk-two',
+      status: 'processing',
+      workflow: 'pro_20x',
+      queue_position: 0,
+      estimated_wait_seconds: 90
+    }
+  };
+  const upstream = await startMockUpstream((req, res) => {
+    const match = req.url.match(/^\/job\/([^?]+)\?wait=0$/);
+    if (req.method === 'GET' && match && upstreamJobs[match[1]]) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(upstreamJobs[match[1]]));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('admin bulk restore expired records from job', {}, {
+    cards: [{
+      code: 'EXPIRED-BULK-RESTORE-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:01:00',
+      used_by: 'hash-token-one',
+      used_email: 'one@example.com'
+    }, {
+      code: 'EXPIRED-BULK-RESTORE-0002',
+      type: 'pro_20x',
+      status: 'used',
+      created_at: '2026/4/24 12:00:00',
+      used_at: '2026/4/24 12:02:00',
+      used_by: 'hash-token-two',
+      used_email: 'two@example.com'
+    }],
+    records: [{
+      id: 51,
+      card_code: 'EXPIRED-BULK-RESTORE-0001',
+      card_type: 'plus',
+      email: 'one@example.com',
+      access_token_hash: 'hash-token-one',
+      job_id: 'job-expired-bulk-one',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: '2026/4/24 12:01:00',
+      ip_address: '::ffff:172.22.0.1'
+    }, {
+      id: 52,
+      card_code: 'EXPIRED-BULK-RESTORE-0002',
+      card_type: 'pro_20x',
+      email: 'two@example.com',
+      access_token_hash: 'hash-token-two',
+      job_id: 'job-expired-bulk-two',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'pro_20x',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: '2026/4/24 12:02:00',
+      ip_address: '::ffff:172.22.0.2'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await configureUpstream(server.port, token, upstream.baseUrl);
+
+    const restored = await adminBulkRestoreRecordsFromJob(server.port, token, [51, 52]);
+    assert.equal(restored.res.status, 200);
+    assert.equal(restored.data.restored_count, 2);
+    assert.deepEqual(restored.data.restored_ids, [51, 52]);
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?pageSize=100&search=EXPIRED-BULK-RESTORE', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    const byId = Object.fromEntries(recordsRes.data.records.map((record) => [record.id, record]));
+    assert.equal(byId[51].status, 'pending');
+    assert.equal(byId[51].needs_manual_review, false);
+    assert.equal(byId[52].status, 'processing');
+    assert.equal(byId[52].needs_manual_review, false);
+  } finally {
+    await server.stop();
+    await upstream.stop();
   }
 });
 
@@ -2932,6 +3845,188 @@ test('background reconcile resolves recent manual-review jobs only on terminal u
     assert.equal(failedCard.data.redeem_status, 'failed');
     assert.ok(getCalled >= 3);
     assert.ok(getCalled < 4);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('background reconcile restores expired manual-review jobs from upstream status regardless of age', async () => {
+  const oldCreatedAt = formatShanghaiRecordTime(Date.now() - 2 * 60 * 60 * 1000);
+  const upstreamStatuses = {
+    'job-auto-expired-pending': {
+      status: 'pending',
+      result: null,
+      error: null,
+      queue_position: 4,
+      estimated_wait_seconds: 720
+    },
+    'job-auto-expired-done': {
+      status: 'done',
+      result: { ok: true },
+      error: null
+    }
+  };
+  let getCalled = 0;
+  const jobHeaders = {};
+  const upstream = await startMockUpstream((req, res) => {
+    const match = req.url.match(/^\/job\/([^?]+)\?wait=0$/);
+    if (req.method === 'GET' && match) {
+      getCalled += 1;
+      const jobId = decodeURIComponent(match[1]);
+      jobHeaders[jobId] = req.headers;
+      const payload = upstreamStatuses[jobId];
+      if (payload) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ job_id: jobId, workflow: 'plus', ...payload }));
+        return;
+      }
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('background expired manual review restore', {}, {
+    settings: { apiKey: 'test-api-key', baseUrl: upstream.baseUrl },
+    cards: [{
+      code: 'AUTO-EXPIRED-PENDING-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: oldCreatedAt,
+      used_at: oldCreatedAt,
+      used_by: 'hash-token-pending',
+      used_email: 'pending@example.com'
+    }, {
+      code: 'AUTO-EXPIRED-DONE-0001',
+      type: 'plus',
+      status: 'used',
+      created_at: oldCreatedAt,
+      used_at: oldCreatedAt,
+      used_by: 'hash-token-done',
+      used_email: 'done@example.com'
+    }],
+    records: [{
+      id: 71,
+      card_code: 'AUTO-EXPIRED-PENDING-0001',
+      card_type: 'plus',
+      email: 'pending@example.com',
+      access_token_hash: 'hash-token-pending',
+      job_id: 'job-auto-expired-pending',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: oldCreatedAt,
+      ip_address: '198.51.100.71'
+    }, {
+      id: 72,
+      card_code: 'AUTO-EXPIRED-DONE-0001',
+      card_type: 'plus',
+      email: 'done@example.com',
+      access_token_hash: 'hash-token-done',
+      job_id: 'job-auto-expired-done',
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: oldCreatedAt,
+      ip_address: '198.51.100.72'
+    }]
+  });
+
+  try {
+    const token = await loginAdmin(server.port);
+    await new Promise(resolve => setTimeout(resolve, 6500));
+
+    const recordsRes = await requestJson(server.port, '/api/admin/records?pageSize=100&search=AUTO-EXPIRED', {
+      headers: { 'X-Admin-Token': token }
+    });
+    assert.equal(recordsRes.res.status, 200);
+    const byCode = Object.fromEntries(recordsRes.data.records.map(record => [record.card_code, record]));
+    assert.equal(byCode['AUTO-EXPIRED-PENDING-0001'].status, 'pending');
+    assert.equal(byCode['AUTO-EXPIRED-PENDING-0001'].needs_manual_review, false);
+    assert.equal(byCode['AUTO-EXPIRED-PENDING-0001'].error_message, null);
+    assert.equal(byCode['AUTO-EXPIRED-PENDING-0001'].queue_position, 4);
+    assert.equal(byCode['AUTO-EXPIRED-PENDING-0001'].estimated_wait_seconds, 720);
+    assert.equal(byCode['AUTO-EXPIRED-DONE-0001'].status, 'done');
+    assert.equal(byCode['AUTO-EXPIRED-DONE-0001'].needs_manual_review, false);
+    assert.equal(byCode['AUTO-EXPIRED-DONE-0001'].error_message, null);
+    assert.equal(jobHeaders['job-auto-expired-pending']['x-forwarded-for'], '198.51.100.71');
+    assert.equal(jobHeaders['job-auto-expired-done']['x-forwarded-for'], '198.51.100.72');
+    assert.ok(getCalled >= 2);
+  } finally {
+    await server.stop();
+    await upstream.stop();
+  }
+});
+
+test('background reconcile spaces manual-review job status queries to avoid upstream rate limits', async () => {
+  const oldCreatedAt = formatShanghaiRecordTime(Date.now() - 2 * 60 * 60 * 1000);
+  const jobIds = ['job-spaced-one', 'job-spaced-two', 'job-spaced-three'];
+  const requestTimes = [];
+  const upstream = await startMockUpstream((req, res) => {
+    const match = req.url.match(/^\/job\/([^?]+)\?wait=0$/);
+    if (req.method === 'GET' && match && jobIds.includes(decodeURIComponent(match[1]))) {
+      requestTimes.push(Date.now());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        job_id: decodeURIComponent(match[1]),
+        status: 'pending',
+        workflow: 'plus'
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const server = await startServer('background manual review job query spacing', {
+    MANUAL_REVIEW_JOB_QUERY_INTERVAL_MS: '120'
+  }, {
+    settings: { apiKey: 'test-api-key', baseUrl: upstream.baseUrl },
+    cards: jobIds.map((jobId, index) => ({
+      code: `AUTO-SPACED-${index + 1}`,
+      type: 'plus',
+      status: 'used',
+      created_at: oldCreatedAt,
+      used_at: oldCreatedAt,
+      used_by: `hash-token-${index + 1}`,
+      used_email: `spaced-${index + 1}@example.com`
+    })),
+    records: jobIds.map((jobId, index) => ({
+      id: 81 + index,
+      card_code: `AUTO-SPACED-${index + 1}`,
+      card_type: 'plus',
+      email: `spaced-${index + 1}@example.com`,
+      access_token_hash: `hash-token-${index + 1}`,
+      job_id: jobId,
+      status: 'expired',
+      error_message: 'Job 已过期或不存在，需人工核验最终兑换状态',
+      workflow: 'plus',
+      queue_position: null,
+      estimated_wait_seconds: null,
+      needs_manual_review: true,
+      manual_review_reason: '上游 Job 已过期或不存在，无法自动确认最终兑换结果',
+      manual_review_stage: 'job_expired',
+      upstream_status_code: 404,
+      upstream_detail: 'job not found or expired',
+      created_at: oldCreatedAt,
+      ip_address: '127.0.0.1'
+    }))
+  });
+
+  try {
+    await waitUntil(() => requestTimes.length >= jobIds.length, 9000);
+    const gaps = requestTimes.slice(1).map((time, index) => time - requestTimes[index]);
+    assert.ok(gaps.every((gap) => gap >= 80), `expected spaced job queries, got gaps: ${gaps.join(',')}`);
   } finally {
     await server.stop();
     await upstream.stop();
@@ -3154,6 +4249,19 @@ test('admin records page exposes date range filters wired to records api', async
   assert.match(html, /params\.set\('date_to', dateTo\)/);
 });
 
+test('admin records page exposes structured presence filters wired to records api', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="recordsJobIdFilter"/);
+  assert.match(html, /id="recordsManualReviewFilter"/);
+  assert.match(html, /id="recordsErrorFilter"/);
+  assert.match(html, /params\.set\('has_job_id', jobIdFilter\)/);
+  assert.match(html, /params\.set\('manual_review', manualReviewFilter\)/);
+  assert.match(html, /params\.set\('has_error', errorFilter\)/);
+  assert.match(html, /Job ID/);
+  assert.match(html, /人工核验/);
+  assert.match(html, /异常信息/);
+});
+
 test('admin records page exposes a refresh button wired to reload current filters', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /id="recordsRefreshBtn"/);
@@ -3220,6 +4328,16 @@ test('admin cards page exposes bulk selection and batch status actions', async (
   assert.match(html, /批量启用/);
   assert.match(html, /\/api\/admin\/cards\/disable/);
   assert.match(html, /\/api\/admin\/cards\/enable/);
+});
+
+test('admin cards page exposes remark filtering and bulk disable matching results', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /id="cardsRemarkSearch"/);
+  assert.match(html, /params\.set\('remark', remark\)/);
+  assert.match(html, /id="bulkDisableRemarkResultsBtn"/);
+  assert.match(html, /applyBulkDisableRemarkResults\(/);
+  assert.match(html, /\/api\/admin\/cards\/disable-by-remark/);
+  assert.match(html, /批量禁用备注结果/);
 });
 
 test('admin cards page exposes batch replace controls for refunds', async () => {
@@ -3455,10 +4573,11 @@ test('user homepage collapses live queue display down to one latest summary bloc
   assert.match(html, /grid\.innerHTML = `[\s\S]*home-queue-item/);
 });
 
-test('user homepage live queue only shows the monthly plus queue', async () => {
+test('user homepage live queue prefers plus and falls back to other supported workflows', async () => {
   const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
-  assert.match(html, /function selectHomeQueueSummary\(queues\)\s*{[\s\S]{0,500}queues\?\.plus/);
-  assert.doesNotMatch(html, /const order = \['plus', 'plus_1y', 'pro', 'pro_20x'\]/);
+  assert.match(html, /QUEUE_SUMMARY_WORKFLOW_ORDER/);
+  assert.match(html, /\['plus', 'plus_1y', 'pro', 'pro_20x'\]/);
+  assert.match(html, /for \(const workflow of QUEUE_SUMMARY_WORKFLOW_ORDER\)/);
 });
 
 test('newly generated cards use a longer non-legacy format', async () => {

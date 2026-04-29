@@ -1966,15 +1966,18 @@
             }
         }
 
-        function selectHomeQueueSummary(queues) {
-            if (!queues?.plus) {
-                return null;
-            }
+        const QUEUE_SUMMARY_WORKFLOW_ORDER = ['plus', 'plus_1y', 'pro', 'pro_20x'];
 
-            return {
-                workflow: 'plus',
-                queue: queues.plus
-            };
+        function selectHomeQueueSummary(queues) {
+            for (const workflow of QUEUE_SUMMARY_WORKFLOW_ORDER) {
+                if (queues?.[workflow]) {
+                    return {
+                        workflow,
+                        queue: queues[workflow]
+                    };
+                }
+            }
+            return null;
         }
 
         function renderHomeQueueSummary(queues) {
@@ -2179,7 +2182,7 @@
                     if (data.status && ['unknown', 'expired'].includes(data.status)) {
                         currentSubmittedEmail = data.email || null;
                         showJobStatus({ 
-                            job_id: data.job_id || 'unknown', 
+                            job_id: data.job_id || null, 
                             status: data.status, 
                             email: data.email,
                             error: data.error || t('manual.unknownSubmit') 

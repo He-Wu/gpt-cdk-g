@@ -32,9 +32,25 @@ const DEFAULT_COMPENSATION_REASON = '充值未到账补卡';
 const JOB_RECONCILE_INTERVAL_MS = 10000;
 const JOB_RECONCILE_BATCH_SIZE = 100;
 const JOB_RECONCILE_CONCURRENCY = 10;
+const manualReviewJobQueryIntervalEnv = Number.parseInt(process.env.MANUAL_REVIEW_JOB_QUERY_INTERVAL_MS || '', 10);
+const MANUAL_REVIEW_JOB_QUERY_INTERVAL_MS = Number.isFinite(manualReviewJobQueryIntervalEnv) && manualReviewJobQueryIntervalEnv >= 0
+  ? manualReviewJobQueryIntervalEnv
+  : 500;
 const MANUAL_REVIEW_RECONCILE_WINDOW_MS = 60 * 60 * 1000;
-const SUBMIT_TLS_MAX_ATTEMPTS = 5;
+const SUBMIT_RETRY_MAX_ATTEMPTS = 5;
 const TLS_SUBMIT_RETRY_CODES = new Set(['ERR_SSL_INVALID_SESSION_ID']);
+const SUBMIT_TIMEOUT_RETRY_CODES = new Set([
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT'
+]);
+const UPSTREAM_QUEUE_FULL_MESSAGE = '队伍已满500，未入队，当人数少于500时，可入队';
+const upstreamWafCooldownEnv = Number.parseInt(process.env.UPSTREAM_WAF_COOLDOWN_MS || '', 10);
+const UPSTREAM_WAF_COOLDOWN_MS = Number.isFinite(upstreamWafCooldownEnv) && upstreamWafCooldownEnv >= 0
+  ? upstreamWafCooldownEnv
+  : 10 * 60 * 1000;
+let upstreamWafCooldownUntil = 0;
 
 // 确保数据目录存在
 if (!fs.existsSync(DATA_DIR)) {
@@ -119,6 +135,7 @@ function loadSettings() {
       parsed.userNotice = normalizeUserNotice(parsed.userNotice);
       parsed.channelName = normalizeChannelName(parsed.channelName);
       parsed.defaultCost = normalizeDefaultCost(parsed.defaultCost);
+      parsed.customerRateLimitsEnabled = parsed.customerRateLimitsEnabled === true;
       const maintenanceMessages = normalizeMaintenanceMessages(parsed);
       parsed.maintenanceMessageZh = maintenanceMessages.zh;
       parsed.maintenanceMessageEn = maintenanceMessages.en;
@@ -139,6 +156,7 @@ function loadSettings() {
     userNotice: normalizeUserNotice(),
     channelName: '',
     defaultCost: 10,
+    customerRateLimitsEnabled: false,
     subAdmins: []
   };
 }
@@ -186,6 +204,10 @@ function getChannelName() {
 function getDefaultCost() {
   settings.defaultCost = normalizeDefaultCost(settings.defaultCost);
   return settings.defaultCost;
+}
+function isCustomerRateLimitsEnabled() {
+  settings.customerRateLimitsEnabled = settings.customerRateLimitsEnabled === true;
+  return settings.customerRateLimitsEnabled;
 }
 
 function getTypedMaintenance() {
@@ -554,6 +576,70 @@ function checkCancelRate(ip) {
   return rec.count;
 }
 
+const CUSTOMER_RATE_WINDOW_MS = 60 * 1000;
+const CUSTOMER_SAME_PARAM_RATE_LIMIT = 10;
+const CUSTOMER_DISTINCT_PARAM_RATE_LIMIT = 30;
+const customerRateBuckets = {
+  redeem: new Map(),
+  query: new Map(),
+  batch_query: new Map()
+};
+
+function checkCustomerEndpointRate(bucketName, ip, paramKey) {
+  if (!isCustomerRateLimitsEnabled()) {
+    return { limited: false, count: 0, total: 0 };
+  }
+
+  const now = Date.now();
+  const bucket = customerRateBuckets[bucketName];
+  if (!bucket) return { limited: false, count: 0, total: 0 };
+
+  let rec = bucket.get(ip);
+  if (!rec || now > rec.resetAt) {
+    rec = { total: 0, resetAt: now + CUSTOMER_RATE_WINDOW_MS, params: new Map() };
+  }
+
+  const key = String(paramKey || '-');
+  const paramCount = (rec.params.get(key) || 0) + 1;
+  rec.params.set(key, paramCount);
+  rec.total += 1;
+  bucket.set(ip, rec);
+
+  return {
+    limited: paramCount > CUSTOMER_SAME_PARAM_RATE_LIMIT || rec.total > CUSTOMER_DISTINCT_PARAM_RATE_LIMIT,
+    count: paramCount,
+    total: rec.total,
+    retryAfterSeconds: Math.max(1, Math.ceil((rec.resetAt - now) / 1000))
+  };
+}
+
+function customerRateLimitedResponse(res, result) {
+  res.set('Retry-After', String(result.retryAfterSeconds || 60));
+  return res.status(429).json({ error: '请求过于频繁，请 1 分钟后重试' });
+}
+
+function redeemRateParam(code, accessToken) {
+  const normalizedCode = normalizeCardCode(code);
+  const tokenHash = accessToken ? hashAccessToken(String(accessToken)) : '-';
+  return `${normalizedCode}|${tokenHash}`;
+}
+
+function queryRateParam(code) {
+  return normalizeCardCode(code);
+}
+
+function batchQueryRateParam(input) {
+  const rawCodes = Array.isArray(input?.codes)
+    ? input.codes
+    : String(input?.text || input?.codes || '')
+        .split(/[\r\n,]+/);
+  const codes = rawCodes
+    .map((item) => normalizeCardCode(item))
+    .filter(Boolean)
+    .sort();
+  return codes.join('|') || '-';
+}
+
 // ========== 管理员 Session 管理 ==========
 const adminSessions = new Map();
 
@@ -741,10 +827,10 @@ function upstreamJobStatusLooksSuccessful(payload) {
   return true;
 }
 
-async function fetchUpstreamJobStatus(jobId, wait = 0) {
+async function fetchUpstreamJobStatus(jobId, wait = 0, clientIp = null) {
   const upstreamUrl = getBaseUrl();
   const jobRes = await fetch(`${upstreamUrl}/job/${jobId}?wait=${wait}`, {
-    headers: { 'X-API-Key': getApiKey() }
+    headers: buildUpstreamHeaders(clientIp)
   });
   const raw = await jobRes.text();
   const contentType = jobRes.headers.get('content-type') || 'application/json; charset=utf-8';
@@ -765,7 +851,7 @@ async function fetchUpstreamJobStatus(jobId, wait = 0) {
   };
 }
 
-async function cancelJobViaUpstream(jobId) {
+async function cancelJobViaUpstream(jobId, clientIp = null) {
   if (!getApiKey() || !getBaseUrl()) {
     return { statusCode: 503, body: { error: '服务尚未配置，请稍后再试' } };
   }
@@ -774,7 +860,7 @@ async function cancelJobViaUpstream(jobId) {
   const upstreamUrl = getBaseUrl();
   const cancelRes = await fetch(`${upstreamUrl}/job/${jobId}`, {
     method: 'DELETE',
-    headers: { 'X-API-Key': getApiKey() }
+    headers: buildUpstreamHeaders(clientIp || record?.ip_address)
   });
 
   if (!cancelRes.ok) {
@@ -897,6 +983,21 @@ function getSocketIP(req) {
 
 function getClientIP(req) {
   return getTrustedProxyIP(req) || getSocketIP(req);
+}
+
+function buildUpstreamHeaders(clientIp = null, extraHeaders = {}) {
+  const headers = {
+    ...extraHeaders,
+    'X-API-Key': getApiKey()
+  };
+  const normalizedIp = normalizeClientIP(clientIp);
+  if (normalizedIp) {
+    headers['X-Forwarded-For'] = normalizedIp;
+    headers['X-Real-IP'] = normalizedIp;
+    headers['True-Client-IP'] = normalizedIp;
+    headers['CF-Connecting-IP'] = normalizedIp;
+  }
+  return headers;
 }
 
 function nowStr() {
@@ -1085,7 +1186,6 @@ function filterRecordsByStatsRange(sourceRecords, rangeConfig) {
   });
 }
 
-const SAFE_SUBMIT_REFUND_STATUSES = new Set([400, 401, 402, 429, 503]);
 const TERMINAL_RECORD_STATUSES = new Set(['done', 'failed', 'unknown', 'expired']);
 
 function refundCardForRecord(record) {
@@ -1162,20 +1262,32 @@ function isRetryableSubmitTlsError(err) {
   return TLS_SUBMIT_RETRY_CODES.has(code) || message.includes('tls_process_server_hello:invalid session id');
 }
 
-function buildSubmitNetworkReviewDetails(err, fetchErrorDetail) {
-  return {
-    message: `提交请求结果不确定: ${fetchErrorDetail}`,
-    manual_review_reason: '请求上游时出现网络错误，无法确认是否已成功受理',
-    manual_review_stage: 'submit_network_error',
-    upstream_detail: fetchErrorDetail
-  };
+function isRetryableSubmitTimeoutError(err) {
+  const code = getFetchErrorCode(err);
+  const message = `${err?.message || ''} ${err?.cause?.message || ''}`.toLowerCase();
+  return SUBMIT_TIMEOUT_RETRY_CODES.has(code) || message.includes('timed out') || message.includes('timeout');
 }
 
-function markSubmitTlsExhaustedFailed(record, fetchErrorDetail) {
-  const errorMessage = summarizeUpstreamDetail(
-    `连续 5 次 TLS 握手失败，卡密已退回，请稍后重试: ${fetchErrorDetail}`,
-    '连续 5 次 TLS 握手失败，卡密已退回，请稍后重试'
-  );
+function getRetryableSubmitErrorKind(err) {
+  if (isRetryableSubmitTlsError(err)) return 'tls';
+  if (isRetryableSubmitTimeoutError(err)) return 'timeout';
+  return null;
+}
+
+function isRetryableSubmitError(err) {
+  return !!getRetryableSubmitErrorKind(err);
+}
+
+function markRetryableSubmitExhaustedFailed(record, fetchErrorDetail, err) {
+  const kind = getRetryableSubmitErrorKind(err);
+  const prefix = kind === 'tls'
+    ? '连续 5 次 TLS 握手失败，卡密已退回，请稍后重试'
+    : '连续 5 次提交超时，卡密已退回，请稍后重试';
+  const errorMessage = summarizeUpstreamDetail(`${prefix}: ${fetchErrorDetail}`, prefix);
+  return markSubmitFetchFailed(record, errorMessage);
+}
+
+function markSubmitFetchFailed(record, errorMessage) {
   refundCardForRecord(record);
   record.status = 'failed';
   record.error_message = errorMessage;
@@ -1186,16 +1298,79 @@ function markSubmitTlsExhaustedFailed(record, fetchErrorDetail) {
   return errorMessage;
 }
 
-async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow) {
+function markSubmitRejectedFailed(record, errorMessage) {
+  const rejectedDetail = summarizeSubmitRejectedDetail(errorMessage);
+  if (String(rejectedDetail).includes('卡密已退回') || rejectedDetail === UPSTREAM_QUEUE_FULL_MESSAGE) {
+    return markSubmitFetchFailed(record, rejectedDetail);
+  }
+  const message = summarizeUpstreamDetail(
+    `提交请求失败，卡密已退回: ${rejectedDetail}`,
+    '提交请求失败，卡密已退回，请稍后重试'
+  );
+  return markSubmitFetchFailed(record, message);
+}
+
+function submitResponseLooksLikeHtmlBlockPage(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.startsWith('<!doctype html') ||
+    normalized.startsWith('<html') ||
+    normalized.includes('<title>access denied') ||
+    normalized.includes('access denied | localtonet waf') ||
+    normalized.includes('localtonet waf');
+}
+
+function activateUpstreamWafCooldown() {
+  upstreamWafCooldownUntil = Math.max(upstreamWafCooldownUntil, Date.now() + UPSTREAM_WAF_COOLDOWN_MS);
+}
+
+function isUpstreamWafCooldownActive() {
+  return upstreamWafCooldownUntil > Date.now();
+}
+
+function summarizeSubmitRejectedDetail(detail) {
+  const raw = String(detail || '').trim();
+  const normalized = raw.toLowerCase();
+  if (submitResponseLooksLikeHtmlBlockPage(raw)) {
+    if (normalized.includes('localtonet waf') || normalized.includes('access denied')) {
+      activateUpstreamWafCooldown();
+      return UPSTREAM_QUEUE_FULL_MESSAGE;
+    }
+    return '上游返回异常 HTML 页面，请稍后重试或联系管理员处理上游访问线路';
+  }
+  return summarizeUpstreamDetail(raw, '上游提交失败');
+}
+
+function createFallbackQueuePayload(workflow = '') {
+  const queues = Object.fromEntries(CARD_TYPES.map((type) => [type, {
+    pending: 500,
+    processing: 0,
+    workers: 0,
+    estimated_next_wait_seconds: 3000
+  }]));
+  if (workflow) {
+    return {
+      workflow,
+      queue: queues[workflow],
+      queues,
+      fallback: true,
+      message: '队伍数量暂时无法获取，已显示满队列预估'
+    };
+  }
+  return {
+    queues,
+    fallback: true,
+    message: '队伍数量暂时无法获取，已显示满队列预估'
+  };
+}
+
+async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow, clientIp = null) {
   let lastError = null;
-  for (let attempt = 0; attempt < SUBMIT_TLS_MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < SUBMIT_RETRY_MAX_ATTEMPTS; attempt += 1) {
     try {
       return await fetch(`${upstreamUrl}/submit`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': getApiKey()
-        },
+        headers: buildUpstreamHeaders(clientIp, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           access_token: accessToken,
           workflow
@@ -1203,8 +1378,9 @@ async function submitUpstreamRedeem(upstreamUrl, accessToken, workflow) {
       });
     } catch (err) {
       lastError = err;
-      if (attempt < SUBMIT_TLS_MAX_ATTEMPTS - 1 && isRetryableSubmitTlsError(err)) {
-        console.warn(`上游 /submit TLS 握手失败，正在自动重试第 ${attempt + 2} 次:`, describeFetchError(err));
+      if (attempt < SUBMIT_RETRY_MAX_ATTEMPTS - 1 && isRetryableSubmitError(err)) {
+        const kind = getRetryableSubmitErrorKind(err) === 'tls' ? 'TLS 握手失败' : '提交超时';
+        console.warn(`上游 /submit ${kind}，正在自动重试第 ${attempt + 2} 次:`, describeFetchError(err));
         await new Promise((resolve) => setTimeout(resolve, 150));
         continue;
       }
@@ -1244,6 +1420,20 @@ function markRecordUncertain(record, message, status = 'unknown', details = {}) 
 }
 
 function markManualReviewRecordSuccess(record, actor = 'super_admin') {
+  record.status = 'done';
+  record.error_message = null;
+  record.queue_position = null;
+  record.estimated_wait_seconds = null;
+  record.manual_resolution = 'success';
+  record.manual_resolved_at = nowStr();
+  record.manual_resolved_by = actor;
+  clearManualReviewDetails(record);
+  saveRecords(records);
+  ensureCardUsedForRecord(record);
+  return record;
+}
+
+function undoRefundedFailedRecord(record, actor = 'super_admin') {
   record.status = 'done';
   record.error_message = null;
   record.queue_position = null;
@@ -1307,7 +1497,15 @@ function applyJobStatus(jobId, jobData) {
     clearManualReviewDetails(record);
   }
   const upstreamError = summarizeUpstreamDetail(jobData.error, null);
-  record.error_message = upstreamError || fallbackRecordErrorMessage(record, normalizedStatus);
+  if (upstreamError) {
+    record.error_message = upstreamError;
+  } else if (normalizedStatus === 'failed') {
+    record.error_message = '上游返回 failed，但未提供原因';
+  } else if (normalizedStatus === 'pending' || normalizedStatus === 'processing' || normalizedStatus === 'done') {
+    record.error_message = null;
+  } else {
+    record.error_message = fallbackRecordErrorMessage(record, normalizedStatus);
+  }
   updateQueueEstimate(record, jobData);
 
   if (normalizedStatus === 'failed') {
@@ -1318,13 +1516,93 @@ function applyJobStatus(jobId, jobData) {
   return record;
 }
 
+const RESTORABLE_UPSTREAM_JOB_STATUSES = new Set(['pending', 'processing', 'done', 'failed']);
+
+function restoredRecordMessage(status) {
+  const map = {
+    pending: '已按上游 Job 结果恢复为排队中',
+    processing: '已按上游 Job 结果恢复为处理中',
+    done: '已按上游 Job 结果同步为成功',
+    failed: '已按上游 Job 结果同步为失败'
+  };
+  return map[status] || '已按上游 Job 结果同步记录状态';
+}
+
+async function restoreExpiredManualReviewRecordFromJob(record) {
+  const normalizedStatus = normalizeJobStatus(record?.status);
+  if (!record || normalizedStatus !== 'expired' || !recordNeedsManualReview(record, normalizedStatus)) {
+    return { ok: false, statusCode: 409, error: '只有已过期待核验的记录可以通过 Job 结果恢复' };
+  }
+
+  if (!isValidJobId(record.job_id)) {
+    return { ok: false, statusCode: 409, error: '该记录没有有效 Job ID，无法查询上游结果' };
+  }
+
+  if (!getApiKey() || !getBaseUrl()) {
+    return { ok: false, statusCode: 503, error: '服务尚未配置，请管理员先完成 API 配置' };
+  }
+
+  const upstreamResult = await fetchUpstreamJobStatus(record.job_id, 0, record.ip_address);
+  const upstreamStatus = normalizeJobStatus(upstreamResult.payload?.status);
+
+  if (upstreamResult.statusCode === 404) {
+    return {
+      ok: false,
+      statusCode: 409,
+      error: '上游 Job 仍不存在或已过期，无法恢复到队列状态',
+      upstream_status_code: upstreamResult.statusCode,
+      upstream: upstreamResult.payload
+    };
+  }
+
+  if (upstreamResult.statusCode !== 200) {
+    return {
+      ok: false,
+      statusCode: 502,
+      error: `上游 Job 查询失败 (HTTP ${upstreamResult.statusCode})`,
+      upstream_status_code: upstreamResult.statusCode,
+      upstream: upstreamResult.payload
+    };
+  }
+
+  if (!RESTORABLE_UPSTREAM_JOB_STATUSES.has(upstreamStatus)) {
+    return {
+      ok: false,
+      statusCode: 409,
+      error: '上游 Job 未返回可恢复的状态',
+      upstream_status_code: upstreamResult.statusCode,
+      upstream: upstreamResult.payload
+    };
+  }
+
+  const updatedRecord = applyJobStatus(record.job_id, {
+    ...upstreamResult.payload,
+    status: upstreamStatus
+  });
+  if (!updatedRecord) {
+    return { ok: false, statusCode: 404, error: '未找到可恢复的兑换记录' };
+  }
+  if (upstreamStatus === 'pending' || upstreamStatus === 'processing' || upstreamStatus === 'done') {
+    ensureCardUsedForRecord(updatedRecord);
+  }
+
+  return {
+    ok: true,
+    status: upstreamStatus,
+    message: restoredRecordMessage(upstreamStatus),
+    record: updatedRecord,
+    upstream_status_code: upstreamResult.statusCode,
+    upstream: upstreamResult.payload
+  };
+}
+
 async function refreshRecordFromUpstream(record, wait = 0) {
   if (!record?.job_id || TERMINAL_RECORD_STATUSES.has(record.status)) return record;
   if (!getApiKey() || !getBaseUrl()) return record;
 
   const upstreamUrl = getBaseUrl();
   const jobRes = await fetch(`${upstreamUrl}/job/${record.job_id}?wait=${wait}`, {
-    headers: { 'X-API-Key': getApiKey() }
+    headers: buildUpstreamHeaders(record.ip_address)
   });
 
   if (jobRes.status === 404) {
@@ -1358,6 +1636,19 @@ async function runWithConcurrency(items, limit, worker) {
   }));
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runSequentiallyWithDelay(items, delayMs, worker) {
+  for (let index = 0; index < items.length; index += 1) {
+    if (index > 0 && delayMs > 0) {
+      await sleep(delayMs);
+    }
+    await worker(items[index]);
+  }
+}
+
 function getReconcilableRecords(limit = JOB_RECONCILE_BATCH_SIZE) {
   return records
     .filter((record) => {
@@ -1376,6 +1667,7 @@ function getManualReviewReconcilableRecords(limit = JOB_RECONCILE_BATCH_SIZE) {
       if (normalizedStatus === 'done' || normalizedStatus === 'failed') return false;
       if (normalizedStatus === 'pending' || normalizedStatus === 'processing') return false;
       if (!recordNeedsManualReview(record, normalizedStatus)) return false;
+      if (normalizedStatus === 'expired') return true;
       const createdAtTs = parseRecordCreatedAt(record.created_at);
       return createdAtTs !== null && createdAtTs >= threshold;
     })
@@ -1384,7 +1676,13 @@ function getManualReviewReconcilableRecords(limit = JOB_RECONCILE_BATCH_SIZE) {
 
 async function reconcileManualReviewRecord(record) {
   try {
-    const upstreamResult = await fetchUpstreamJobStatus(record.job_id, 0);
+    const localStatus = normalizeJobStatus(record.status);
+    if (localStatus === 'expired') {
+      const restored = await restoreExpiredManualReviewRecordFromJob(record);
+      return restored.ok ? restored.record : record;
+    }
+
+    const upstreamResult = await fetchUpstreamJobStatus(record.job_id, 0, record.ip_address);
     if (upstreamResult.statusCode !== 200) return record;
     const jobData = upstreamResult.payload;
     const upstreamStatus = normalizeJobStatus(jobData?.status);
@@ -1418,7 +1716,7 @@ async function reconcilePendingJobs() {
         console.error(`自动对账任务 ${record.job_id} 失败:`, err.message);
       }
     });
-    await runWithConcurrency(manualReviewRecords, JOB_RECONCILE_CONCURRENCY, async (record) => {
+    await runSequentiallyWithDelay(manualReviewRecords, MANUAL_REVIEW_JOB_QUERY_INTERVAL_MS, async (record) => {
       await reconcileManualReviewRecord(record);
     });
   } finally {
@@ -1625,13 +1923,14 @@ app.get('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
     typedMaintenance: getTypedMaintenance(),
     userNotice: getUserNotice(),
     channelName: getChannelName(),
-    defaultCost: getDefaultCost()
+    defaultCost: getDefaultCost(),
+    customerRateLimitsEnabled: isCustomerRateLimitsEnabled()
   });
 });
 
 // 保存系统设置
 app.post('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
-  const { apiKey, baseUrl, userNotice, channelName, defaultCost } = req.body;
+  const { apiKey, baseUrl, userNotice, channelName, defaultCost, customerRateLimitsEnabled } = req.body;
 
   if (typeof apiKey !== 'undefined' && apiKey !== null) {
     settings.apiKey = String(apiKey).trim();
@@ -1652,6 +1951,9 @@ app.post('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
     }
     settings.defaultCost = normalizedDefaultCost;
   }
+  if (typeof customerRateLimitsEnabled !== 'undefined') {
+    settings.customerRateLimitsEnabled = customerRateLimitsEnabled === true;
+  }
 
   saveSettings(settings);
   res.json({
@@ -1659,7 +1961,8 @@ app.post('/api/admin/settings', adminAuth, requireSuperAdmin, (req, res) => {
     configured: !!(settings.apiKey && settings.baseUrl),
     userNotice: getUserNotice(),
     channelName: getChannelName(),
-    defaultCost: getDefaultCost()
+    defaultCost: getDefaultCost(),
+    customerRateLimitsEnabled: isCustomerRateLimitsEnabled()
   });
 });
 
@@ -2071,6 +2374,7 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
     status,
     type,
     search,
+    remark,
     batch_id,
     created_from,
     created_to,
@@ -2108,6 +2412,12 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
       c.sale_price
     ].some(value => String(value || '').toLowerCase().includes(q)));
   }
+  if (remark) {
+    const q = normalizeCardRemark(remark).toLowerCase();
+    if (q) {
+      filtered = filtered.filter(c => String(c.remark || '').toLowerCase().includes(q));
+    }
+  }
   if (batch_id) {
     filtered = filtered.filter(c => c.batch_id === batch_id);
   }
@@ -2142,7 +2452,18 @@ app.get('/api/admin/cards', adminAuth, (req, res) => {
 
 // 查看兑换记录
 app.get('/api/admin/records', adminAuth, (req, res) => {
-  const { page = 1, pageSize = 20, status, type, search, date_from, date_to } = req.query;
+  const {
+    page = 1,
+    pageSize = 20,
+    status,
+    type,
+    search,
+    date_from,
+    date_to,
+    has_job_id,
+    manual_review,
+    has_error
+  } = req.query;
   const pg = Math.max(1, parseInt(page) || 1);
   const ps = Math.min(Math.max(1, parseInt(pageSize) || 20), 100); // 上限 100
 
@@ -2155,6 +2476,21 @@ app.get('/api/admin/records', adminAuth, (req, res) => {
   }
   if (type && type !== 'all') {
     filtered = filtered.filter(r => r.card_type === type);
+  }
+  if (has_job_id === 'yes') {
+    filtered = filtered.filter(r => String(r.job_id || '').trim() !== '');
+  } else if (has_job_id === 'no') {
+    filtered = filtered.filter(r => String(r.job_id || '').trim() === '');
+  }
+  if (manual_review === 'yes') {
+    filtered = filtered.filter(r => recordNeedsManualReview(r, normalizeJobStatus(r.status)));
+  } else if (manual_review === 'no') {
+    filtered = filtered.filter(r => !recordNeedsManualReview(r, normalizeJobStatus(r.status)));
+  }
+  if (has_error === 'yes') {
+    filtered = filtered.filter(r => !!fallbackRecordErrorMessage(r));
+  } else if (has_error === 'no') {
+    filtered = filtered.filter(r => !fallbackRecordErrorMessage(r));
   }
   if (search) {
     const q = String(search).trim().toLowerCase();
@@ -2211,6 +2547,243 @@ app.get('/api/admin/records', adminAuth, (req, res) => {
   res.json({ total, page: pg, pageSize: ps, records: paged });
 });
 
+// 管理后台批量删除兑换记录：只删除当前管理员可管理范围内的记录，不联动卡密状态
+app.delete('/api/admin/records', adminAuth, (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (!ids.length) {
+    return res.status(400).json({ error: '请提供要删除的兑换记录 ID' });
+  }
+  if (ids.length > 500) {
+    return res.status(400).json({ error: '单次最多删除 500 条兑换记录' });
+  }
+
+  const normalizedIds = ids
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!normalizedIds.length) {
+    return res.status(400).json({ error: '兑换记录 ID 无效' });
+  }
+
+  const deletedIds = [];
+  const seen = new Set();
+  for (const id of normalizedIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const record = records.find((item) => Number(item.id) === id);
+    if (!record || !recordBelongsToSession(record, req.admin)) continue;
+    deletedIds.push(id);
+  }
+
+  if (deletedIds.length) {
+    const deleteSet = new Set(deletedIds);
+    records = records.filter((record) => !deleteSet.has(Number(record.id)));
+    saveRecords(records);
+  }
+
+  res.json({
+    message: deletedIds.length ? `已删除 ${deletedIds.length} 条兑换记录` : '没有可删除的兑换记录',
+    requested_count: ids.length,
+    deleted_count: deletedIds.length,
+    skipped_count: Math.max(0, ids.length - deletedIds.length),
+    deleted_ids: deletedIds
+  });
+});
+
+// 管理后台批量按上游 Job 结果恢复已过期待核验记录
+app.post('/api/admin/records/restore-from-job', adminAuth, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (!ids.length) {
+    return res.status(400).json({ error: '请提供要恢复的兑换记录 ID' });
+  }
+  if (ids.length > 100) {
+    return res.status(400).json({ error: '单次最多恢复 100 条兑换记录' });
+  }
+
+  const normalizedIds = ids
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!normalizedIds.length) {
+    return res.status(400).json({ error: '兑换记录 ID 无效' });
+  }
+
+  const results = [];
+  const restoredIds = [];
+  const seen = new Set();
+  let jobQueryCount = 0;
+  for (const id of normalizedIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const record = records.find((item) => Number(item.id) === id && recordBelongsToSession(item, req.admin));
+    if (!record) {
+      results.push({ id, ok: false, error: '未找到兑换记录' });
+      continue;
+    }
+
+    try {
+      if (jobQueryCount > 0 && MANUAL_REVIEW_JOB_QUERY_INTERVAL_MS > 0) {
+        await sleep(MANUAL_REVIEW_JOB_QUERY_INTERVAL_MS);
+      }
+      jobQueryCount += 1;
+      const result = await restoreExpiredManualReviewRecordFromJob(record);
+      if (result.ok) {
+        restoredIds.push(id);
+        results.push({
+          id,
+          ok: true,
+          status: result.status,
+          message: result.message,
+          record: result.record
+        });
+      } else {
+        results.push({
+          id,
+          ok: false,
+          error: result.error,
+          status_code: result.statusCode,
+          upstream_status_code: result.upstream_status_code ?? null
+        });
+      }
+    } catch (err) {
+      console.error(`恢复已过期待核验记录 ${id} 失败:`, err);
+      results.push({ id, ok: false, error: '恢复请求失败，请稍后重试' });
+    }
+  }
+
+  res.json({
+    message: restoredIds.length ? `已恢复 ${restoredIds.length} 条兑换记录` : '没有可恢复的兑换记录',
+    requested_count: ids.length,
+    restored_count: restoredIds.length,
+    failed_count: results.filter((item) => !item.ok).length,
+    restored_ids: restoredIds,
+    results
+  });
+});
+
+// 管理后台批量取消退回：将失败记录恢复为成功，并把卡密改回已使用
+app.post('/api/admin/records/undo-refund', adminAuth, (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (!ids.length) {
+    return res.status(400).json({ error: '请提供要取消退回的兑换记录 ID' });
+  }
+  if (ids.length > 500) {
+    return res.status(400).json({ error: '单次最多取消退回 500 条兑换记录' });
+  }
+
+  const normalizedIds = ids
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!normalizedIds.length) {
+    return res.status(400).json({ error: '兑换记录 ID 无效' });
+  }
+
+  const results = [];
+  const updatedIds = [];
+  const seen = new Set();
+  for (const id of normalizedIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const record = records.find((item) => Number(item.id) === id && recordBelongsToSession(item, req.admin));
+    if (!record) {
+      results.push({ id, ok: false, error: '未找到兑换记录' });
+      continue;
+    }
+
+    const normalizedStatus = normalizeJobStatus(record.status);
+    if (normalizedStatus !== 'failed') {
+      results.push({ id, ok: false, error: '只有失败记录可以取消退回', status: normalizedStatus });
+      continue;
+    }
+
+    const updatedRecord = undoRefundedFailedRecord(record, req.admin?.username || 'super_admin');
+    updatedIds.push(id);
+    results.push({
+      id,
+      ok: true,
+      status: 'done',
+      record: {
+        ...updatedRecord,
+        status: 'done',
+        needs_manual_review: false,
+        error_message: null
+      }
+    });
+  }
+
+  res.json({
+    message: updatedIds.length ? `已取消退回 ${updatedIds.length} 条兑换记录` : '没有可取消退回的兑换记录',
+    requested_count: ids.length,
+    updated_count: updatedIds.length,
+    skipped_count: results.filter((item) => !item.ok).length,
+    updated_ids: updatedIds,
+    results
+  });
+});
+
+// 管理后台按上游 Job 结果恢复单条已过期待核验记录
+app.post('/api/admin/records/:id/restore-from-job', adminAuth, async (req, res) => {
+  const recordId = Number(req.params.id);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    return res.status(400).json({ error: '记录 ID 无效' });
+  }
+
+  const record = records.find(r => r.id === recordId && recordBelongsToSession(r, req.admin));
+  if (!record) {
+    return res.status(404).json({ error: '未找到兑换记录' });
+  }
+
+  try {
+    const result = await restoreExpiredManualReviewRecordFromJob(record);
+    if (!result.ok) {
+      return res.status(result.statusCode || 409).json({
+        error: result.error,
+        upstream_status_code: result.upstream_status_code ?? null,
+        upstream: result.upstream ?? null
+      });
+    }
+    return res.json({
+      message: result.message,
+      status: result.status,
+      record: result.record,
+      upstream_status_code: result.upstream_status_code,
+      upstream: result.upstream
+    });
+  } catch (err) {
+    console.error(`恢复已过期待核验记录 ${recordId} 失败:`, err);
+    return res.status(502).json({ error: '恢复请求失败，请稍后重试' });
+  }
+});
+
+// 管理后台取消退回：将失败记录恢复为成功，并把卡密改回已使用
+app.post('/api/admin/records/:id/undo-refund', adminAuth, (req, res) => {
+  const recordId = Number(req.params.id);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    return res.status(400).json({ error: '记录 ID 无效' });
+  }
+
+  const record = records.find(r => r.id === recordId && recordBelongsToSession(r, req.admin));
+  if (!record) {
+    return res.status(404).json({ error: '未找到兑换记录' });
+  }
+
+  const normalizedStatus = normalizeJobStatus(record.status);
+  if (normalizedStatus !== 'failed') {
+    return res.status(409).json({ error: '只有失败记录可以取消退回' });
+  }
+
+  const updatedRecord = undoRefundedFailedRecord(record, req.admin?.username || 'super_admin');
+
+  res.json({
+    message: '已取消退回，记录已设置为成功，卡密已改为已使用',
+    status: 'done',
+    record: {
+      ...updatedRecord,
+      status: 'done',
+      needs_manual_review: false,
+      error_message: null
+    }
+  });
+});
+
 // 管理后台人工核验成功：将不确定记录确认为兑换成功
 app.post('/api/admin/records/:id/mark-success', adminAuth, (req, res) => {
   const recordId = Number(req.params.id);
@@ -2262,13 +2835,16 @@ app.post('/api/admin/records/:id/mark-failed', adminAuth, (req, res) => {
     return res.status(409).json({ error: '只有已过期待核验的记录可以设置失败' });
   }
 
-  markExpiredManualReviewRecordFailed(record, req.admin?.username || 'super_admin');
+  const updatedRecord = markExpiredManualReviewRecordFailed(record, req.admin?.username || 'super_admin');
+  const message = String(updatedRecord.error_message || '').includes('未退回卡密')
+    ? '已设置为失败，卡密已有成功兑换记录，未退回卡密'
+    : '已设置为失败，卡密已退回';
 
   res.json({
-    message: '已设置为失败，卡密已退回',
+    message,
     status: 'failed',
     record: {
-      ...record,
+      ...updatedRecord,
       status: 'failed',
       needs_manual_review: false
     }
@@ -2320,7 +2896,7 @@ app.get('/api/admin/records/:id/diagnose', adminAuth, async (req, res) => {
   const wait = Math.min(Math.max(0, parseInt(req.query.wait, 10) || 0), 30);
 
   try {
-    const upstreamResult = await fetchUpstreamJobStatus(record.job_id, wait);
+    const upstreamResult = await fetchUpstreamJobStatus(record.job_id, wait, record.ip_address);
     const upstreamStatus = normalizeJobStatus(upstreamResult.payload?.status);
     const canMarkSuccess = recordNeedsManualReview(record, normalizedStatus) &&
       upstreamResult.statusCode === 200 &&
@@ -2371,6 +2947,43 @@ app.post('/api/admin/cards/disable', adminAuth, (req, res) => {
 
   saveCards(cards);
   res.json({ message: `成功禁用 ${count} 张卡密`, disabled: count });
+});
+
+// 按备注批量禁用卡密
+app.post('/api/admin/cards/disable-by-remark', adminAuth, (req, res) => {
+  const remark = normalizeCardRemark(req.body?.remark);
+  if (!remark) {
+    return res.status(400).json({ error: '请提供要查询的备注内容' });
+  }
+
+  const q = remark.toLowerCase();
+  const matchedCards = cards.filter((card) => (
+    cardBelongsToSession(card, req.admin) &&
+    String(card.remark || '').toLowerCase().includes(q)
+  ));
+  const unusedCards = matchedCards.filter((card) => card.status === 'unused');
+  const targetCards = unusedCards.slice(0, 500);
+
+  for (const card of targetCards) {
+    card.status = 'disabled';
+  }
+
+  saveCards(cards);
+
+  const skipped = matchedCards.length - targetCards.length;
+  const overflow = Math.max(0, unusedCards.length - targetCards.length);
+  const message = overflow > 0
+    ? `成功禁用 ${targetCards.length} 张卡密，另有 ${overflow} 张未处理，请缩小备注条件后继续`
+    : `成功禁用 ${targetCards.length} 张卡密，跳过 ${skipped} 张`;
+
+  res.json({
+    message,
+    remark,
+    matched: matchedCards.length,
+    disabled: targetCards.length,
+    skipped,
+    overflow
+  });
 });
 
 // 启用卡密
@@ -2454,6 +3067,10 @@ app.post('/api/card/redeem', async (req, res) => {
   const clientIP = getClientIP(req);
   const { code } = req.body;
   let access_token = req.body.access_token;
+  const rateResult = checkCustomerEndpointRate('redeem', clientIP, redeemRateParam(code, access_token));
+  if (rateResult.limited) {
+    return customerRateLimitedResponse(res, rateResult);
+  }
 
   if (!code || !access_token) {
     return res.status(400).json({ error: '卡密和 Session 数据不能为空' });
@@ -2478,6 +3095,14 @@ app.post('/api/card/redeem', async (req, res) => {
 
   if (!getApiKey() || !getBaseUrl()) {
     return res.status(503).json({ error: '服务尚未配置，请管理员在后台设置 API Key 和 Base URL' });
+  }
+
+  if (isUpstreamWafCooldownActive()) {
+    return res.status(429).json({
+      error: UPSTREAM_QUEUE_FULL_MESSAGE,
+      status: 'failed',
+      email: sessionEmail || null
+    });
   }
 
   const cardCode = normalizeCardCode(code);
@@ -2526,7 +3151,7 @@ app.post('/api/card/redeem', async (req, res) => {
   // 调用上游 API
   try {
     const upstreamUrl = getBaseUrl();
-    const submitRes = await submitUpstreamRedeem(upstreamUrl, access_token, card.type);
+    const submitRes = await submitUpstreamRedeem(upstreamUrl, access_token, card.type, clientIP);
 
     const submitText = await submitRes.text();
     let submitData = null;
@@ -2545,30 +3170,27 @@ app.post('/api/card/redeem', async (req, res) => {
 
     if (!submitRes.ok) {
       const errorMessage = submitDetail || `HTTP ${submitRes.status}`;
-      if (SAFE_SUBMIT_REFUND_STATUSES.has(submitRes.status)) {
-        refundCardForRecord(record);
-        record.status = 'failed';
-        record.error_message = errorMessage;
-        clearManualReviewDetails(record);
-        saveRecords(records);
-        return res.status(submitRes.status).json({ error: errorMessage });
-      }
-
-      markRecordUncertain(record, `提交状态不确定: ${errorMessage}`, 'unknown', {
-        manual_review_reason: `上游返回 HTTP ${submitRes.status}，但无法确认是否已受理兑换`,
-        manual_review_stage: 'submit_http_error',
-        upstream_status_code: submitRes.status,
-        upstream_detail: errorMessage
-      });
-      return res.status(502).json({
-        error: '上游提交状态不确定，卡密已锁定，请联系管理员人工核验',
-        status: 'unknown',
+      const failedMessage = markSubmitRejectedFailed(record, errorMessage);
+      return res.status(submitRes.status).json({
+        error: failedMessage,
+        status: 'failed',
         email: sessionEmail || null
       });
     }
 
     let jobData = submitData;
     if (submitParseError) {
+      if (submitResponseLooksLikeHtmlBlockPage(submitText)) {
+        const failedMessage = markSubmitRejectedFailed(
+          record,
+          summarizeUpstreamDetail(submitText, submitParseError.message)
+        );
+        return res.status(502).json({
+          error: failedMessage,
+          status: 'failed',
+          email: sessionEmail || null
+        });
+      }
       markRecordUncertain(record, `上游已接受请求但响应解析失败: ${submitParseError.message}`, 'unknown', {
         manual_review_reason: '上游已接受请求，但响应解析失败，无法确认 Job ID',
         manual_review_stage: 'submit_parse_error',
@@ -2596,7 +3218,8 @@ app.post('/api/card/redeem', async (req, res) => {
       });
     }
 
-    record.status = ['pending', 'processing'].includes(jobData.status) ? jobData.status : 'processing';
+    const submittedStatus = normalizeJobStatus(jobData.status);
+    record.status = ['pending', 'processing'].includes(submittedStatus) ? submittedStatus : 'processing';
     record.job_id = jobData.job_id;
     updateQueueEstimate(record, jobData);
     saveRecords(records);
@@ -2606,7 +3229,7 @@ app.post('/api/card/redeem', async (req, res) => {
       job_id: jobData.job_id,
       type: card.type,
       workflow: jobData.workflow || card.type,
-      status: jobData.status,
+      status: record.status,
       queue_position: record.queue_position,
       estimated_wait_seconds: record.estimated_wait_seconds,
       email: sessionEmail || null,
@@ -2616,19 +3239,18 @@ app.post('/api/card/redeem', async (req, res) => {
   } catch (err) {
     const fetchErrorDetail = describeFetchError(err);
     console.error('兑换请求失败:', fetchErrorDetail, err);
-    if (isRetryableSubmitTlsError(err)) {
-      const errorMessage = markSubmitTlsExhaustedFailed(record, fetchErrorDetail);
-      return res.status(502).json({
-        error: errorMessage,
-        status: 'failed',
-        email: sessionEmail || null
-      });
+    let errorMessage = summarizeUpstreamDetail(
+      `提交请求失败，卡密已退回，请稍后重试: ${fetchErrorDetail}`,
+      '提交请求失败，卡密已退回，请稍后重试'
+    );
+    if (isRetryableSubmitError(err)) {
+      errorMessage = markRetryableSubmitExhaustedFailed(record, fetchErrorDetail, err);
+    } else {
+      errorMessage = markSubmitFetchFailed(record, errorMessage);
     }
-    const reviewDetails = buildSubmitNetworkReviewDetails(err, fetchErrorDetail);
-    markRecordUncertain(record, reviewDetails.message, 'unknown', reviewDetails);
-    res.status(502).json({
-      error: '兑换提交状态不确定，卡密已锁定，请联系管理员人工核验',
-      status: 'unknown',
+    return res.status(502).json({
+      error: errorMessage,
+      status: 'failed',
       email: sessionEmail || null
     });
   }
@@ -2653,7 +3275,8 @@ app.post('/api/card/cancel', async (req, res) => {
   }
 
   try {
-    const result = await cancelJobViaUpstream(jobId);
+    const record = findCancelableRecordByJobId(jobId);
+    const result = await cancelJobViaUpstream(jobId, record?.ip_address || clientIP);
     res.status(result.statusCode).json(result.body);
   } catch (err) {
     console.error('取消兑换任务失败:', err);
@@ -2676,7 +3299,7 @@ app.post('/api/admin/job/cancel', adminAuth, async (req, res) => {
       if (!record && isScopedSubAdmin(req.admin)) {
         return res.status(404).json({ error: '未找到可取消的兑换记录' });
       }
-      result = await cancelJobViaUpstream(jobId);
+      result = await cancelJobViaUpstream(jobId, record?.ip_address || getClientIP(req));
     } else if (Number.isInteger(recordId) && recordId > 0) {
       const record = findCancelableRecordById(recordId, req.admin);
       if (!record) {
@@ -2707,7 +3330,8 @@ app.get('/api/admin/job-status/:jobId', adminAuth, requireSuperAdmin, async (req
   const wait = Math.min(Math.max(0, parseInt(req.query.wait, 10) || 0), 30);
 
   try {
-    const upstreamResult = await fetchUpstreamJobStatus(jobId, wait);
+    const record = records.find(r => r.job_id === jobId);
+    const upstreamResult = await fetchUpstreamJobStatus(jobId, wait, record?.ip_address || getClientIP(req));
     res.status(upstreamResult.statusCode);
     res.setHeader('Content-Type', upstreamResult.contentType);
     res.send(JSON.stringify(upstreamResult.payload));
@@ -2731,7 +3355,7 @@ app.get('/api/card/queue', async (req, res) => {
 
   try {
     const queueRes = await fetch(`${getBaseUrl()}/queue`, {
-      headers: { 'X-API-Key': getApiKey() }
+      headers: buildUpstreamHeaders(getClientIP(req))
     });
     const raw = await queueRes.text();
 
@@ -2745,7 +3369,7 @@ app.get('/api/card/queue', async (req, res) => {
     }
 
     if (!queueRes.ok) {
-      return res.status(queueRes.status).json(payload);
+      return res.json(createFallbackQueuePayload(workflow));
     }
 
     if (!workflow) {
@@ -2754,26 +3378,15 @@ app.get('/api/card/queue', async (req, res) => {
 
     const queue = payload && payload.queues ? payload.queues[workflow] : null;
     if (!queue) {
-      return res.status(404).json({ error: '未找到对应 workflow 队列' });
+      return res.json(createFallbackQueuePayload(workflow));
     }
 
     return res.json({ workflow, queue });
   } catch (err) {
     console.error('查询队列摘要失败', err);
-    return res.status(502).json({ error: '查询队列摘要失败，请稍后重试' });
+    return res.json(createFallbackQueuePayload(workflow));
   }
 });
-
-const QUERY_RATE_LIMIT = 3000;
-const queryAttempts = new Map();
-function checkQueryRate(ip) {
-  const now = Date.now();
-  const rec = queryAttempts.get(ip) || { count: 0, resetAt: now + 60 * 1000 };
-  if (now > rec.resetAt) { rec.count = 0; rec.resetAt = now + 60 * 1000; }
-  rec.count++;
-  queryAttempts.set(ip, rec);
-  return rec.count;
-}
 
 async function buildCardQueryPayload(code) {
   const cardCode = normalizeCardCode(code);
@@ -2891,8 +3504,9 @@ function parseBatchCardCodes(input, limit = 20) {
 
 app.get('/api/card/query', async (req, res) => {
   const clientIP = getClientIP(req);
-  if (checkQueryRate(clientIP) > QUERY_RATE_LIMIT) {
-    return res.status(429).json({ error: '查询过于频繁，请稍后重试' });
+  const rateResult = checkCustomerEndpointRate('query', clientIP, queryRateParam(req.query.code));
+  if (rateResult.limited) {
+    return customerRateLimitedResponse(res, rateResult);
   }
 
   const { code } = req.query;
@@ -2906,8 +3520,9 @@ app.get('/api/card/query', async (req, res) => {
 
 app.post('/api/card/query/batch', async (req, res) => {
   const clientIP = getClientIP(req);
-  if (checkQueryRate(clientIP) > QUERY_RATE_LIMIT) {
-    return res.status(429).json({ error: '查询过于频繁，请稍后重试' });
+  const rateResult = checkCustomerEndpointRate('batch_query', clientIP, batchQueryRateParam(req.body));
+  if (rateResult.limited) {
+    return customerRateLimitedResponse(res, rateResult);
   }
 
   const parsed = parseBatchCardCodes(req.body, 20);
@@ -2951,12 +3566,13 @@ app.get('/api/card/job/:jobId', async (req, res) => {
 
   try {
     const upstreamUrl = getBaseUrl();
+    const recordForJob = records.find(r => r.job_id === jobId);
     const jobRes = await fetch(`${upstreamUrl}/job/${jobId}?wait=${wait}`, {
-      headers: { 'X-API-Key': getApiKey() }
+      headers: buildUpstreamHeaders(recordForJob?.ip_address || getClientIP(req))
     });
 
     if (jobRes.status === 404) {
-      const record = records.find(r => r.job_id === jobId);
+      const record = recordForJob;
       if (record && !TERMINAL_RECORD_STATUSES.has(record.status)) {
         markRecordUncertain(record, 'Job 已过期或不存在，需人工核验最终兑换状态', 'expired');
       }
