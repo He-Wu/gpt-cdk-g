@@ -1,15 +1,36 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: miao-gpt-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-miao_gpt}
+      - POSTGRES_USER=${POSTGRES_USER:-miao_gpt}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?请在 .env 文件中设置 POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-miao_gpt} -d ${POSTGRES_DB:-miao_gpt}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: miao-gpt
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DATA_SOURCE=postgres
+      - DATABASE_URL=postgres://${POSTGRES_USER:-miao_gpt}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-miao_gpt}
       # 必填：管理员密码（不可留空）
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?请在 .env 文件中设置 ADMIN_PASSWORD}
       # 推荐：自定义管理后台路径，不设置则每次重启随机生成
@@ -21,7 +42,7 @@ services:
       # Nginx 反代部署建议开启：读取 X-Real-IP / X-Forwarded-For 记录真实客户端 IP
       - TRUST_PROXY=${TRUST_PROXY:-1}
     volumes:
-      # 持久化卡密数据、兑换记录、API 设置
+      # 保留旧 JSON 数据作为迁移来源和备份
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
@@ -29,3 +50,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+volumes:
+  postgres_data:

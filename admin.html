@@ -2370,6 +2370,19 @@
                 </div>
                 <div class="system-detail-grid" id="systemDetailGrid"></div>
             </div>
+            <div class="panel" data-permission="manage_settings">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">数据库迁移</div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">将现有 data/*.json 备份数据导入同服务器 PostgreSQL</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" type="button" id="migrationRunBtn" onclick="migrateJsonToPostgres()">迁移 JSON 数据到数据库</button>
+                </div>
+                <div class="system-detail-grid" id="migrationStatusGrid">
+                    <div class="system-detail-row"><span>迁移状态</span><strong>打开页面后自动读取</strong></div>
+                </div>
+                <p style="font-size:12px;color:var(--amber);margin-top:12px;">迁移成功后业务读写 PostgreSQL，原 JSON 文件会保留为备份，不会自动删除。</p>
+            </div>
         </div>
         <!-- ===== 账号管理页 ===== -->
         <div class="page" id="page-accounts" data-permission="manage_accounts">
@@ -5691,6 +5704,68 @@
         return `<div class="system-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? '-')}</strong></div>`;
     }
 
+    function renderMigrationStatus(data = {}) {
+        const grid = document.getElementById('migrationStatusGrid');
+        const button = document.getElementById('migrationRunBtn');
+        if (!grid) return;
+        const migration = data.migration || null;
+        const counts = migration
+            ? `${migration.cards_count || 0} 卡密 / ${migration.records_count || 0} 兑换 / ${migration.cost_records_count || 0} 成本`
+            : '-';
+        grid.innerHTML = [
+            renderSystemDetail('当前数据源', data.dataSource === 'postgres' ? 'PostgreSQL' : 'JSON 文件'),
+            renderSystemDetail('数据库迁移', data.migrationAvailable ? '可执行' : '未启用 PostgreSQL'),
+            renderSystemDetail('最近迁移', migration ? `${migration.status || '-'} · ${migration.created_at || ''}`.trim() : '暂无记录'),
+            renderSystemDetail('最近导入数量', counts)
+        ].join('');
+        if (button) {
+            button.disabled = !data.migrationAvailable;
+            button.title = data.migrationAvailable ? '' : '当前未启用 PostgreSQL 数据源';
+        }
+    }
+
+    async function loadMigrationStatus() {
+        try {
+            const res = await adminFetch('/api/admin/migration-status');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '读取迁移状态失败');
+            renderMigrationStatus(data);
+        } catch (err) {
+            const grid = document.getElementById('migrationStatusGrid');
+            if (grid) {
+                grid.innerHTML = renderSystemDetail('迁移状态', err.message || '读取失败');
+            }
+        }
+    }
+
+    async function migrateJsonToPostgres() {
+        const button = document.getElementById('migrationRunBtn');
+        if (!(await showAdminConfirm('确认把现有 JSON 数据迁移到 PostgreSQL？原 JSON 文件会保留为备份。', {
+            title: '确认迁移数据',
+            variant: 'warning',
+            confirmText: '开始迁移'
+        }))) return;
+        if (button) {
+            button.disabled = true;
+            button.textContent = '迁移中...';
+        }
+        try {
+            const res = await adminFetch('/api/admin/migrate-json-to-postgres', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '迁移失败');
+            renderMigrationStatus(data);
+            showToast(data.message || '迁移完成', 'success');
+            loadSystemStatus();
+        } catch (err) {
+            showToast('迁移失败: ' + err.message, 'error');
+            loadMigrationStatus();
+        } finally {
+            if (button) {
+                button.textContent = '迁移 JSON 数据到数据库';
+            }
+        }
+    }
+
     async function loadSystemStatus() {
         const overview = document.getElementById('systemOverviewGrid');
         const detailGrid = document.getElementById('systemDetailGrid');
@@ -5756,9 +5831,11 @@
                 renderSystemDetail('服务运行时间', formatDuration(processInfo.uptime_seconds)),
                 renderSystemDetail('Node 版本', processInfo.node_version),
                 renderSystemDetail('进程 PID', processInfo.pid),
+                renderSystemDetail('数据源', processInfo.data_source === 'postgres' ? 'PostgreSQL' : 'JSON 文件'),
                 renderSystemDetail('数据目录', processInfo.data_dir),
                 renderSystemDetail('磁盘路径', disk?.path || '-')
             ].join('');
+            renderMigrationStatus(data.dataSource || {});
         } catch (err) {
             overview.innerHTML = `<div class="empty-state" style="grid-column:1 / -1;"><div class="icon">⚠️</div><p>${escapeHtml(err.message || '读取系统状态失败')}</p></div>`;
             if (collectedAt) collectedAt.textContent = '-';
@@ -5768,6 +5845,7 @@
                 button.disabled = false;
                 button.textContent = '刷新状态';
             }
+            loadMigrationStatus();
         }
     }
 

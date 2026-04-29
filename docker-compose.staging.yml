@@ -2,17 +2,38 @@
 # 用法: docker compose -f docker-compose.staging.yml up -d --build
 
 services:
+  postgres-staging:
+    image: postgres:16-alpine
+    container_name: miao-gpt-postgres-staging
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${STAGING_POSTGRES_DB:-miao_gpt_staging}
+      - POSTGRES_USER=${STAGING_POSTGRES_USER:-miao_gpt}
+      - POSTGRES_PASSWORD=${STAGING_POSTGRES_PASSWORD:-staging_postgres_change_me}
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STAGING_POSTGRES_USER:-miao_gpt} -d ${STAGING_POSTGRES_DB:-miao_gpt_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app-staging:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: miao-gpt-staging
     restart: unless-stopped
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
     ports:
       - "3001:3000"
     environment:
       - PORT=3000
       - NODE_ENV=staging
+      - DATA_SOURCE=postgres
+      - DATABASE_URL=postgres://${STAGING_POSTGRES_USER:-miao_gpt}:${STAGING_POSTGRES_PASSWORD:-staging_postgres_change_me}@postgres-staging:5432/${STAGING_POSTGRES_DB:-miao_gpt_staging}
       # 管理员密码（staging 可与生产使用不同密码）
       - ADMIN_PASSWORD=${STAGING_ADMIN_PASSWORD:-staging_change_me_123}
       # 管理后台路径（staging 固定路径方便测试）
@@ -22,7 +43,7 @@ services:
       # 如果 staging 也经过可信反代，可在环境变量中设为 1
       - TRUST_PROXY=${STAGING_TRUST_PROXY:-0}
     volumes:
-      # staging 数据与生产完全隔离
+      # staging 旧 JSON 数据与生产完全隔离，作为迁移来源和备份
       - ./data-staging:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
@@ -33,3 +54,6 @@ services:
     labels:
       - "env=staging"
       - "app=miao-gpt"
+
+volumes:
+  postgres_staging_data:

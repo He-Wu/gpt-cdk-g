@@ -14,6 +14,7 @@ RUN npm install --omit=dev
 
 # 复制源码
 COPY server.js index.html admin.html ./
+COPY lib ./lib
 
 # data 目录由 Volume 挂载
 RUN mkdir -p /app/data

@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const net = require('net');
 const { v4: uuidv4 } = require('uuid');
+const { createPostgresStore } = require('./lib/postgres-store');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,10 @@ const CARDS_FILE = path.join(DATA_DIR, 'cards.json');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const COST_RECORDS_FILE = path.join(DATA_DIR, 'cost-records.json');
+const DATA_SOURCE = String(process.env.DATA_SOURCE || (process.env.DATABASE_URL ? 'postgres' : 'json')).trim().toLowerCase();
+const POSTGRES_ENABLED = DATA_SOURCE === 'postgres';
+let postgresStore = null;
+let storePersistQueue = Promise.resolve();
 const CARD_TYPES = ['plus', 'plus_1y', 'pro', 'pro_20x'];
 const COST_RECORD_KINDS = ['purchase', 'loss', 'adjustment'];
 const DEFAULT_COMPENSATION_REASON = '充值未到账补卡';
@@ -162,14 +167,33 @@ function loadSettings() {
 }
 
 function saveSettings(settings) {
+  if (postgresStore) {
+    const snapshot = cloneJsonValue(settings);
+    queueStorePersist('settings', () => postgresStore.saveSettings(snapshot));
+    return;
+  }
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
 // 运行时设置对象（动态，无需重启）
 let settings = loadSettings();
 
+function cloneJsonValue(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function queueStorePersist(label, task) {
+  storePersistQueue = storePersistQueue
+    .then(task, task)
+    .catch((err) => {
+      console.error(`PostgreSQL 保存 ${label} 失败:`, err);
+    });
+  return storePersistQueue;
+}
+
 // 初始化时如果 settings 中没有密码，写入初始密码
-if (!settings.adminPassword) {
+function ensureAdminPasswordInitialized() {
+  if (settings.adminPassword) return;
   settings.adminPassword = INITIAL_ADMIN_PASSWORD || crypto.randomBytes(18).toString('base64url');
   saveSettings(settings);
   if (!INITIAL_ADMIN_PASSWORD) {
@@ -322,6 +346,11 @@ function loadCards() {
 }
 
 function saveCards(cards) {
+  if (postgresStore) {
+    const snapshot = cloneJsonValue(cards);
+    queueStorePersist('cards', () => postgresStore.saveCards(snapshot));
+    return;
+  }
   fs.writeFileSync(CARDS_FILE, JSON.stringify(cards, null, 2), 'utf-8');
 }
 
@@ -337,6 +366,11 @@ function loadRecords() {
 }
 
 function saveRecords(records) {
+  if (postgresStore) {
+    const snapshot = cloneJsonValue(records);
+    queueStorePersist('records', () => postgresStore.saveRecords(snapshot));
+    return;
+  }
   fs.writeFileSync(RECORDS_FILE, JSON.stringify(records, null, 2), 'utf-8');
 }
 
@@ -378,6 +412,11 @@ function loadCostRecords() {
 }
 
 function saveCostRecords(records) {
+  if (postgresStore) {
+    const snapshot = cloneJsonValue(records);
+    queueStorePersist('costRecords', () => postgresStore.saveCostRecords(snapshot));
+    return;
+  }
   fs.writeFileSync(COST_RECORDS_FILE, JSON.stringify(records, null, 2), 'utf-8');
 }
 
@@ -385,6 +424,24 @@ function saveCostRecords(records) {
 let cards = loadCards();
 let records = loadRecords();
 let costRecords = loadCostRecords();
+
+function buildDataSourceStatus(lastMigration = null) {
+  return {
+    dataSource: POSTGRES_ENABLED ? 'postgres' : 'json',
+    postgresEnabled: POSTGRES_ENABLED,
+    migrationAvailable: !!postgresStore,
+    migration: lastMigration
+  };
+}
+
+async function reloadFromStore() {
+  if (!postgresStore) return;
+  const loaded = await postgresStore.loadAll();
+  cards = loaded.cards;
+  records = loaded.records;
+  settings = Object.keys(loaded.settings || {}).length > 0 ? loaded.settings : {};
+  costRecords = loaded.costRecords;
+}
 
 function buildCostSummary() {
   const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
@@ -492,6 +549,23 @@ function buildCostSummary() {
 function getWeightedAverageCost(type) {
   const summary = buildCostSummary();
   return summary.by_type[type]?.current_average_cost ?? getDefaultCost();
+}
+
+async function bootstrapDataSource() {
+  if (POSTGRES_ENABLED) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATA_SOURCE=postgres requires DATABASE_URL');
+    }
+    postgresStore = createPostgresStore({
+      connectionString: process.env.DATABASE_URL,
+      dataDir: DATA_DIR,
+      logger: console
+    });
+    await postgresStore.connect();
+    await postgresStore.ensureSchema();
+    await reloadFromStore();
+  }
+  ensureAdminPasswordInitialized();
 }
 
 // 定期保存（防止意外丢失）
@@ -1102,11 +1176,13 @@ async function buildSystemInfo() {
       uptime_seconds: Math.round(process.uptime()),
       cwd: process.cwd(),
       data_dir: DATA_DIR,
+      data_source: POSTGRES_ENABLED ? 'postgres' : 'json',
       rss: processMemory.rss,
       heap_total: processMemory.heapTotal,
       heap_used: processMemory.heapUsed,
       external: processMemory.external
-    }
+    },
+    dataSource: buildDataSourceStatus()
   };
 }
 
@@ -2006,6 +2082,34 @@ app.get('/api/admin/system', adminAuth, requireSuperAdmin, async (req, res) => {
   } catch (err) {
     console.error('读取系统状态失败:', err);
     res.status(500).json({ error: '读取系统状态失败', detail: err.message });
+  }
+});
+
+app.get('/api/admin/migration-status', adminAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const lastMigration = postgresStore ? await postgresStore.getMigrationStatus() : null;
+    res.json(buildDataSourceStatus(lastMigration));
+  } catch (err) {
+    console.error('读取迁移状态失败:', err);
+    res.status(500).json({ error: '读取迁移状态失败', detail: err.message });
+  }
+});
+
+app.post('/api/admin/migrate-json-to-postgres', adminAuth, requireSuperAdmin, async (req, res) => {
+  if (!postgresStore) {
+    return res.status(503).json({ error: 'PostgreSQL 数据库未启用，无法执行 JSON 数据迁移' });
+  }
+  try {
+    const result = await postgresStore.migrateJsonToPostgres();
+    await reloadFromStore();
+    ensureAdminPasswordInitialized();
+    res.json({
+      message: 'JSON 数据已迁移到 PostgreSQL',
+      ...buildDataSourceStatus(result)
+    });
+  } catch (err) {
+    console.error('迁移 JSON 数据到 PostgreSQL 失败:', err);
+    res.status(500).json({ error: '迁移 JSON 数据到数据库失败', detail: err.message });
   }
 });
 
@@ -3647,34 +3751,58 @@ app.use('/api-proxy', (req, res, next) => {
 }));
 
 // ========== 优雅退出：保存数据 ==========
-process.on('SIGINT', () => {
+async function shutdown(signal) {
   console.log('\n正在保存数据...');
-  saveCards(cards);
-  saveRecords(records);
-  saveCostRecords(costRecords);
+  if (postgresStore) {
+    await storePersistQueue;
+    await postgresStore.saveCards(cards);
+    await postgresStore.saveRecords(records);
+    await postgresStore.saveCostRecords(costRecords);
+    await postgresStore.saveSettings(settings);
+    await postgresStore.close();
+  } else {
+    saveCards(cards);
+    saveRecords(records);
+    saveCostRecords(costRecords);
+  }
   console.log('数据已保存，退出。');
-  process.exit(0);
+  process.exit(signal === 'SIGINT' ? 0 : 0);
+}
+
+process.on('SIGINT', () => {
+  shutdown('SIGINT').catch((err) => {
+    console.error('退出保存失败:', err);
+    process.exit(1);
+  });
 });
 
 process.on('SIGTERM', () => {
-  saveCards(cards);
-  saveRecords(records);
-  saveCostRecords(costRecords);
-  process.exit(0);
+  shutdown('SIGTERM').catch((err) => {
+    console.error('退出保存失败:', err);
+    process.exit(1);
+  });
 });
 
 // ========== 启动服务 ==========
-app.listen(PORT, () => {
-  console.log(`================================================`);
-  console.log(`  卡密兑换服务已启动: http://localhost:${PORT}`);
-  console.log(`  用户页面: http://localhost:${PORT}/`);
-  console.log(`  管理后台: http://localhost:${PORT}/${ADMIN_PATH}`);
-  console.log(`  （请保存此地址，/admin.html 已封禁）`);
-  console.log(`  卡密总数: ${cards.length} (可用: ${cards.filter(c => c.status === 'unused').length})`);
-  console.log(`================================================`);
-  if (!getApiKey() || !getBaseUrl()) {
-    console.warn('⚠️  接口尚未配置，请登录管理后台 → 系统设置 → 填写 API Key 和 Base URL');
-  } else {
-    console.log(`✅ 接口已配置: ${getBaseUrl()}`);
-  }
-});
+bootstrapDataSource()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`================================================`);
+      console.log(`  卡密兑换服务已启动: http://localhost:${PORT}`);
+      console.log(`  用户页面: http://localhost:${PORT}/`);
+      console.log(`  管理后台: http://localhost:${PORT}/${ADMIN_PATH}`);
+      console.log(`  数据源: ${POSTGRES_ENABLED ? 'PostgreSQL' : 'JSON'}`);
+      console.log(`  （请保存此地址，/admin.html 已封禁）`);
+      console.log(`  卡密总数: ${cards.length} (可用: ${cards.filter(c => c.status === 'unused').length})`);
+      console.log(`================================================`);
+      if (!getApiKey() || !getBaseUrl()) {
+        console.warn('⚠️  接口尚未配置，请登录管理后台 → 系统设置 → 填写 API Key 和 Base URL');
+      } else {
+        console.log(`✅ 接口已配置: ${getBaseUrl()}`);
+      }
+    });
+  })
+  .catch((err) => {
+    console.error('服务启动失败:', err);
+    process.exit(1);
+  });

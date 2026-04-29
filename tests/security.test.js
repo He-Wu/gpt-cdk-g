@@ -9,6 +9,7 @@ const http = require('node:http');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const FIXTURE_FILES = ['server.js', 'index.html', 'admin.html', 'cancel.html', 'package.json'];
+const FIXTURE_DIRS = ['lib'];
 
 async function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -30,6 +31,14 @@ async function makeTempProject(testName) {
 
   await Promise.all(FIXTURE_FILES.map(async (file) => {
     await fs.copyFile(path.join(REPO_ROOT, file), path.join(baseDir, file));
+  }));
+  await Promise.all(FIXTURE_DIRS.map(async (dir) => {
+    const source = path.join(REPO_ROOT, dir);
+    try {
+      await fs.cp(source, path.join(baseDir, dir), { recursive: true });
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
   }));
 
   return baseDir;
@@ -215,6 +224,46 @@ async function createSubAdmin(port, token, username, password) {
     body: JSON.stringify({ username, password })
   });
 }
+
+test('data source status reports json fallback when database is not configured', async () => {
+  const server = await startServer('data source json fallback');
+
+  try {
+    const token = await loginAdmin(server.port);
+    const { res, data } = await requestJson(server.port, '/api/admin/migration-status', {
+      headers: { 'X-Admin-Token': token }
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(data.dataSource, 'json');
+    assert.equal(data.postgresEnabled, false);
+    assert.equal(data.migrationAvailable, false);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('migration endpoint requires super admin and reports unavailable without postgres', async () => {
+  const server = await startServer('migration endpoint auth unavailable');
+
+  try {
+    const unauth = await requestJson(server.port, '/api/admin/migrate-json-to-postgres', {
+      method: 'POST'
+    });
+    assert.equal(unauth.res.status, 401);
+
+    const token = await loginAdmin(server.port);
+    const { res, data } = await requestJson(server.port, '/api/admin/migrate-json-to-postgres', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token }
+    });
+
+    assert.equal(res.status, 503);
+    assert.match(data.error, /PostgreSQL|数据库/);
+  } finally {
+    await server.stop();
+  }
+});
 
 async function configureUpstream(port, token, baseUrl) {
   const { res } = await requestJson(port, '/api/admin/settings', {
@@ -4488,6 +4537,28 @@ test('admin page renders creator usernames in cards and records tables', async (
   const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   assert.match(html, /created_by_username/);
   assert.match(html, /currentViewer/);
+});
+
+test('migration ui exposes json to postgresql button and endpoint', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
+  assert.match(html, /migrateJsonToPostgres/);
+  assert.match(html, /\/api\/admin\/migrate-json-to-postgres/);
+  assert.match(html, /迁移 JSON 数据到数据库/);
+  assert.match(html, /\/api\/admin\/migration-status/);
+});
+
+test('postgres docker config is documented and wired', async () => {
+  const pkg = JSON.parse(await fs.readFile(path.join(REPO_ROOT, 'package.json'), 'utf-8'));
+  const compose = await fs.readFile(path.join(REPO_ROOT, 'docker-compose.yml'), 'utf-8');
+  const envExample = await fs.readFile(path.join(REPO_ROOT, '.env.example'), 'utf-8');
+
+  assert.ok(pkg.dependencies.pg);
+  assert.match(compose, /postgres:/);
+  assert.match(compose, /POSTGRES_DB/);
+  assert.match(compose, /DATABASE_URL/);
+  assert.match(compose, /postgres_data/);
+  assert.match(envExample, /POSTGRES_PASSWORD/);
+  assert.match(envExample, /DATABASE_URL/);
 });
 
 test('admin records expose manual review diagnostic actions', async () => {
