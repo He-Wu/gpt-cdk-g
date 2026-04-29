@@ -1798,6 +1798,13 @@ test('user page exposes chinese and english language switching', async () => {
   assert.doesNotMatch(html, /'query\.searchButton': '.*&nbsp;/);
 });
 
+test('user page uses a restrained premium visual system', async () => {
+  const html = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');
+  assert.match(html, /IBM Plex Sans/);
+  assert.match(html, /--accent-primary/);
+  assert.doesNotMatch(html, /floating-orb|orb-1|pulse-glow|--gradient-1|--gradient-2/);
+});
+
 test('frontend pages use custom modal dialogs instead of native browser dialogs', async () => {
   const adminHtml = await fs.readFile(path.join(REPO_ROOT, 'admin.html'), 'utf-8');
   const userHtml = await fs.readFile(path.join(REPO_ROOT, 'index.html'), 'utf-8');

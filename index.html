@@ -6,160 +6,157 @@
     <title>GPT源头 - 订阅兑换</title>
     <meta name="description" content="使用卡密快速兑换 ChatGPT Plus 或 Pro 订阅">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --bg-primary: #0a0a0f;
-            --bg-card: rgba(255, 255, 255, 0.03);
-            --bg-card-hover: rgba(255, 255, 255, 0.06);
-            --border-color: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(99, 102, 241, 0.3);
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --accent-indigo: #818cf8;
-            --accent-indigo-dark: #6366f1;
-            --accent-emerald: #34d399;
-            --accent-amber: #fbbf24;
-            --accent-rose: #fb7185;
-            --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
-            --gradient-2: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
-            --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
+            --bg-primary: #0b0d0f;
+            --bg-surface: #111519;
+            --bg-card: rgba(17, 21, 25, 0.92);
+            --bg-card-hover: rgba(23, 28, 33, 0.96);
+            --border-color: rgba(203, 213, 225, 0.12);
+            --border-strong: rgba(203, 213, 225, 0.2);
+            --text-primary: #eef2f6;
+            --text-secondary: #a8b0ba;
+            --text-muted: #6f7a86;
+            --accent-primary: #d3b36b;
+            --accent-primary-dark: #a98236;
+            --accent-indigo: #83b6bf;
+            --accent-indigo-dark: #5d9099;
+            --accent-emerald: #76b58f;
+            --accent-amber: #d3b36b;
+            --accent-rose: #d67973;
+            --accent-light: #d3b36b;
+            --success: #76b58f;
+            --warning: #d3b36b;
+            --error: #d67973;
+            --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.34);
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             background: var(--bg-primary);
             color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
         }
 
-        /* 背景动画 */
+        /* 背景 */
         .bg-pattern {
             position: fixed;
             inset: 0;
             z-index: 0;
             background:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139, 92, 246, 0.08), transparent),
-                radial-gradient(ellipse 50% 30% at 20% 60%, rgba(6, 182, 212, 0.06), transparent);
+                linear-gradient(180deg, rgba(21, 26, 31, 0.96) 0%, rgba(9, 11, 13, 1) 48%, #08090b 100%),
+                repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 112px),
+                repeating-linear-gradient(180deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 96px);
         }
 
-        .floating-orb {
-            position: fixed;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.4;
-            animation: float 20s ease-in-out infinite;
-            z-index: 0;
-        }
-
-        .orb-1 { width: 300px; height: 300px; background: #6366f1; top: -100px; right: -50px; animation-delay: 0s; }
-        .orb-2 { width: 200px; height: 200px; background: #8b5cf6; bottom: -50px; left: -50px; animation-delay: -7s; }
-        .orb-3 { width: 150px; height: 150px; background: #06b6d4; top: 50%; left: 50%; animation-delay: -14s; }
-
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            25% { transform: translate(30px, -40px) scale(1.1); }
-            50% { transform: translate(-20px, 20px) scale(0.95); }
-            75% { transform: translate(15px, 30px) scale(1.05); }
+        .bg-pattern::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, rgba(211,179,107,0.08), transparent 34%, transparent 66%, rgba(131,182,191,0.07));
+            opacity: 0.7;
         }
 
         /* 主容器 */
         .container {
             position: relative;
             z-index: 1;
-            max-width: 520px;
+            max-width: 860px;
             margin: 0 auto;
-            padding: 40px 20px 60px;
+            padding: 34px 22px 64px;
         }
 
         .language-toggle {
             display: flex;
             justify-content: flex-end;
             gap: 6px;
-            margin-bottom: 18px;
+            margin-bottom: 24px;
         }
 
         .language-toggle button {
-            min-width: 64px;
-            padding: 8px 12px;
+            min-width: 60px;
+            padding: 7px 12px;
             border: 1px solid var(--border-color);
-            border-radius: 999px;
-            background: rgba(255,255,255,0.04);
+            border-radius: 8px;
+            background: rgba(17, 21, 25, 0.82);
             color: var(--text-secondary);
             font-family: inherit;
             font-size: 12px;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
         }
 
         .language-toggle button.active {
-            border-color: rgba(129, 140, 248, 0.45);
-            background: rgba(99,102,241,0.18);
-            color: var(--text-primary);
+            border-color: rgba(211, 179, 107, 0.55);
+            background: rgba(211, 179, 107, 0.12);
+            color: #f7e6b6;
         }
 
         /* 头部 */
         .header {
-            text-align: center;
-            margin-bottom: 40px;
+            display: grid;
+            grid-template-columns: 54px 1fr;
+            align-items: center;
+            column-gap: 16px;
+            text-align: left;
+            margin-bottom: 28px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .logo {
-            display: inline-flex;
+            display: flex;
+            grid-row: 1 / span 2;
             align-items: center;
             justify-content: center;
-            width: 64px;
-            height: 64px;
-            background: var(--gradient-1);
-            border-radius: 18px;
-            font-size: 28px;
-            margin-bottom: 20px;
-            box-shadow: var(--shadow-glow);
-            animation: pulse-glow 3s ease-in-out infinite;
-        }
-
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.2); }
-            50% { box-shadow: 0 0 50px rgba(99, 102, 241, 0.4); }
+            width: 54px;
+            height: 54px;
+            background: #151a20;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            color: var(--accent-primary);
+            font-family: 'Noto Serif SC', serif;
+            font-size: 24px;
+            font-weight: 700;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
         }
 
         .header h1 {
-            font-size: 28px;
-            font-weight: 800;
-            background: var(--gradient-2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: -0.5px;
+            grid-column: 2;
+            font-family: 'Noto Serif SC', 'IBM Plex Sans', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 0;
+            line-height: 1.15;
         }
 
         .header p {
+            grid-column: 2;
             color: var(--text-secondary);
             font-size: 14px;
-            margin-top: 8px;
+            margin-top: 7px;
         }
 
         /* 卡片 */
         .card {
             background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 28px;
-            margin-bottom: 20px;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 18px;
+            box-shadow: var(--shadow-panel);
             transition: all 0.3s ease;
         }
 
         .card:hover {
             background: var(--bg-card-hover);
-            border-color: rgba(255, 255, 255, 0.12);
+            border-color: var(--border-strong);
         }
 
         .card-title {
@@ -173,27 +170,21 @@
         }
 
         .card-title .icon {
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(99, 102, 241, 0.15);
-            border-radius: 10px;
-            font-size: 16px;
+            display: none;
         }
 
         .step-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 22px;
+            width: 26px;
             height: 22px;
-            background: var(--gradient-1);
-            border-radius: 50%;
+            background: rgba(211, 179, 107, 0.1);
+            border: 1px solid rgba(211, 179, 107, 0.32);
+            border-radius: 6px;
             font-size: 11px;
             font-weight: 700;
-            color: white;
+            color: var(--accent-primary);
             flex-shrink: 0;
         }
 
@@ -217,21 +208,21 @@
         input[type="text"],
         textarea {
             width: 100%;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(5, 7, 9, 0.42);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 14px 16px;
             color: var(--text-primary);
-            font-family: 'Inter', monospace;
+            font-family: 'IBM Plex Sans', ui-monospace, SFMono-Regular, Consolas, monospace;
             font-size: 14px;
             transition: all 0.3s ease;
             outline: none;
         }
 
         input:focus, textarea:focus {
-            border-color: var(--accent-indigo);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(211, 179, 107, 0.58);
+            box-shadow: 0 0 0 3px rgba(211, 179, 107, 0.1);
+            background: rgba(9, 12, 15, 0.7);
         }
 
         input::placeholder, textarea::placeholder {
@@ -241,7 +232,7 @@
         textarea {
             resize: vertical;
             min-height: 90px;
-            font-family: 'Inter', monospace;
+            font-family: 'IBM Plex Sans', ui-monospace, SFMono-Regular, Consolas, monospace;
             font-size: 13px;
         }
 
@@ -253,7 +244,7 @@
         }
 
         .input-hint a {
-            color: var(--accent-indigo);
+            color: var(--accent-primary);
             text-decoration: none;
         }
 
@@ -263,7 +254,7 @@
             gap: 8px;
             margin-top: 10px;
             padding: 10px 12px;
-            border-radius: 10px;
+            border-radius: 8px;
             background: rgba(52, 211, 153, 0.1);
             border: 1px solid rgba(52, 211, 153, 0.2);
             color: var(--accent-emerald);
@@ -277,7 +268,7 @@
 
         .session-email-preview .email-value {
             color: var(--text-primary);
-            font-family: 'Inter', monospace;
+            font-family: 'IBM Plex Sans', ui-monospace, SFMono-Regular, Consolas, monospace;
             overflow-wrap: anywhere;
         }
 
@@ -288,9 +279,9 @@
             justify-content: center;
             gap: 8px;
             padding: 14px 24px;
-            border: none;
-            border-radius: 12px;
-            font-family: 'Inter', sans-serif;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            font-family: 'IBM Plex Sans', sans-serif;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
@@ -299,14 +290,15 @@
         }
 
         .btn-primary {
-            background: var(--gradient-1);
-            color: white;
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+            background: var(--accent-primary);
+            color: #111519;
+            border-color: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
         }
 
         .btn-primary:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.4);
+            background: #e0bf74;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
         }
 
         .btn-primary:active:not(:disabled) {
@@ -319,7 +311,7 @@
         }
 
         .btn-outline {
-            background: transparent;
+            background: rgba(17, 21, 25, 0.66);
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
         }
@@ -333,7 +325,7 @@
         .verify-result {
             display: none;
             padding: 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             margin-top: 16px;
             animation: fadeIn 0.4s ease;
         }
@@ -351,7 +343,7 @@
         }
 
         .verify-result .result-icon {
-            font-size: 20px;
+            display: none;
             margin-bottom: 6px;
         }
 
@@ -373,7 +365,7 @@
             display: inline-flex;
             align-items: center;
             padding: 4px 12px;
-            border-radius: 20px;
+            border-radius: 999px;
             font-size: 12px;
             font-weight: 700;
             text-transform: uppercase;
@@ -381,31 +373,31 @@
         }
 
         .type-badge.plus {
-            background: rgba(99, 102, 241, 0.15);
-            color: var(--accent-indigo);
+            background: rgba(131, 182, 191, 0.13);
+            color: #9ccbd1;
         }
 
         .type-badge.plus_1y {
-            background: rgba(6, 182, 212, 0.15);
-            color: #22d3ee;
+            background: rgba(118, 181, 143, 0.13);
+            color: #9bd0ae;
         }
 
         .type-badge.pro {
-            background: rgba(139, 92, 246, 0.15);
-            color: #a78bfa;
+            background: rgba(211, 179, 107, 0.15);
+            color: #e3c67e;
         }
 
         .type-badge.pro_20x {
-            background: rgba(244, 114, 182, 0.15);
-            color: #f472b6;
+            background: rgba(214, 121, 115, 0.13);
+            color: #e49a94;
         }
 
         .queue-summary-card {
             margin-bottom: 16px;
             padding: 16px;
-            border-radius: 14px;
-            border: 1px solid rgba(99, 102, 241, 0.16);
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(6, 182, 212, 0.08));
+            border-radius: 8px;
+            border: 1px solid rgba(211, 179, 107, 0.18);
+            background: rgba(211, 179, 107, 0.06);
         }
 
         .queue-summary-header {
@@ -429,9 +421,9 @@
 
         .queue-summary-item {
             padding: 12px;
-            border-radius: 12px;
-            background: rgba(10, 10, 15, 0.22);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            background: rgba(5, 7, 9, 0.28);
+            border: 1px solid var(--border-color);
         }
 
         .queue-summary-label {
@@ -473,9 +465,9 @@
 
         .home-queue-item {
             padding: 14px;
-            border-radius: 14px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            background: rgba(5, 7, 9, 0.28);
+            border: 1px solid var(--border-color);
         }
 
         .home-queue-item .type-badge {
@@ -504,8 +496,8 @@
 
         .home-queue-empty {
             padding: 14px 16px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.04);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.035);
             color: var(--text-secondary);
             font-size: 13px;
         }
@@ -527,7 +519,7 @@
 
         .status-badge {
             padding: 4px 12px;
-            border-radius: 20px;
+            border-radius: 999px;
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
@@ -535,7 +527,7 @@
         }
 
         .status-badge.pending { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); }
-        .status-badge.processing { background: rgba(99, 102, 241, 0.15); color: var(--accent-indigo); }
+        .status-badge.processing { background: rgba(131, 182, 191, 0.15); color: var(--accent-indigo); }
         .status-badge.done { background: rgba(52, 211, 153, 0.15); color: var(--accent-emerald); }
         .status-badge.failed { background: rgba(251, 113, 133, 0.15); color: var(--accent-rose); }
 
@@ -557,7 +549,7 @@
 
         .job-message {
             padding: 14px 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 14px;
             margin-top: 16px;
             animation: fadeIn 0.4s ease;
@@ -586,7 +578,7 @@
 
         .progress-bar .fill {
             height: 100%;
-            background: var(--gradient-1);
+            background: var(--accent-primary);
             border-radius: 2px;
             animation: progress-pulse 2s ease-in-out infinite;
         }
@@ -628,9 +620,11 @@
 
         /* 响应式 */
         @media (max-width: 540px) {
-            .container { padding: 30px 16px 40px; }
+            .container { padding: 24px 16px 42px; }
             .card { padding: 20px; }
             .header h1 { font-size: 24px; }
+            .header { grid-template-columns: 46px 1fr; column-gap: 12px; }
+            .logo { width: 46px; height: 46px; font-size: 21px; }
             .queue-summary-grid { grid-template-columns: 1fr; }
             .home-queue-grid { grid-template-columns: 1fr; }
         }
@@ -644,7 +638,7 @@
         }
 
         .footer a {
-            color: var(--accent-indigo);
+            color: var(--accent-primary);
             text-decoration: none;
         }
 
@@ -653,7 +647,7 @@
             display: none;
             background: rgba(251, 191, 36, 0.08);
             border: 1px solid rgba(251, 191, 36, 0.25);
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 20px 24px;
             margin-bottom: 20px;
         }
@@ -686,7 +680,7 @@
         .guide-card {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 20px 24px;
             margin-bottom: 20px;
         }
@@ -724,16 +718,17 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(99, 102, 241, 0.15);
-            color: var(--accent-indigo);
-            border-radius: 50%;
+            background: rgba(211, 179, 107, 0.1);
+            color: var(--accent-primary);
+            border: 1px solid rgba(211, 179, 107, 0.28);
+            border-radius: 6px;
             font-size: 11px;
             font-weight: 700;
             margin-top: 1px;
         }
 
         .steps-list li a {
-            color: var(--accent-indigo);
+            color: var(--accent-primary);
             text-decoration: none;
         }
 
@@ -744,7 +739,7 @@
         /* 卡密查询结果 */
         .query-result {
             margin-top: 20px;
-            border-radius: 14px;
+            border-radius: 8px;
             overflow: hidden;
             animation: slideUp 0.4s ease;
         }
@@ -756,7 +751,7 @@
             padding: 14px 20px;
             background: rgba(255,255,255,0.04);
             border: 1px solid var(--border-color);
-            border-radius: 14px 14px 0 0;
+            border-radius: 8px 8px 0 0;
         }
 
         .query-result-header .qcode {
@@ -770,7 +765,7 @@
         .query-result-body {
             border: 1px solid var(--border-color);
             border-top: none;
-            border-radius: 0 0 14px 14px;
+            border-radius: 0 0 8px 8px;
             background: rgba(255,255,255,0.02);
         }
 
@@ -809,13 +804,13 @@
             align-items: center;
             gap: 5px;
             padding: 3px 10px;
-            border-radius: 20px;
+            border-radius: 999px;
             font-size: 11px;
             font-weight: 700;
         }
 
         .status-pill.unused { background: rgba(52,211,153,0.12); color: var(--accent-emerald); }
-        .status-pill.used { background: rgba(99,102,241,0.12); color: var(--accent-indigo); }
+        .status-pill.used { background: rgba(131,182,191,0.12); color: var(--accent-indigo); }
         .status-pill.disabled { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
         .status-pill.done { background: rgba(52,211,153,0.12); color: var(--accent-emerald); }
         .status-pill.failed { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
@@ -824,7 +819,7 @@
         .cancel-inline-btn {
             width: auto;
             padding: 8px 12px;
-            border-radius: 999px;
+            border-radius: 8px;
             border: 1px solid rgba(251, 191, 36, 0.28);
             background: rgba(251, 191, 36, 0.1);
             color: var(--accent-amber);
@@ -861,7 +856,7 @@
             margin-top: 16px;
             overflow-x: auto;
             border: 1px solid var(--border-color);
-            border-radius: 14px;
+            border-radius: 8px;
             background: rgba(255,255,255,0.02);
         }
 
@@ -922,7 +917,9 @@
             position: fixed;
             inset: 0;
             z-index: 9999;
-            background: #0a0a0f;
+            background:
+                linear-gradient(180deg, rgba(21, 26, 31, 0.96) 0%, #08090b 100%),
+                repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 112px);
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -941,7 +938,7 @@
             min-width: 64px;
             padding: 8px 12px;
             border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 999px;
+            border-radius: 8px;
             background: rgba(255,255,255,0.04);
             color: var(--text-secondary);
             font-family: inherit;
@@ -956,18 +953,25 @@
             color: var(--text-primary);
         }
         .maintenance-icon {
-            font-size: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            border: 1px solid rgba(211, 179, 107, 0.32);
+            background: rgba(211, 179, 107, 0.08);
+            color: var(--accent-primary);
+            font-family: 'Noto Serif SC', serif;
+            font-size: 24px;
+            font-weight: 700;
             margin-bottom: 24px;
-            animation: pulse-glow 3s ease-in-out infinite;
-            filter: drop-shadow(0 0 20px rgba(251,191,36,0.4));
         }
         .maintenance-title {
             font-size: 28px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #fbbf24, #f59e0b);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-family: 'Noto Serif SC', 'IBM Plex Sans', sans-serif;
+            font-weight: 700;
+            color: var(--text-primary);
             margin-bottom: 16px;
         }
         .maintenance-msg {
@@ -1005,8 +1009,8 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
-            background: rgba(5, 6, 14, 0.72);
-            backdrop-filter: blur(16px);
+            background: rgba(5, 7, 9, 0.72);
+            backdrop-filter: blur(12px);
             animation: userModalFadeIn 0.16s ease-out;
         }
 
@@ -1015,10 +1019,10 @@
             max-height: min(76vh, 640px);
             display: flex;
             flex-direction: column;
-            background: rgba(22, 24, 34, 0.98);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 18px;
-            box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08);
+            background: rgba(17, 21, 25, 0.98);
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.5);
             overflow: hidden;
             animation: userModalRiseIn 0.18s ease-out;
         }
@@ -1037,8 +1041,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border-radius: 12px;
-            background: rgba(129,140,248,0.14);
+            border-radius: 8px;
+            background: rgba(211,179,107,0.12);
             color: var(--accent-light);
             font-size: 18px;
             flex-shrink: 0;
@@ -1097,7 +1101,7 @@
             <button type="button" data-lang-option="zh" onclick="setLanguage('zh')">中文</button>
             <button type="button" data-lang-option="en" onclick="setLanguage('en')">English</button>
         </div>
-        <div class="maintenance-icon">🔧</div>
+        <div class="maintenance-icon">G</div>
         <div class="maintenance-title" data-i18n="maintenance.title">系统维护中</div>
         <div class="maintenance-msg" id="maintenanceMsgText" data-i18n="maintenance.message">系统正在进行维护升级，请稍后再访问。</div>
         <div class="maintenance-dots">
@@ -1107,10 +1111,6 @@
 
     <!-- 背景效果 -->
     <div class="bg-pattern"></div>
-    <div class="floating-orb orb-1"></div>
-    <div class="floating-orb orb-2"></div>
-    <div class="floating-orb orb-3"></div>
-
     <div class="container">
         <div class="language-toggle" id="languageToggle" aria-label="Language">
             <button type="button" data-lang-option="zh" onclick="setLanguage('zh')">中文</button>
@@ -1119,7 +1119,7 @@
 
         <!-- 标题 -->
         <header class="header">
-            <div class="logo">⚡</div>
+            <div class="logo">G</div>
             <h1 id="brandTitle" data-i18n="brand.title">GPT源头</h1>
             <p data-i18n="hero.subtitle">使用卡密快速激活 Plus 或 Pro 订阅</p>
         </header>
@@ -1132,7 +1132,7 @@
 
         <!-- 使用说明 -->
         <div class="guide-card">
-            <div class="guide-title" data-i18n="guide.title">📖 使用步骤</div>
+            <div class="guide-title" data-i18n="guide.title">使用步骤</div>
             <ol class="steps-list">
                 <li>
                     <span class="step-num">1</span>
@@ -1161,7 +1161,7 @@
         <section class="card home-queue-section" id="homeQueueSection">
             <div class="home-queue-top">
                 <div class="card-title" style="margin-bottom: 0;">
-                    <span class="icon">⏱</span>
+                    <span class="icon"></span>
                     <span data-i18n="queue.liveTitle">实时排队</span>
                 </div>
                 <span class="home-queue-tip" data-i18n="queue.refreshTip">每 30 秒自动刷新</span>
@@ -1195,7 +1195,7 @@
                 <span class="step-badge">2</span>
                 <span data-i18n="redeem.step2Title">提交兑换</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 16px; background: rgba(99,102,241,0.08); border-radius: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 16px; background: rgba(211,179,107,0.07); border: 1px solid rgba(211,179,107,0.16); border-radius: 8px;">
                 <span style="font-size: 13px; color: var(--text-secondary);" data-i18n="redeem.subscriptionType">订阅类型:</span>
                 <span class="type-badge" id="cardTypeBadge"></span>
             </div>
@@ -1233,7 +1233,7 @@
                 </p>
             </div>
             <button class="btn btn-primary" id="redeemBtn" onclick="redeemCard()">
-                <span data-i18n="redeem.submitButton">🚀 提交兑换</span>
+                <span data-i18n="redeem.submitButton">提交兑换</span>
             </button>
         </section>
 
@@ -1241,7 +1241,7 @@
         <section class="card job-section" id="jobSection">
             <div class="job-header">
                 <div class="card-title" style="margin-bottom: 0;">
-                    <span class="icon">📋</span>
+                    <span class="icon"></span>
                     <span data-i18n="job.title">任务状态</span>
                 </div>
                 <span class="status-badge" id="jobBadge">PENDING</span>
@@ -1268,7 +1268,7 @@
                 <div class="fill"></div>
             </div>
             <div class="job-message success hidden" id="jobResultMsg" data-i18n="job.successMessage">
-                🎉 订阅成功！请登录 ChatGPT 检查状态。
+                订阅成功！请登录 ChatGPT 检查状态。
             </div>
             <div class="job-message error hidden" id="jobErrorMsg"></div>
             <button class="cancel-inline-btn hidden" id="jobCancelBtn" onclick="cancelTaskByJobId(currentJobId, this)">
@@ -1276,7 +1276,7 @@
             </button>
             <div class="hidden" id="jobActionBtns" style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
                 <button class="btn btn-primary" id="redeemRetryBtn" onclick="retryRedeem()" style="flex:1;min-width:140px;">
-                    <span data-i18n="job.retryRedeem">🔄 重试兑换</span>
+                    <span data-i18n="job.retryRedeem">重试兑换</span>
                 </button>
                 <button class="btn btn-outline" id="redeemNewBtn" onclick="resetForm()" style="flex:1;min-width:140px;">
                     <span data-i18n="job.changeCard">换一张卡密</span>
@@ -1309,7 +1309,7 @@
                         oninput="this.value = this.value.toUpperCase()"
                         style="padding-right: 100px;">
                     <button id="queryBtn" onclick="queryCard()"
-                        style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 7px 16px; background: var(--gradient-1); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
+                        style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 7px 16px; background: var(--accent-primary); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #111519; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
                         <span data-i18n="query.searchButton">查询</span>
                     </button>
                 </div>
@@ -1362,7 +1362,7 @@
                 'maintenance.title': '系统维护中',
                 'maintenance.message': '系统正在进行维护升级，请稍后再访问。',
                 'hero.subtitle': '使用卡密快速激活 Plus 或 Pro 订阅',
-                'guide.title': '📖 使用步骤',
+                'guide.title': '使用步骤',
                 'guide.step1': '苹果手机请在 <strong>Safari 浏览器</strong>中打开 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 并登录账号，其他设备使用任意浏览器即可',
                 'guide.step2': '登录后，在同一浏览器中访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a>',
                 'guide.step3': '页面会显示一大串 JSON 文本，<strong>全选并复制所有内容</strong>',
@@ -1400,21 +1400,21 @@
                 'redeem.sessionLabel': 'ChatGPT Session 数据',
                 'redeem.sessionHint': '登录 <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> 后，访问 <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>，<strong>全选复制整个页面内容</strong>粘贴到此处，系统会自动提取所需信息',
                 'redeem.detectedEmail': '识别邮箱:',
-                'redeem.submitButton': '🚀 提交兑换',
+                'redeem.submitButton': '提交兑换',
                 'redeem.failed': '兑换失败，请稍后重试',
                 'redeem.submitting': '提交中...',
-                'redeem.retrySubmit': '🚀 重试兑换',
+                'redeem.retrySubmit': '重试兑换',
                 'job.title': '任务状态',
                 'job.currentStatus': '当前状态',
                 'job.email': '兑换邮箱',
                 'job.queueProgress': '排队进度',
-                'job.successMessage': '🎉 订阅成功！请登录 ChatGPT 检查状态。',
+                'job.successMessage': '订阅成功！请登录 ChatGPT 检查状态。',
                 'job.cancelTask': '取消任务',
                 'job.canceling': '取消中...',
-                'job.retryRedeem': '🔄 重试兑换',
+                'job.retryRedeem': '重试兑换',
                 'job.changeCard': '换一张卡密',
                 'job.redeemAnother': '兑换另一张卡密',
-                'job.failed': '❌ 兑换失败: {error}（卡密已自动退回）',
+                'job.failed': '兑换失败: {error}（卡密已自动退回）',
                 'job.manualCheck': '兑换状态待人工核验：{error}',
                 'footer.warning': '一张卡密仅可使用一次 · 已有会员请到期后兑换 · Team/工作空间账号请勿兑换',
                 'footer.brand': '&#169; GPT源头 &nbsp;&middot;&nbsp; 一卡一用 · 安全可靠',
@@ -1440,7 +1440,7 @@
                 'query.statusNote': '状态说明',
                 'query.subscriptionType': '订阅类型',
                 'query.createdAt': '生成时间',
-                'query.unusedCard': '💡 该卡密尚未使用',
+                'query.unusedCard': '该卡密尚未使用',
                 'query.inputRequired': '请输入卡密',
                 'query.batchInputRequired': '请输入至少一个卡密',
                 'query.failed': '查询失败',
@@ -1448,14 +1448,14 @@
                 'query.noResults': '没有查询到结果',
                 'query.networkError': '网络错误，请检查连接后重试',
                 'query.total': '共查询 {count} 个卡密',
-                'query.manualTitle': '⚠️ 需人工核验',
+                'query.manualTitle': '需人工核验',
                 'query.manualBody': '此卡密在提交时遇到异常，目前状态不确定。卡密已锁定，请勿重复提交，请联系客服人工查询。',
                 'query.diagnostics': '诊断信息: {stage} - {reason}',
                 'query.diagnosticsUnknown': '未知',
                 'query.diagnosticsNone': '暂无',
                 'status.pending': '排队等待中...',
                 'status.processing': '系统处理中，请稍候...',
-                'status.done': '✅ 兑换成功',
+                'status.done': '兑换成功',
                 'status.failed': '兑换失败',
                 'status.unknown': '待人工核验',
                 'status.expired': '已过期待核验',
@@ -1505,7 +1505,7 @@
                 'maintenance.title': 'System Maintenance',
                 'maintenance.message': 'The system is being upgraded. Please come back later.',
                 'hero.subtitle': 'Activate Plus or Pro subscriptions quickly with a CDK',
-                'guide.title': '📖 How to Use',
+                'guide.title': 'How to Use',
                 'guide.step1': 'On iPhone, open <a href="https://chatgpt.com" target="_blank">chatgpt.com</a> in <strong>Safari</strong> and sign in. Other devices can use any browser.',
                 'guide.step2': 'After signing in, open <a href="https://chatgpt.com/api/auth/session" target="_blank">chatgpt.com/api/auth/session</a> in the same browser.',
                 'guide.step3': 'The page will show JSON text. <strong>Select all and copy everything</strong>.',
@@ -1543,21 +1543,21 @@
                 'redeem.sessionLabel': 'ChatGPT Session Data',
                 'redeem.sessionHint': 'After signing in to <a href="https://chatgpt.com" target="_blank">chatgpt.com</a>, open <a href="https://chatgpt.com/api/auth/session" target="_blank">api/auth/session</a>, then <strong>select all and copy the whole page</strong> here. The system will extract the required data automatically.',
                 'redeem.detectedEmail': 'Detected email:',
-                'redeem.submitButton': '🚀 Submit Redemption',
+                'redeem.submitButton': 'Submit Redemption',
                 'redeem.failed': 'Redemption failed. Please try again later.',
                 'redeem.submitting': 'Submitting...',
-                'redeem.retrySubmit': '🚀 Retry Redemption',
+                'redeem.retrySubmit': 'Retry Redemption',
                 'job.title': 'Task Status',
                 'job.currentStatus': 'Current status',
                 'job.email': 'Redeem email',
                 'job.queueProgress': 'Queue progress',
-                'job.successMessage': '🎉 Subscription activated. Sign in to ChatGPT to check the status.',
+                'job.successMessage': 'Subscription activated. Sign in to ChatGPT to check the status.',
                 'job.cancelTask': 'Cancel task',
                 'job.canceling': 'Canceling...',
-                'job.retryRedeem': '🔄 Retry Redemption',
+                'job.retryRedeem': 'Retry Redemption',
                 'job.changeCard': 'Use another CDK',
                 'job.redeemAnother': 'Redeem another CDK',
-                'job.failed': '❌ Redemption failed: {error} (CDK has been returned automatically)',
+                'job.failed': 'Redemption failed: {error} (CDK has been returned automatically)',
                 'job.manualCheck': 'Redemption needs manual review: {error}',
                 'footer.warning': 'One CDK can only be used once · Existing members should redeem after expiration · Do not use Team/workspace accounts',
                 'footer.brand': '&#169; GPT Source &nbsp;&middot;&nbsp; One CDK, one use · Secure and reliable',
@@ -1583,7 +1583,7 @@
                 'query.statusNote': 'Status note',
                 'query.subscriptionType': 'Subscription type',
                 'query.createdAt': 'Created at',
-                'query.unusedCard': '💡 This CDK has not been used yet',
+                'query.unusedCard': 'This CDK has not been used yet',
                 'query.inputRequired': 'Please enter a CDK',
                 'query.batchInputRequired': 'Please enter at least one CDK',
                 'query.failed': 'Query failed',
@@ -1591,14 +1591,14 @@
                 'query.noResults': 'No results found',
                 'query.networkError': 'Network error. Please check your connection and try again.',
                 'query.total': 'Queried {count} CDK(s)',
-                'query.manualTitle': '⚠️ Manual review required',
+                'query.manualTitle': 'Manual review required',
                 'query.manualBody': 'This CDK hit an exception during submission, so the current status is uncertain. The CDK is locked. Do not submit again. Contact support for manual checking.',
                 'query.diagnostics': 'Diagnostics: {stage} - {reason}',
                 'query.diagnosticsUnknown': 'unknown',
                 'query.diagnosticsNone': 'N/A',
                 'status.pending': 'Waiting in queue...',
                 'status.processing': 'Processing. Please wait...',
-                'status.done': '✅ Redeemed successfully',
+                'status.done': 'Redeemed successfully',
                 'status.failed': 'Redemption failed',
                 'status.unknown': 'Manual review pending',
                 'status.expired': 'Expired, pending review',
@@ -1854,7 +1854,7 @@
                 } else {
                     hint = t('validation.codeFormat');
                 }
-                errEl.innerHTML = `⚠️ ${hint}`;
+                errEl.innerHTML = hint;
                 errEl.style.display = 'flex';
                 input.style.borderColor = 'rgba(251,113,133,0.5)';
                 return false;
@@ -1867,7 +1867,7 @@
         function showTokenError(msg) {
             const errEl = document.getElementById('tokenError');
             const ta = document.getElementById('accessTokenInput');
-            errEl.innerHTML = `⚠️ ${msg}`;
+            errEl.innerHTML = msg;
             errEl.style.display = 'block';
             ta.style.borderColor = 'rgba(251,113,133,0.5)';
         }
@@ -2098,7 +2098,6 @@
                 document.getElementById('cardCodeInput').style.borderColor = '';
                 resultDiv.className = 'verify-result success';
                 resultDiv.innerHTML = `
-                    <div class="result-icon">✅</div>
                     <div class="result-text">${t('redeem.valid')}</div>
                     <div class="result-detail">
                         ${t('redeem.type')} <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span>
@@ -2137,7 +2136,6 @@
             const resultDiv = document.getElementById('verifyResult');
             resultDiv.className = 'verify-result error';
             resultDiv.innerHTML = `
-                <div class="result-icon">❌</div>
                 <div class="result-text">${escapeHtml(message)}</div>
             `;
         }
@@ -2478,7 +2476,6 @@
                 verifyBtn.disabled = true;
                 verifyResult.className = 'verify-result success';
                 verifyResult.innerHTML = `
-                    <div class="result-icon">✅</div>
                     <div class="result-text">${t('redeem.validRetry')}</div>
                     <div class="result-detail">${t('redeem.type')} <span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></div>
                 `;
@@ -2530,16 +2527,16 @@
 
         function queryStatusIcon(status) {
             const statusIconMap = {
-                unused: '&#x2728;',
-                used: '&#x2705;',
-                disabled: '&#x1F6AB;',
-                pending: '&#x23F3;',
-                processing: '&#x23F3;',
-                done: '&#x2705;',
-                failed: '&#x274C;',
-                unknown: '&#x26A0;',
-                expired: '&#x26A0;',
-                not_found: '&#x1F50D;'
+                unused: '',
+                used: '',
+                disabled: '',
+                pending: '',
+                processing: '',
+                done: '',
+                failed: '',
+                unknown: '',
+                expired: '',
+                not_found: ''
             };
             return statusIconMap[status] || '';
         }
@@ -2614,8 +2611,8 @@
 
                 if (!res.ok) {
                     resultDiv.innerHTML = `
-                        <div style="padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
-                            <span>&#10060;</span> ${escapeHtml(data.error || t('query.failed'))}
+                        <div style="padding: 14px 16px; border-radius: 8px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose);">
+                            ${escapeHtml(data.error || t('query.failed'))}
                         </div>`;
                     return;
                 }
@@ -2623,21 +2620,21 @@
                 const redeemRows = data.redeem_status ? `
                     ${data.used_at ? `
                     <div class="query-row">
-                        <span class="q-label">❤️ ${t('query.redeemTime')}</span>
+                        <span class="q-label">${t('query.redeemTime')}</span>
                         <span class="q-value mono">${data.used_at}</span>
                     </div>` : ''}
                     ${data.email ? `
                     <div class="query-row">
-                        <span class="q-label">📧 ${t('query.redeemEmail')}</span>
+                        <span class="q-label">${t('query.redeemEmail')}</span>
                         <span class="q-value" style="font-family: monospace; color: var(--accent-indigo);">${escapeHtml(data.email)}</span>
                     </div>` : ''}
                     <div class="query-row">
-                        <span class="q-label">📦 ${t('query.redeemProgress')}</span>
+                        <span class="q-label">${t('query.redeemProgress')}</span>
                         <span class="q-value"><span class="status-pill ${data.redeem_status}">${queryStatusIcon(data.redeem_status)} ${escapeHtml(redeemStatusLabel(data.redeem_status, data.redeem_status_label))}</span></span>
                     </div>
                     ${(data.queue_position !== null && data.queue_position !== undefined) || (data.estimated_wait_seconds !== null && data.estimated_wait_seconds !== undefined) ? `
                     <div class="query-row">
-                        <span class="q-label">⏳ ${t('query.queueEstimate')}</span>
+                        <span class="q-label">${t('query.queueEstimate')}</span>
                         <span class="q-value">${formatQueueEstimate(data)}</span>
                     </div>` : ''}
                     ${data.redeem_error ? `
@@ -2646,8 +2643,8 @@
                         <span class="q-value" style="color: var(--accent-amber);">${escapeHtml(data.redeem_error)}</span>
                     </div>` : ''}
                     ${data.needs_manual_review ? `
-                    <div style="margin:0 20px 12px; padding: 12px; background: rgba(251, 191, 36, 0.1); border-left: 3px solid #fbbf24; border-radius: 4px; font-size: 13px;">
-                        <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">${t('query.manualTitle')}</div>
+                    <div style="margin:0 20px 12px; padding: 12px; background: rgba(211, 179, 107, 0.1); border-left: 3px solid var(--accent-primary); border-radius: 4px; font-size: 13px;">
+                        <div style="color:var(--accent-primary);font-weight:600;margin-bottom:4px;">${t('query.manualTitle')}</div>
                         <div style="color:var(--text-secondary);">${t('query.manualBody')}</div>
                         <div style="color:var(--text-secondary);font-size:11px;opacity:0.8;margin-top:4px;">${escapeHtml(t('query.diagnostics', {
                             stage: data.manual_review_stage || t('query.diagnosticsUnknown'),
@@ -2671,11 +2668,11 @@
                         </div>
                         <div class="query-result-body">
                             <div class="query-row">
-                                <span class="q-label">🏷️ ${t('query.subscriptionType')}</span>
+                                <span class="q-label">${t('query.subscriptionType')}</span>
                                 <span class="q-value"><span class="type-badge ${data.type}">${subscriptionTypeLabel(data.type)}</span></span>
                             </div>
                             <div class="query-row">
-                                <span class="q-label">📅 ${t('query.createdAt')}</span>
+                                <span class="q-label">${t('query.createdAt')}</span>
                                 <span class="q-value mono">${escapeHtml(data.created_at || '-')}</span>
                             </div>
                             ${redeemRows}
@@ -2714,8 +2711,8 @@
 
                 if (!res.ok) {
                     resultDiv.innerHTML = `
-                        <div style="margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose); display: flex; gap: 8px; align-items: center;">
-                            <span>&#10060;</span> ${escapeHtml(data.error || t('query.batchFailed'))}
+                        <div style="margin-top: 16px; padding: 14px 16px; border-radius: 8px; background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.2); font-size: 13px; color: var(--accent-rose);">
+                            ${escapeHtml(data.error || t('query.batchFailed'))}
                         </div>`;
                     return;
                 }
